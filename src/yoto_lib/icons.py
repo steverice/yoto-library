@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import httpx
 from PIL import Image
 
 from yoto_lib import mka
@@ -20,6 +21,8 @@ if TYPE_CHECKING:
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 ICON_SIZE = 16
+ICON_BASE_URL = "https://media-secure-v2.api.yotoplay.com/icons"
+ICON_CACHE_DIR = Path.home() / ".cache" / "yoto" / "icons"
 
 ICNS_SIZES = [16, 32, 64, 128, 256, 512]
 
@@ -74,6 +77,65 @@ def build_icns(icon_16: Image.Image) -> bytes:
     body = b"".join(chunks)
     total_length = 8 + len(body)  # 4 (magic) + 4 (total length field) + body
     return b"icns" + struct.pack(">I", total_length) + body
+
+
+# ── Icon download / cache ────────────────────────────────────────────────────
+
+
+def _download_bytes(url: str) -> bytes:
+    """Fetch raw bytes from a URL."""
+    response = httpx.get(url, follow_redirects=True, timeout=300.0)
+    response.raise_for_status()
+    return response.content
+
+
+def extract_icon_hash(icon_ref: str) -> str | None:
+    """Extract icon hash from either 'yoto:#hash' or a full URL."""
+    if not icon_ref:
+        return None
+    if icon_ref.startswith("yoto:#"):
+        return icon_ref[6:]
+    return icon_ref.rstrip("/").rsplit("/", 1)[-1] or None
+
+
+def download_icon(icon_ref: str, cache_dir: Path = ICON_CACHE_DIR) -> bytes | None:
+    """Download an icon by ref (yoto:#hash, URL, or bare mediaId), using file cache."""
+    icon_hash = extract_icon_hash(icon_ref) if ":" in icon_ref or "/" in icon_ref else icon_ref
+    if not icon_hash:
+        return None
+
+    cached = cache_dir / f"{icon_hash}.png"
+    if cached.exists():
+        return cached.read_bytes()
+
+    if icon_ref.startswith("http"):
+        url = icon_ref
+    else:
+        url = f"{ICON_BASE_URL}/{icon_hash}"
+
+    try:
+        data = _download_bytes(url)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cached.write_bytes(data)
+        return data
+    except Exception:
+        return None
+
+
+def apply_icon_to_mka(mka_path: Path, icon_data: bytes) -> None:
+    """Attach icon PNG to MKA and set macOS Finder icon."""
+    icon_tmp = mka_path.parent / f".icon_tmp_{mka_path.stem}.png"
+    try:
+        icon_tmp.write_bytes(icon_data)
+        mka.set_attachment(mka_path, icon_tmp, name="icon", mime_type="image/png")
+    finally:
+        icon_tmp.unlink(missing_ok=True)
+
+    try:
+        img = Image.open(io.BytesIO(icon_data))
+        set_macos_file_icon(mka_path, img)
+    except Exception:
+        pass
 
 
 # ── macOS icon setter ─────────────────────────────────────────────────────────
@@ -167,16 +229,94 @@ def match_public_icon(
     return best_id if best_score >= 0.5 else None
 
 
+# ── AI icon generation ────────────────────────────────────────────────────────
+
+GRID_SIZE = 8
+TILE_SIZE = 128  # 1024 / 8
+CANVAS_SIZE = 1024
+
+
+def build_icon_prompt(track_title: str) -> str:
+    """Build a prompt for generating an 8x8 grid of identical 16x16-style icons."""
+    return (
+        f"Generate an 8x8 grid of identical icons on a 1024x1024 pixel canvas. "
+        f"Each icon is 128x128 pixels. Every cell in the grid shows the exact same icon. "
+        f"The icon depicts: {track_title}. "
+        f"Style: bold simple shapes, flat solid colors, minimal detail, high contrast. "
+        f"Suitable for a 16x16 pixel icon when downscaled. "
+        f"Do not include any text, letters, numbers, or lettering."
+    )
+
+
+def generate_track_icon(track_title: str) -> bytes | None:
+    """Generate a 16x16 icon via the AI grid technique. Returns PNG bytes or None."""
+    try:
+        from yoto_lib.image_providers import get_provider
+        provider = get_provider()
+    except Exception:
+        return None
+
+    prompt = build_icon_prompt(track_title)
+
+    try:
+        image_bytes = provider.generate(prompt, CANVAS_SIZE, CANVAS_SIZE)
+    except Exception:
+        return None
+
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        # Crop center tile from the 8x8 grid
+        center = GRID_SIZE // 2
+        left = center * TILE_SIZE
+        top = center * TILE_SIZE
+        tile = img.crop((left, top, left + TILE_SIZE, top + TILE_SIZE))
+        # Downscale to 16x16
+        icon_16 = tile.resize((ICON_SIZE, ICON_SIZE), Image.LANCZOS)
+        buf = io.BytesIO()
+        icon_16.save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception:
+        return None
+
+
 # ── resolve_icons ─────────────────────────────────────────────────────────────
 
 
-def resolve_icons(playlist: "Playlist", api: "YotoAPI") -> dict[str, str]:
-    """Resolve icon IDs for each track in the playlist.
+def _derive_track_title(track_path: Path, filename: str) -> str:
+    """Get a human-readable title for matching: MKA tag → filename stem."""
+    title = Path(filename).stem
+    try:
+        tags = mka.read_tags(track_path)
+        title = tags.get("title") or title
+    except Exception:
+        pass
+    return title
 
-    Resolution order for each track file:
-    1. MKA attachment named "icon" → upload via api.upload_icon, set macOS icon
-    2. Match from the Yoto public icon library (lazy-loaded)
-    3. AI generation — TODO: depends on grid validation (Task 5)
+
+def _upload_icon_bytes(api: "YotoAPI", icon_bytes: bytes) -> str | None:
+    """Upload icon bytes to Yoto API, return mediaId or None on failure."""
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+        tmp.write(icon_bytes)
+        tmp_path = Path(tmp.name)
+    try:
+        upload_result = api.upload_icon(tmp_path, auto_convert=True)
+        return upload_result.get("mediaId") or upload_result.get("id")
+    except Exception:
+        return None
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+def resolve_icons(playlist: "Playlist", api: "YotoAPI") -> dict[str, str]:
+    """Resolve and embed icons for each track in the playlist.
+
+    For each track, ensures an icon is written to the MKA file on disk,
+    then returns the mediaId for the content schema.
+
+    Resolution order:
+    1. MKA attachment named "icon" → already on disk, upload to API
+    2. Match from Yoto public icon library → download, write to MKA
+    3. AI generation via grid technique → generate, write to MKA
 
     Returns dict mapping filename → mediaId.
     """
@@ -186,49 +326,50 @@ def resolve_icons(playlist: "Playlist", api: "YotoAPI") -> dict[str, str]:
     for filename in playlist.track_files:
         track_path = playlist.path / filename
         media_id: str | None = None
+        icon_bytes: bytes | None = None
 
-        # 1. MKA attachment
+        # 1. Check for existing MKA icon attachment
         try:
-            attachment_bytes = mka.get_attachment(track_path, "icon")
+            icon_bytes = mka.get_attachment(track_path, "icon")
         except Exception:
-            attachment_bytes = None
+            icon_bytes = None
 
-        if attachment_bytes is not None:
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                tmp.write(attachment_bytes)
-                tmp_path = Path(tmp.name)
-            try:
-                upload_result = api.upload_icon(tmp_path)
-                media_id = upload_result.get("mediaId") or upload_result.get("id")
-                if media_id:
-                    try:
-                        icon_img = Image.open(io.BytesIO(attachment_bytes))
-                        icon_16 = nearest_neighbor_upscale(icon_img, ICON_SIZE)
-                        set_macos_file_icon(track_path, icon_16)
-                    except Exception:
-                        pass  # macOS icon setting is best-effort
-            finally:
-                tmp_path.unlink(missing_ok=True)
+        if icon_bytes is not None:
+            media_id = _upload_icon_bytes(api, icon_bytes)
+        else:
+            track_title = _derive_track_title(track_path, filename)
 
-        # 2. Public icon match
-        if media_id is None:
+            # 2. Public icon match
             if public_icons is None:
                 try:
                     public_icons = api.get_public_icons()
                 except Exception:
                     public_icons = []
 
-            # Derive title from filename for matching
-            track_title = Path(filename).stem
+            matched_id = match_public_icon(track_title, public_icons)
+            if matched_id:
+                dl_bytes = download_icon(matched_id)
+                if dl_bytes:
+                    apply_icon_to_mka(track_path, dl_bytes)
+                    icon_bytes = dl_bytes
+                media_id = matched_id  # use Yoto's public ID directly
+
+            # 3. AI generation
+            if media_id is None:
+                icon_bytes = generate_track_icon(track_title)
+                if icon_bytes:
+                    apply_icon_to_mka(track_path, icon_bytes)
+                    media_id = _upload_icon_bytes(api, icon_bytes)
+
+        # Set macOS Finder icon (best-effort, skip if already set by apply_icon_to_mka)
+        if icon_bytes is not None and media_id is not None:
+            # apply_icon_to_mka already sets Finder icon for steps 2 & 3;
+            # for step 1 (pre-existing attachment) set it here
             try:
-                tags = mka.read_tags(track_path)
-                track_title = tags.get("title") or track_title
+                img = Image.open(io.BytesIO(icon_bytes))
+                set_macos_file_icon(track_path, img)
             except Exception:
                 pass
-
-            media_id = match_public_icon(track_title, public_icons)
-
-        # 3. AI generation — TODO: depends on grid validation (Task 5)
 
         if media_id is not None:
             result[filename] = media_id

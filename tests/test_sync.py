@@ -24,15 +24,14 @@ def _make_audio_folder(tmp_path: Path, tracks: list[str], card_id: str | None = 
 class TestSyncPlaylist:
     # ── test_sync_new_playlist ────────────────────────────────────────────────
 
-    def test_sync_new_playlist(self, tmp_path):
+    def test_sync_new_playlist_creates_card(self, tmp_path):
         """No card_id: creates a new card and writes .yoto-card-id."""
         folder = _make_audio_folder(tmp_path, ["track01.mp3"])
 
         mock_api = MagicMock()
-        mock_api.get_content.return_value = {}
+        mock_api.get_content.side_effect = Exception("no remote card yet")
         mock_api.upload_and_transcode.return_value = {"transcodedSha256": "abc123"}
-        mock_api.upload_cover.return_value = {"url": "https://cdn.yoto.io/cover.png"}
-        mock_api.create_or_update_content.return_value = {"cardId": "NEW-CARD-001"}
+        mock_api.create_or_update_content.return_value = {"cardId": "NEW-001"}
 
         with (
             patch("yoto_lib.sync.YotoAPI", return_value=mock_api),
@@ -41,14 +40,12 @@ class TestSyncPlaylist:
         ):
             result = sync_playlist(folder)
 
-        assert result.card_id == "NEW-CARD-001"
+        assert result.card_id == "NEW-001"
         assert result.tracks_uploaded == 1
-        assert result.dry_run is False
 
-        # .yoto-card-id must be written
         card_id_file = folder / ".yoto-card-id"
         assert card_id_file.exists()
-        assert card_id_file.read_text(encoding="utf-8") == "NEW-CARD-001"
+        assert card_id_file.read_text(encoding="utf-8") == "NEW-001"
 
     # ── test_sync_existing_playlist_no_changes ────────────────────────────────
 

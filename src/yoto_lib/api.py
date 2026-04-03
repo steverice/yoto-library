@@ -62,7 +62,14 @@ class YotoAPI:
 
     def create_or_update_content(self, content: dict) -> dict:
         response = self._client.post("/content", json=content)
-        response.raise_for_status()
+        if response.status_code >= 400:
+            try:
+                body = response.json()
+            except Exception:
+                body = response.text
+            raise YotoAPIError(
+                f"{response.status_code} from POST /content: {body}"
+            )
         return response.json()
 
     def delete_content(self, card_id: str) -> dict:
