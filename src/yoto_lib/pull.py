@@ -6,6 +6,7 @@ import io
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable, Optional
 
 import httpx
 from PIL import Image
@@ -136,6 +137,7 @@ def pull_playlist(
     folder: Path,
     card_id: str | None = None,
     dry_run: bool = False,
+    on_track_done: Optional[Callable[[str], None]] = None,
 ) -> PullResult:
     """Download a remote Yoto playlist into a local folder."""
     folder = Path(folder)
@@ -202,6 +204,7 @@ def pull_playlist(
             future_to_job[future] = job
 
         for future in as_completed(future_to_job):
+            job = future_to_job[future]
             track_ok, icon_ok, error = future.result()
             if track_ok:
                 result.tracks_downloaded += 1
@@ -209,6 +212,8 @@ def pull_playlist(
                 result.icons_downloaded += 1
             if error:
                 result.errors.append(error)
+            if on_track_done:
+                on_track_done(job.title)
 
     # Write playlist.jsonl in original chapter order
     track_filenames = [job.filename for job in jobs]

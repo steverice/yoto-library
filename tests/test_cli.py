@@ -103,7 +103,7 @@ class TestSyncCommand:
             result = runner.invoke(cli, ["sync", str(folder)])
 
         assert result.exit_code == 0
-        mock_sync.assert_called_once_with(folder, dry_run=False)
+        mock_sync.assert_called_once_with(folder, dry_run=False, on_track_done=mock_sync.call_args.kwargs["on_track_done"])
         assert "Synced card SYNCED-001" in result.output
         assert "3 tracks uploaded" in result.output
 
