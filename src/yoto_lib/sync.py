@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from yoto_lib.api import YotoAPI
 from yoto_lib.cover import generate_cover_if_missing
@@ -83,7 +83,11 @@ def _parse_remote_state(remote_content: dict) -> dict:
 # ── sync_playlist ─────────────────────────────────────────────────────────────
 
 
-def sync_playlist(folder: Path, dry_run: bool = False) -> SyncResult:
+def sync_playlist(
+    folder: Path,
+    dry_run: bool = False,
+    on_track_done: Optional[Callable[[str], None]] = None,
+) -> SyncResult:
     """
     Sync a single playlist folder to the Yoto API.
 
@@ -162,8 +166,12 @@ def sync_playlist(folder: Path, dry_run: bool = False) -> SyncResult:
             transcode_result = api.upload_and_transcode(file_path)
             sha = transcode_result.get("transcodedSha256", "")
             track_hashes[filename] = sha
+            if on_track_done:
+                on_track_done(filename)
         except Exception as exc:
             result.errors.append(f"Upload failed for {filename}: {exc}")
+            if on_track_done:
+                on_track_done(filename)
 
     # 10. Upload cover if changed
     cover_url: Optional[str] = None
@@ -205,7 +213,11 @@ def _has_audio_files(folder: Path) -> bool:
     )
 
 
-def sync_path(path: Path, dry_run: bool = False) -> list[SyncResult]:
+def sync_path(
+    path: Path,
+    dry_run: bool = False,
+    on_track_done: Optional[Callable[[str], None]] = None,
+) -> list[SyncResult]:
     """
     Sync one or more playlists rooted at path.
 
@@ -216,11 +228,11 @@ def sync_path(path: Path, dry_run: bool = False) -> list[SyncResult]:
     results: list[SyncResult] = []
 
     if _has_audio_files(path):
-        results.append(sync_playlist(path, dry_run=dry_run))
+        results.append(sync_playlist(path, dry_run=dry_run, on_track_done=on_track_done))
     else:
         subdirs = sorted(p for p in path.iterdir() if p.is_dir())
         for subdir in subdirs:
             if _has_audio_files(subdir):
-                results.append(sync_playlist(subdir, dry_run=dry_run))
+                results.append(sync_playlist(subdir, dry_run=dry_run, on_track_done=on_track_done))
 
     return results

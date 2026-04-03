@@ -62,15 +62,28 @@ def auth():
 @click.option("--dry-run", is_flag=True, help="Preview changes without executing")
 def sync(path, dry_run):
     """Push local playlist state to Yoto."""
-    results = sync_path(Path(path), dry_run=dry_run)
+    if dry_run:
+        results = sync_path(Path(path), dry_run=True)
+        for result in results:
+            click.echo(f"[Dry run] Would upload {result.tracks_uploaded} tracks")
+            for error in result.errors:
+                click.echo(f"Error: {error}", err=True)
+        return
+
+    from rich.progress import Progress
+
+    with Progress() as progress:
+        task_id = progress.add_task("Uploading tracks…", total=None)
+
+        def on_track(filename: str):
+            progress.advance(task_id)
+
+        results = sync_path(Path(path), dry_run=False, on_track_done=on_track)
 
     for result in results:
-        if dry_run:
-            click.echo(f"[Dry run] Would upload {result.tracks_uploaded} tracks")
-        else:
-            click.echo(
-                f"Synced card {result.card_id}: {result.tracks_uploaded} tracks uploaded"
-            )
+        click.echo(
+            f"Synced card {result.card_id}: {result.tracks_uploaded} tracks uploaded"
+        )
         for error in result.errors:
             click.echo(f"Error: {error}", err=True)
 
@@ -95,21 +108,62 @@ def pull(path_or_card_id, dry_run, pull_all):
         folder = Path(path_or_card_id)
         card_id = None
 
-    result = pull_playlist(folder, card_id=card_id, dry_run=dry_run)
+    _pull_one(folder, card_id=card_id, dry_run=dry_run)
+
+
+def _pull_one(folder: Path, card_id: str | None = None, dry_run: bool = False, progress=None) -> None:
+    """Pull a single playlist with optional rich progress bar."""
+    from rich.progress import Progress
+
+    own_progress = progress is None
+    if own_progress and not dry_run:
+        progress = Progress()
+        progress.start()
+
+    task_id = None
+
+    def on_track(title: str):
+        nonlocal task_id
+        if progress and task_id is not None:
+            progress.advance(task_id)
+
+    try:
+        # Peek at track count for the progress bar
+        if not dry_run and progress:
+            api = YotoAPI()
+            remote = api.get_content(card_id or _read_card_id(folder))
+            chapters = remote.get("content", {}).get("chapters", [])
+            total = sum(1 for ch in chapters for t in ch.get("tracks", []) if t.get("trackUrl", "").startswith("http"))
+            label = folder.name or card_id or "Playlist"
+            task_id = progress.add_task(label, total=total)
+
+        result = pull_playlist(folder, card_id=card_id, dry_run=dry_run, on_track_done=on_track)
+    finally:
+        if own_progress and progress:
+            progress.stop()
 
     if dry_run:
-        click.echo(f"[Dry run] Would download {result.tracks_downloaded} tracks")
+        click.echo(f"[Dry run] {result.card_id}")
     else:
         icon_msg = f", {result.icons_downloaded} icons" if result.icons_downloaded else ""
         click.echo(
-            f"Pulled card {result.card_id}: {result.tracks_downloaded} tracks{icon_msg} downloaded"
+            f"Pulled {result.card_id}: {result.tracks_downloaded} tracks{icon_msg}"
         )
     for error in result.errors:
         click.echo(f"Error: {error}", err=True)
 
 
+def _read_card_id(folder: Path) -> str | None:
+    card_id_path = folder / ".yoto-card-id"
+    if card_id_path.exists():
+        return card_id_path.read_text(encoding="utf-8").strip()
+    return None
+
+
 def _pull_all(dry_run: bool = False) -> None:
     """Pull every playlist on the account into a subdirectory of cwd."""
+    from rich.progress import Progress
+
     api = YotoAPI()
     cards = api.get_my_content()
 
@@ -117,22 +171,23 @@ def _pull_all(dry_run: bool = False) -> None:
         click.echo("No cards found.")
         return
 
-    for card in cards:
-        card_id = card.get("cardId", "")
-        title = card.get("title", card_id)
-        folder = Path(".") / title
-        folder.mkdir(exist_ok=True)
+    if dry_run:
+        for card in cards:
+            card_id = card.get("cardId", "")
+            title = card.get("title", card_id)
+            folder = Path(".") / title
+            folder.mkdir(exist_ok=True)
+            result = pull_playlist(folder, card_id=card_id, dry_run=True)
+            click.echo(f"[Dry run] {title} ({card_id})")
+        return
 
-        click.echo(f"Pulling {title} ({card_id})...")
-        result = pull_playlist(folder, card_id=card_id, dry_run=dry_run)
-
-        if dry_run:
-            click.echo(f"  [Dry run] Would download tracks")
-        else:
-            icon_msg = f", {result.icons_downloaded} icons" if result.icons_downloaded else ""
-            click.echo(f"  {result.tracks_downloaded} tracks{icon_msg} downloaded")
-        for error in result.errors:
-            click.echo(f"  Error: {error}", err=True)
+    with Progress() as progress:
+        for card in cards:
+            card_id = card.get("cardId", "")
+            title = card.get("title", card_id)
+            folder = Path(".") / title
+            folder.mkdir(exist_ok=True)
+            _pull_one(folder, card_id=card_id, progress=progress)
 
 
 # ── status ────────────────────────────────────────────────────────────────────
