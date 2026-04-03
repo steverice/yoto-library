@@ -248,8 +248,29 @@ def build_icon_prompt(track_title: str) -> str:
     )
 
 
-def generate_track_icon(track_title: str) -> bytes | None:
-    """Generate a 16x16 icon via the AI grid technique. Returns PNG bytes or None."""
+def _sanitize_title(title: str) -> str:
+    """Sanitize a title for use as a filename."""
+    return title.replace("/", "-").replace(":", "-").replace("\0", "").strip()
+
+
+def crop_icon_from_grid(img: Image.Image) -> tuple[Image.Image, Image.Image]:
+    """Crop the center tile from an 8x8 grid image and downscale to 16x16.
+
+    Returns (tile_128x128, icon_16x16).
+    """
+    center = GRID_SIZE // 2
+    left = center * TILE_SIZE
+    top = center * TILE_SIZE
+    tile = img.crop((left, top, left + TILE_SIZE, top + TILE_SIZE))
+    icon_16 = tile.resize((ICON_SIZE, ICON_SIZE), Image.LANCZOS)
+    return tile, icon_16
+
+
+def generate_raw_grid(track_title: str) -> bytes | None:
+    """Generate the raw 1024x1024 grid image. Returns PNG bytes or None.
+
+    Also saves the raw image to ~/.cache/yoto/icons/raw/ for inspection.
+    """
     try:
         from yoto_lib.image_providers import get_provider
         provider = get_provider()
@@ -264,14 +285,24 @@ def generate_track_icon(track_title: str) -> bytes | None:
         return None
 
     try:
+        raw_dir = ICON_CACHE_DIR / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        (raw_dir / f"{_sanitize_title(track_title)}.png").write_bytes(image_bytes)
+    except Exception:
+        pass
+
+    return image_bytes
+
+
+def generate_track_icon(track_title: str) -> bytes | None:
+    """Generate a 16x16 icon via the AI grid technique. Returns PNG bytes or None."""
+    image_bytes = generate_raw_grid(track_title)
+    if image_bytes is None:
+        return None
+
+    try:
         img = Image.open(io.BytesIO(image_bytes))
-        # Crop center tile from the 8x8 grid
-        center = GRID_SIZE // 2
-        left = center * TILE_SIZE
-        top = center * TILE_SIZE
-        tile = img.crop((left, top, left + TILE_SIZE, top + TILE_SIZE))
-        # Downscale to 16x16
-        icon_16 = tile.resize((ICON_SIZE, ICON_SIZE), Image.LANCZOS)
+        _, icon_16 = crop_icon_from_grid(img)
         buf = io.BytesIO()
         icon_16.save(buf, format="PNG")
         return buf.getvalue()
