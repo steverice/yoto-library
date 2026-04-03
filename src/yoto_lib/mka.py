@@ -23,8 +23,11 @@ TAG_MAP = {
     "max_age": "YOTO_MAX_AGE",
 }
 
-# Reverse map for reading tags back
-_REVERSE_TAG_MAP = {v: k for k, v in TAG_MAP.items()}
+# Reverse map for reading tags back (first occurrence wins, so "artist" beats "author")
+_REVERSE_TAG_MAP = {}
+for _k, _v in TAG_MAP.items():
+    if _v not in _REVERSE_TAG_MAP:
+        _REVERSE_TAG_MAP[_v] = _k
 
 
 def _run(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
@@ -123,12 +126,12 @@ def set_attachment(
     # First try to remove existing attachment with same name
     remove_attachment(mka_path, name)
 
-    # Use mkvpropedit to add attachment
+    # Name and mime-type flags must precede --add-attachment
     _run([
         "mkvpropedit", str(mka_path),
-        "--add-attachment", str(file_path),
         "--attachment-name", name,
         "--attachment-mime-type", mime_type,
+        "--add-attachment", str(file_path),
     ])
 
 
