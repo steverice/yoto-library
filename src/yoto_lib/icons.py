@@ -300,7 +300,8 @@ def _upload_icon_bytes(api: "YotoAPI", icon_bytes: bytes) -> str | None:
         tmp_path = Path(tmp.name)
     try:
         upload_result = api.upload_icon(tmp_path, auto_convert=True)
-        return upload_result.get("mediaId") or upload_result.get("id")
+        di = upload_result.get("displayIcon", upload_result)
+        return di.get("mediaId") or di.get("id")
     except Exception:
         return None
     finally:

@@ -250,7 +250,7 @@ class TestBuildContentSchema:
         hashes = {"01 - Intro.mka": "abc123", "02 - Main.mka": "def456"}
         schema = build_content_schema(pl, track_hashes=hashes, icon_ids={}, cover_url=None)
 
-        assert schema["content"]["title"] == "My Story"
+        assert schema["title"] == "My Story"
         chapters = schema["content"]["chapters"]
         assert isinstance(chapters, list)
         assert len(chapters) == 2
@@ -259,8 +259,10 @@ class TestBuildContentSchema:
         assert chapters[0]["tracks"][0]["trackUrl"] == "yoto:#abc123"
         assert chapters[0]["tracks"][0]["type"] == "audio"
         assert chapters[0]["tracks"][0]["key"] == "t000"
+        assert chapters[0]["tracks"][0]["title"] == "01 - Intro"
         assert chapters[1]["key"] == "ch001"
         assert chapters[1]["tracks"][0]["trackUrl"] == "yoto:#def456"
+        assert chapters[1]["tracks"][0]["title"] == "02 - Main"
 
     def test_includes_card_id(self, tmp_path):
         pl = Playlist(
@@ -290,8 +292,10 @@ class TestBuildContentSchema:
         icon_ids = {"t1.mka": "icon-001", "t2.mka": "icon-002"}
         schema = build_content_schema(pl, track_hashes=hashes, icon_ids=icon_ids, cover_url=None)
         chapters = schema["content"]["chapters"]
-        assert chapters[0]["display"]["icon16x16"] == "icon-001"
-        assert chapters[1]["display"]["icon16x16"] == "icon-002"
+        assert chapters[0]["display"]["icon16x16"] == "yoto:#icon-001"
+        assert chapters[0]["tracks"][0]["display"]["icon16x16"] == "yoto:#icon-001"
+        assert chapters[1]["display"]["icon16x16"] == "yoto:#icon-002"
+        assert chapters[1]["tracks"][0]["display"]["icon16x16"] == "yoto:#icon-002"
 
     def test_includes_cover_url(self, tmp_path):
         pl = self._make_basic_playlist(tmp_path)
@@ -302,4 +306,4 @@ class TestBuildContentSchema:
             icon_ids={},
             cover_url="https://cdn.yoto.io/cover.png",
         )
-        assert schema["content"]["metadata"]["coverImage"] == "https://cdn.yoto.io/cover.png"
+        assert schema["metadata"]["cover"]["imageL"] == "https://cdn.yoto.io/cover.png"
