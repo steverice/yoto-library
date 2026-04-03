@@ -16,7 +16,7 @@ from yoto_lib.api import YotoAPI
 from yoto_lib.sync import sync_path
 from yoto_lib.pull import pull_playlist
 from yoto_lib.playlist import read_jsonl, write_jsonl, scan_audio_files, load_playlist, diff_playlists
-from yoto_lib.mka import wrap_in_mka
+from yoto_lib.mka import wrap_in_mka, remove_attachment
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -321,6 +321,22 @@ def import_cmd(source, output):
 
     write_jsonl(output_path / "playlist.jsonl", filenames)
     click.echo(f"Imported {len(filenames)} tracks into {output_path}")
+
+
+# ── reset-icon ───────────────────────────────────────────────────────────
+
+
+@cli.command(name="reset-icon")
+@click.argument("tracks", nargs=-1, required=True, type=click.Path(exists=True))
+def reset_icon(tracks):
+    """Remove the icon from one or more MKA tracks so sync regenerates them."""
+    for track in tracks:
+        path = Path(track)
+        try:
+            remove_attachment(path, "icon")
+            click.echo(f"  Cleared icon: {path.name}")
+        except Exception as exc:
+            click.echo(f"  Error ({path.name}): {exc}", err=True)
 
 
 # ── list ──────────────────────────────────────────────────────────────────────
