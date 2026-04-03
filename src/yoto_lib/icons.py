@@ -372,6 +372,9 @@ def resolve_icons(
                     _log(f"Icon {i}/{total}: {title} (generated, uploading...)")
                     apply_icon_to_mka(track_path, icon_bytes)
                     media_id = _upload_icon_bytes(api, icon_bytes)
+                    if media_id:
+                        ICON_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                        (ICON_CACHE_DIR / f"{media_id}.png").write_bytes(icon_bytes)
                 else:
                     _log(f"Icon {i}/{total}: {title} (no icon)")
 
