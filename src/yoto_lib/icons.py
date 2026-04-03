@@ -81,10 +81,9 @@ def build_icns(icon_16: Image.Image) -> bytes:
 _OSASCRIPT_TEMPLATE = """\
 use framework "AppKit"
 use scripting additions
-set iconPath to POSIX file "{icns_path}"
-set targetPath to POSIX file "{file_path}"
 set ws to current application's NSWorkspace's sharedWorkspace()
-ws's setIcon:(current application's NSImage's alloc()'s initWithContentsOfFile:(iconPath as text)) forFile:(targetPath as text) options:0
+set img to current application's NSImage's alloc()'s initWithContentsOfFile:"{icns_path}"
+ws's setIcon:img forFile:"{file_path}" options:0
 """
 
 
@@ -97,9 +96,11 @@ def set_macos_file_icon(file_path: Path, icon_16: Image.Image) -> None:
         icns_path = tmp.name
 
     try:
+        # Paths must be absolute and have quotes escaped for AppleScript
+        abs_file = str(Path(file_path).resolve()).replace('"', '\\"')
         script = _OSASCRIPT_TEMPLATE.format(
             icns_path=icns_path,
-            file_path=str(file_path),
+            file_path=abs_file,
         )
         subprocess.run(
             ["osascript", "-l", "AppleScript", "-e", script],

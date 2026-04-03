@@ -97,8 +97,9 @@ def pull(path_or_card_id, dry_run, pull_all):
     if dry_run:
         click.echo(f"[Dry run] Would download {result.tracks_downloaded} tracks")
     else:
+        icon_msg = f", {result.icons_downloaded} icons" if result.icons_downloaded else ""
         click.echo(
-            f"Pulled card {result.card_id}: {result.tracks_downloaded} tracks downloaded"
+            f"Pulled card {result.card_id}: {result.tracks_downloaded} tracks{icon_msg} downloaded"
         )
     for error in result.errors:
         click.echo(f"Error: {error}", err=True)
@@ -125,7 +126,8 @@ def _pull_all(dry_run: bool = False) -> None:
         if dry_run:
             click.echo(f"  [Dry run] Would download tracks")
         else:
-            click.echo(f"  {result.tracks_downloaded} tracks downloaded")
+            icon_msg = f", {result.icons_downloaded} icons" if result.icons_downloaded else ""
+            click.echo(f"  {result.tracks_downloaded} tracks{icon_msg} downloaded")
         for error in result.errors:
             click.echo(f"  Error: {error}", err=True)
 

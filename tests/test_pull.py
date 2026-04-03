@@ -43,8 +43,7 @@ class TestPullPlaylist:
 
         # Mock downloads
         mocker.patch("yoto_lib.pull._download_file", return_value=b"\x00" * 100)
-        mocker.patch("yoto_lib.pull._download_cover", return_value=b"\x89PNG" + b"\x00" * 50)
-        mocker.patch("yoto_lib.mka.wrap_in_mka")
+        mocker.patch("yoto_lib.pull.wrap_in_mka")
 
         result = pull_playlist(playlist_dir)
 
