@@ -24,7 +24,7 @@ class TestImageProviderInterface:
     def test_get_provider_gemini(self, monkeypatch):
         """get_provider returns GeminiProvider when env var is 'gemini'."""
         monkeypatch.setenv("YOTO_IMAGE_PROVIDER", "gemini")
-        with patch("yoto_lib.image_providers.gemini_provider.genai"):
+        with patch("yoto_lib.image_providers.gemini_provider.genai.Client"):
             provider = get_provider()
         from yoto_lib.image_providers.gemini_provider import GeminiProvider
         assert isinstance(provider, GeminiProvider)
@@ -86,13 +86,10 @@ class TestGeminiProvider:
         mock_response = MagicMock()
         mock_response.candidates = [mock_candidate]
 
-        mock_model = MagicMock()
-        mock_model.generate_content.return_value = mock_response
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
 
-        mock_genai = MagicMock()
-        mock_genai.GenerativeModel.return_value = mock_model
-
-        with patch("yoto_lib.image_providers.gemini_provider.genai", mock_genai):
+        with patch("yoto_lib.image_providers.gemini_provider.genai.Client", return_value=mock_client):
             from yoto_lib.image_providers.gemini_provider import GeminiProvider
             provider = GeminiProvider()
             result = provider.generate("a cute cat", 512, 512)
