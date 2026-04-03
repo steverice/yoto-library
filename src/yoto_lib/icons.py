@@ -307,7 +307,11 @@ def _upload_icon_bytes(api: "YotoAPI", icon_bytes: bytes) -> str | None:
         tmp_path.unlink(missing_ok=True)
 
 
-def resolve_icons(playlist: "Playlist", api: "YotoAPI") -> dict[str, str]:
+def resolve_icons(
+    playlist: "Playlist",
+    api: "YotoAPI",
+    log: "Callable[[str], None] | None" = None,
+) -> dict[str, str]:
     """Resolve and embed icons for each track in the playlist.
 
     For each track, ensures an icon is written to the MKA file on disk,
@@ -320,11 +324,14 @@ def resolve_icons(playlist: "Playlist", api: "YotoAPI") -> dict[str, str]:
 
     Returns dict mapping filename → mediaId.
     """
+    _log = log or (lambda msg: None)
     result: dict[str, str] = {}
     public_icons: list[dict] | None = None  # lazy-loaded
+    total = len(playlist.track_files)
 
-    for filename in playlist.track_files:
+    for i, filename in enumerate(playlist.track_files, 1):
         track_path = playlist.path / filename
+        title = Path(filename).stem
         media_id: str | None = None
         icon_bytes: bytes | None = None
 
@@ -335,6 +342,7 @@ def resolve_icons(playlist: "Playlist", api: "YotoAPI") -> dict[str, str]:
             icon_bytes = None
 
         if icon_bytes is not None:
+            _log(f"Icon {i}/{total}: {title} (local)")
             media_id = _upload_icon_bytes(api, icon_bytes)
         else:
             track_title = _derive_track_title(track_path, filename)
@@ -348,6 +356,7 @@ def resolve_icons(playlist: "Playlist", api: "YotoAPI") -> dict[str, str]:
 
             matched_id = match_public_icon(track_title, public_icons)
             if matched_id:
+                _log(f"Icon {i}/{total}: {title} (matched)")
                 dl_bytes = download_icon(matched_id)
                 if dl_bytes:
                     apply_icon_to_mka(track_path, dl_bytes)
@@ -356,15 +365,17 @@ def resolve_icons(playlist: "Playlist", api: "YotoAPI") -> dict[str, str]:
 
             # 3. AI generation
             if media_id is None:
+                _log(f"Icon {i}/{total}: {title} (generating...)")
                 icon_bytes = generate_track_icon(track_title)
                 if icon_bytes:
+                    _log(f"Icon {i}/{total}: {title} (generated, uploading...)")
                     apply_icon_to_mka(track_path, icon_bytes)
                     media_id = _upload_icon_bytes(api, icon_bytes)
+                else:
+                    _log(f"Icon {i}/{total}: {title} (no icon)")
 
         # Set macOS Finder icon (best-effort, skip if already set by apply_icon_to_mka)
         if icon_bytes is not None and media_id is not None:
-            # apply_icon_to_mka already sets Finder icon for steps 2 & 3;
-            # for step 1 (pre-existing attachment) set it here
             try:
                 img = Image.open(io.BytesIO(icon_bytes))
                 set_macos_file_icon(track_path, img)

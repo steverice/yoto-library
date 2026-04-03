@@ -252,10 +252,15 @@ class TestBuildContentSchema:
 
         assert schema["content"]["title"] == "My Story"
         chapters = schema["content"]["chapters"]
-        assert "01 - Intro.mka" in chapters
-        assert "02 - Main.mka" in chapters
-        assert chapters["01 - Intro.mka"]["tracks"][0]["trackUrl"] == "yoto:#abc123"
-        assert chapters["02 - Main.mka"]["tracks"][0]["trackUrl"] == "yoto:#def456"
+        assert isinstance(chapters, list)
+        assert len(chapters) == 2
+        assert chapters[0]["key"] == "ch000"
+        assert chapters[0]["title"] == "01 - Intro"
+        assert chapters[0]["tracks"][0]["trackUrl"] == "yoto:#abc123"
+        assert chapters[0]["tracks"][0]["type"] == "audio"
+        assert chapters[0]["tracks"][0]["key"] == "t000"
+        assert chapters[1]["key"] == "ch001"
+        assert chapters[1]["tracks"][0]["trackUrl"] == "yoto:#def456"
 
     def test_includes_card_id(self, tmp_path):
         pl = Playlist(
@@ -285,8 +290,8 @@ class TestBuildContentSchema:
         icon_ids = {"t1.mka": "icon-001", "t2.mka": "icon-002"}
         schema = build_content_schema(pl, track_hashes=hashes, icon_ids=icon_ids, cover_url=None)
         chapters = schema["content"]["chapters"]
-        assert chapters["t1.mka"]["display"]["icon16x16"] == "icon-001"
-        assert chapters["t2.mka"]["display"]["icon16x16"] == "icon-002"
+        assert chapters[0]["display"]["icon16x16"] == "icon-001"
+        assert chapters[1]["display"]["icon16x16"] == "icon-002"
 
     def test_includes_cover_url(self, tmp_path):
         pl = self._make_basic_playlist(tmp_path)

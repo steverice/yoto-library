@@ -70,7 +70,8 @@ class YotoAPI:
             raise YotoAPIError(
                 f"{response.status_code} from POST /content: {body}"
             )
-        return response.json()
+        data = response.json()
+        return data.get("card", data)
 
     def delete_content(self, card_id: str) -> dict:
         response = self._client.delete(f"/content/{card_id}")

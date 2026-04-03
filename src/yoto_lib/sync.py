@@ -87,6 +87,7 @@ def sync_playlist(
     folder: Path,
     dry_run: bool = False,
     on_track_done: Optional[Callable[[str], None]] = None,
+    log: Optional[Callable[[str], None]] = None,
 ) -> SyncResult:
     """
     Sync a single playlist folder to the Yoto API.
@@ -130,14 +131,18 @@ def sync_playlist(
     # 4. Diff
     diff = diff_playlists(playlist, remote_state)
 
+    _log = log or (lambda msg: None)
+
     # 5. Generate cover if missing
+    if not playlist.has_cover:
+        _log("Generating cover image...")
     generate_cover_if_missing(playlist)
 
     # Reload has_cover after potential generation
     playlist.has_cover = playlist.cover_path.exists()
 
     # 6. Resolve icons
-    icon_ids: dict[str, str] = resolve_icons(playlist, api)
+    icon_ids: dict[str, str] = resolve_icons(playlist, api, log=_log)
     result.icons_uploaded = len(icon_ids)
 
     # Counts for dry_run reporting
@@ -157,12 +162,14 @@ def sync_playlist(
             track_hashes[filename] = remote_track_hashes[filename]
 
     # 9. Upload new tracks
-    for filename in diff.new_tracks:
+    total_new = len(diff.new_tracks)
+    for i, filename in enumerate(diff.new_tracks, 1):
         file_path = folder / filename
         if not file_path.exists():
             result.errors.append(f"Track file not found: {filename}")
             continue
         try:
+            _log(f"Uploading track {i}/{total_new}: {Path(filename).stem}")
             transcode_result = api.upload_and_transcode(file_path)
             sha = transcode_result.get("transcodedSha256", "")
             track_hashes[filename] = sha
@@ -176,6 +183,7 @@ def sync_playlist(
     # 10. Upload cover if changed
     cover_url: Optional[str] = None
     if diff.cover_changed and playlist.has_cover:
+        _log("Uploading cover...")
         try:
             cover_result = api.upload_cover(playlist.cover_path)
             cover_url = cover_result.get("url") or cover_result.get("coverUrl")
@@ -185,6 +193,7 @@ def sync_playlist(
             result.cover_uploaded = False
 
     # 11. Build content schema and POST
+    _log("Saving playlist to Yoto...")
     schema = build_content_schema(playlist, track_hashes, icon_ids, cover_url)
     try:
         response = api.create_or_update_content(schema)
@@ -217,6 +226,7 @@ def sync_path(
     path: Path,
     dry_run: bool = False,
     on_track_done: Optional[Callable[[str], None]] = None,
+    log: Optional[Callable[[str], None]] = None,
 ) -> list[SyncResult]:
     """
     Sync one or more playlists rooted at path.
@@ -228,11 +238,11 @@ def sync_path(
     results: list[SyncResult] = []
 
     if _has_audio_files(path):
-        results.append(sync_playlist(path, dry_run=dry_run, on_track_done=on_track_done))
+        results.append(sync_playlist(path, dry_run=dry_run, on_track_done=on_track_done, log=log))
     else:
         subdirs = sorted(p for p in path.iterdir() if p.is_dir())
         for subdir in subdirs:
             if _has_audio_files(subdir):
-                results.append(sync_playlist(subdir, dry_run=dry_run, on_track_done=on_track_done))
+                results.append(sync_playlist(subdir, dry_run=dry_run, on_track_done=on_track_done, log=log))
 
     return results
