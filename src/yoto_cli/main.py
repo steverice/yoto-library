@@ -298,7 +298,7 @@ def list_cmd():
         title = card.get("title", "")
         try:
             detail = api.get_content(card_id)
-            chapters = detail.get("card", {}).get("content", {}).get("chapters", [])
+            chapters = detail.get("content", {}).get("chapters", [])
             num_tracks = len(chapters)
         except Exception:
             num_tracks = "?"
