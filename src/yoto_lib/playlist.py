@@ -160,18 +160,21 @@ def build_content_schema(
     - Include cardId if playlist has one.
     - Include cover URL in metadata.
     """
-    chapters: dict = {}
-    for filename in playlist.track_files:
+    chapters: list = []
+    for idx, filename in enumerate(playlist.track_files):
         sha256 = track_hashes.get(filename, "")
+        chapter_key = f"ch{idx:03d}"
+        track_key = f"t{idx:03d}"
         chapter: dict = {
+            "key": chapter_key,
             "title": _title_from_filename(filename),
             "tracks": [
-                {"trackUrl": f"yoto:#{sha256}"}
+                {"key": track_key, "type": "audio", "trackUrl": f"yoto:#{sha256}"}
             ],
         }
         if filename in icon_ids:
             chapter["display"] = {"icon16x16": icon_ids[filename]}
-        chapters[filename] = chapter
+        chapters.append(chapter)
 
     content: dict = {
         "title": playlist.title,
