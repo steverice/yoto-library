@@ -71,7 +71,8 @@ def pull_playlist(
 
     # 3. Create API and fetch content
     api = YotoAPI()
-    remote = api.get_content(card_id, playable=True)
+    raw = api.get_content(card_id, playable=True)
+    remote = raw.get("card", raw)
 
     # 4. Dry run: count tracks and return without downloading
     if dry_run:

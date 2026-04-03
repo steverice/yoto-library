@@ -78,8 +78,13 @@ def sync(path, dry_run):
 @cli.command()
 @click.argument("path_or_card_id", default=".")
 @click.option("--dry-run", is_flag=True, help="Preview changes without executing")
-def pull(path_or_card_id, dry_run):
+@click.option("--all", "pull_all", is_flag=True, help="Pull all playlists into subdirectories of cwd")
+def pull(path_or_card_id, dry_run, pull_all):
     """Pull remote playlist state to local."""
+    if pull_all:
+        _pull_all(dry_run=dry_run)
+        return
+
     if _is_card_id(path_or_card_id):
         folder = Path(".")
         card_id = path_or_card_id
@@ -97,6 +102,32 @@ def pull(path_or_card_id, dry_run):
         )
     for error in result.errors:
         click.echo(f"Error: {error}", err=True)
+
+
+def _pull_all(dry_run: bool = False) -> None:
+    """Pull every playlist on the account into a subdirectory of cwd."""
+    api = YotoAPI()
+    cards = api.get_my_content()
+
+    if not cards:
+        click.echo("No cards found.")
+        return
+
+    for card in cards:
+        card_id = card.get("cardId", "")
+        title = card.get("title", card_id)
+        folder = Path(".") / title
+        folder.mkdir(exist_ok=True)
+
+        click.echo(f"Pulling {title} ({card_id})...")
+        result = pull_playlist(folder, card_id=card_id, dry_run=dry_run)
+
+        if dry_run:
+            click.echo(f"  [Dry run] Would download tracks")
+        else:
+            click.echo(f"  {result.tracks_downloaded} tracks downloaded")
+        for error in result.errors:
+            click.echo(f"  Error: {error}", err=True)
 
 
 # ── status ────────────────────────────────────────────────────────────────────
