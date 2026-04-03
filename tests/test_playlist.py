@@ -193,21 +193,21 @@ class TestDiffPlaylists:
 
     def test_diff_new_track(self, tmp_path):
         pl = _make_playlist(tmp_path, ["01.mka", "02.mka", "03.mka"])
-        remote = {"tracks": ["01.mka", "02.mka"]}
+        remote = {"tracks": ["01", "02"]}  # titles (stems)
         diff = diff_playlists(pl, remote=remote)
         assert diff.new_tracks == ["03.mka"]
         assert diff.removed_tracks == []
 
     def test_diff_removed_track(self, tmp_path):
         pl = _make_playlist(tmp_path, ["01.mka"])
-        remote = {"tracks": ["01.mka", "02.mka"]}
+        remote = {"tracks": ["01", "02"]}  # titles (stems)
         diff = diff_playlists(pl, remote=remote)
-        assert diff.removed_tracks == ["02.mka"]
+        assert diff.removed_tracks == ["02"]
         assert diff.new_tracks == []
 
     def test_diff_order_changed(self, tmp_path):
         pl = _make_playlist(tmp_path, ["02.mka", "01.mka"])
-        remote = {"tracks": ["01.mka", "02.mka"]}
+        remote = {"tracks": ["01", "02"]}  # titles (stems)
         diff = diff_playlists(pl, remote=remote)
         assert diff.order_changed is True
         assert diff.new_tracks == []
@@ -218,7 +218,7 @@ class TestDiffPlaylists:
             tmp_path, ["01.mka", "02.mka"], description="same", has_cover=False
         )
         remote = {
-            "tracks": ["01.mka", "02.mka"],
+            "tracks": ["01", "02"],  # titles (stems)
             "description": "same",
             "has_cover": False,
         }

@@ -41,26 +41,35 @@ def _parse_remote_state(remote_content: dict) -> dict:
 
     Returns:
       {
-        "tracks": list[str],
+        "tracks": list[str],          # chapter titles in order
         "description": str | None,
         "has_cover": bool,
-        "track_hashes": dict[str, str],   # filename -> sha256 hex
+        "track_hashes": dict[str, str],   # chapter_title -> sha256 hex
       }
     """
     content = remote_content.get("content", {})
-    chapters: dict = content.get("chapters", {})
+    chapters = content.get("chapters", [])
 
-    tracks: list[str] = list(chapters.keys())
+    tracks: list[str] = []
     track_hashes: dict[str, str] = {}
 
-    for filename, chapter in chapters.items():
+    # Chapters may be a list (from API) or dict (from our uploads)
+    items = chapters.items() if isinstance(chapters, dict) else (
+        (ch.get("key", str(i)), ch) for i, ch in enumerate(chapters)
+    )
+
+    for key, chapter in items:
+        title = chapter.get("title", key).strip()
+        tracks.append(title)
         for track in chapter.get("tracks", []):
             url: str = track.get("trackUrl", "")
-            m = re.match(r"yoto:#([0-9a-f]+)", url)
+            m = re.match(r"yoto:#(.+)", url)
             if m:
-                track_hashes[filename] = m.group(1)
+                track_hashes[title] = m.group(1)
 
-    has_cover = bool(content.get("metadata", {}).get("coverImage"))
+    has_cover = bool(
+        remote_content.get("metadata", {}).get("cover", {}).get("imageL")
+    )
     description = remote_content.get("description", None)
 
     return {

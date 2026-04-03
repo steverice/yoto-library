@@ -32,8 +32,8 @@ def _download_cover(url: str) -> bytes:
 
 
 def _sanitize_filename(name: str) -> str:
-    """Keep only alphanumeric, space, hyphen, underscore characters."""
-    return "".join(c if c.isalnum() or c in " -_" else "_" for c in name).strip()
+    """Remove only characters that are illegal in filenames (/ : \\0)."""
+    return name.replace("/", "-").replace(":", "-").replace("\0", "").strip()
 
 
 def pull_playlist(
