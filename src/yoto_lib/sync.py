@@ -13,6 +13,7 @@ from yoto_lib.icons import resolve_icons
 from yoto_lib.playlist import (
     AUDIO_EXTENSIONS,
     Playlist,
+    _title_from_filename,
     build_content_schema,
     diff_playlists,
     load_playlist,
@@ -146,24 +147,32 @@ def sync_playlist(
     result.icons_uploaded = len(icon_ids)
 
     # Counts for dry_run reporting
-    result.tracks_uploaded = len(diff.new_tracks)
     result.cover_uploaded = diff.cover_changed and playlist.has_cover
 
     # 7. Return early if dry_run
     if dry_run:
+        result.tracks_uploaded = len(diff.new_tracks)
         return result
 
     # 8. Build track_hashes: reuse remote hashes for existing, upload new
     track_hashes: dict[str, str] = {}
+    tracks_to_upload: list[str] = list(diff.new_tracks)
 
-    # Reuse hashes for tracks not in the diff
+    # Reuse hashes for existing tracks (remote keys are titles, local keys are filenames)
     for filename in playlist.track_files:
-        if filename not in diff.new_tracks and filename in remote_track_hashes:
-            track_hashes[filename] = remote_track_hashes[filename]
+        if filename not in diff.new_tracks:
+            title = _title_from_filename(filename)
+            sha = remote_track_hashes.get(title, "")
+            if sha:
+                track_hashes[filename] = sha
+            else:
+                tracks_to_upload.append(filename)
 
-    # 9. Upload new tracks
-    total_new = len(diff.new_tracks)
-    for i, filename in enumerate(diff.new_tracks, 1):
+    result.tracks_uploaded = len(tracks_to_upload)
+
+    # 9. Upload new tracks (and existing tracks with missing hashes)
+    total_new = len(tracks_to_upload)
+    for i, filename in enumerate(tracks_to_upload, 1):
         file_path = folder / filename
         if not file_path.exists():
             result.errors.append(f"Track file not found: {filename}")
@@ -186,7 +195,8 @@ def sync_playlist(
         _log("Uploading cover...")
         try:
             cover_result = api.upload_cover(playlist.cover_path)
-            cover_url = cover_result.get("url") or cover_result.get("coverUrl")
+            ci = cover_result.get("coverImage", cover_result)
+            cover_url = ci.get("mediaUrl") or ci.get("url") or cover_result.get("coverUrl")
             result.cover_uploaded = True
         except Exception as exc:
             result.errors.append(f"Cover upload failed: {exc}")

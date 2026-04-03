@@ -169,22 +169,29 @@ def build_content_schema(
             "key": chapter_key,
             "title": _title_from_filename(filename),
             "tracks": [
-                {"key": track_key, "type": "audio", "trackUrl": f"yoto:#{sha256}"}
+                {"key": track_key, "title": _title_from_filename(filename), "type": "audio", "trackUrl": f"yoto:#{sha256}"}
             ],
         }
         if filename in icon_ids:
-            chapter["display"] = {"icon16x16": icon_ids[filename]}
+            media_id = icon_ids[filename]
+            if not media_id.startswith("yoto:#"):
+                media_id = f"yoto:#{media_id}"
+            display = {"icon16x16": media_id}
+            chapter["display"] = display
+            chapter["tracks"][0]["display"] = display
         chapters.append(chapter)
 
-    content: dict = {
-        "title": playlist.title,
-        "chapters": chapters,
-    }
+    content: dict = {"chapters": chapters}
 
+    schema: dict = {"title": playlist.title, "content": content}
+
+    metadata: dict = {}
     if cover_url:
-        content["metadata"] = {"coverImage": cover_url}
-
-    schema: dict = {"content": content}
+        metadata["cover"] = {"imageL": cover_url}
+    if playlist.description:
+        metadata["description"] = playlist.description
+    if metadata:
+        schema["metadata"] = metadata
 
     if playlist.card_id:
         schema["cardId"] = playlist.card_id
