@@ -57,7 +57,8 @@ class YotoAPI:
             params["signingType"] = "s3"
         response = self._client.get(f"/content/{card_id}", params=params)
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+        return data.get("card", data)
 
     def create_or_update_content(self, content: dict) -> dict:
         response = self._client.post("/content", json=content)
@@ -80,7 +81,8 @@ class YotoAPI:
             params=params,
         )
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+        return data.get("upload", data)
 
     def upload_audio_file(self, upload_url: str, file_path: Path) -> None:
         content_type = _guess_audio_content_type(file_path)
@@ -102,7 +104,8 @@ class YotoAPI:
                 params={"loudnorm": "false"},
             )
             response.raise_for_status()
-            data = response.json()
+            raw = response.json()
+            data = raw.get("transcode", raw)
             if "transcodedSha256" in data:
                 return data
             time.sleep(interval)
