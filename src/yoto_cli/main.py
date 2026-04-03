@@ -7,6 +7,9 @@ import sys
 from pathlib import Path
 
 import click
+from dotenv import find_dotenv, load_dotenv
+
+load_dotenv(find_dotenv(usecwd=True))
 
 from yoto_lib.auth import AuthError, run_device_code_flow
 from yoto_lib.api import YotoAPI
@@ -179,7 +182,7 @@ def status(path):
 
 
 @cli.command()
-@click.argument("playlist", type=click.Path(exists=True))
+@click.argument("playlist", default="playlist.jsonl", type=click.Path(exists=True))
 def reorder(playlist):
     """Open playlist.jsonl in $EDITOR to reorder tracks."""
     playlist_path = Path(playlist)
