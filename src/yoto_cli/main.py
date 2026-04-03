@@ -323,6 +323,37 @@ def import_cmd(source, output):
     click.echo(f"Imported {len(filenames)} tracks into {output_path}")
 
 
+# ── preview-icon ─────────────────────────────────────────────────────────
+
+
+@cli.command(name="preview-icon")
+@click.argument("title")
+def preview_icon(title):
+    """Generate an icon for a title and save preview images to the current directory."""
+    from yoto_lib.icons import generate_raw_grid, crop_icon_from_grid, nearest_neighbor_upscale
+    from PIL import Image
+    import io
+
+    click.echo(f"Generating icon for: {title}")
+    image_bytes = generate_raw_grid(title)
+    if image_bytes is None:
+        raise click.ClickException("Failed to generate image (check API key)")
+
+    img = Image.open(io.BytesIO(image_bytes))
+
+    Path("preview_full.png").write_bytes(image_bytes)
+    click.echo(f"  preview_full.png  ({img.size[0]}x{img.size[1]})")
+
+    tile, icon_16 = crop_icon_from_grid(img)
+
+    tile.save("preview_crop.png")
+    click.echo(f"  preview_crop.png  ({tile.size[0]}x{tile.size[1]})")
+
+    preview = nearest_neighbor_upscale(icon_16, 128)
+    preview.save("preview_icon.png")
+    click.echo(f"  preview_icon.png  (16x16 upscaled to 128x128)")
+
+
 # ── reset-icon ───────────────────────────────────────────────────────────
 
 
