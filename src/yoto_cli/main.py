@@ -65,7 +65,8 @@ def sync(path, dry_run):
     if dry_run:
         results = sync_path(Path(path), dry_run=True)
         for result in results:
-            click.echo(f"[Dry run] Would upload {result.tracks_uploaded} tracks")
+            icon_msg = f", {result.icons_uploaded} icons" if result.icons_uploaded else ""
+            click.echo(f"[Dry run] Would upload {result.tracks_uploaded} tracks{icon_msg}")
             for error in result.errors:
                 click.echo(f"Error: {error}", err=True)
         return
@@ -81,8 +82,9 @@ def sync(path, dry_run):
         results = sync_path(Path(path), dry_run=False, on_track_done=on_track)
 
     for result in results:
+        icon_msg = f", {result.icons_uploaded} icons" if result.icons_uploaded else ""
         click.echo(
-            f"Synced card {result.card_id}: {result.tracks_uploaded} tracks uploaded"
+            f"Synced card {result.card_id}: {result.tracks_uploaded} tracks uploaded{icon_msg}"
         )
         for error in result.errors:
             click.echo(f"Error: {error}", err=True)

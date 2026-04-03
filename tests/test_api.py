@@ -56,7 +56,7 @@ class TestYotoAPIContent:
     def test_create_or_update_content(self, api, mocker):
         mock_response = mocker.Mock()
         mock_response.json.return_value = {"cardId": "new01"}
-        mock_response.raise_for_status = mocker.Mock()
+        mock_response.status_code = 200
         mocker.patch.object(api._client, "post", return_value=mock_response)
 
         content = {"title": "New Playlist", "content": {"chapters": []}}

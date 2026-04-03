@@ -2,22 +2,17 @@
 
 from __future__ import annotations
 
-import io
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
 import httpx
-from PIL import Image
 
 from yoto_lib.api import YotoAPI
-from yoto_lib.icons import set_macos_file_icon
-from yoto_lib.mka import set_attachment, wrap_in_mka
+from yoto_lib.icons import ICON_CACHE_DIR, apply_icon_to_mka, download_icon
+from yoto_lib.mka import wrap_in_mka
 from yoto_lib.playlist import write_jsonl
-
-ICON_BASE_URL = "https://media-secure-v2.api.yotoplay.com/icons"
-ICON_CACHE_DIR = Path.home() / ".cache" / "yoto" / "icons"
 
 
 @dataclass
@@ -34,55 +29,6 @@ def _download_file(url: str) -> bytes:
     response = httpx.get(url, follow_redirects=True, timeout=300.0)
     response.raise_for_status()
     return response.content
-
-
-def _extract_icon_hash(icon_ref: str) -> str | None:
-    """Extract icon hash from either 'yoto:#hash' or a full URL."""
-    if not icon_ref:
-        return None
-    if icon_ref.startswith("yoto:#"):
-        return icon_ref[6:]
-    return icon_ref.rstrip("/").rsplit("/", 1)[-1] or None
-
-
-def _get_icon(icon_ref: str, cache_dir: Path) -> bytes | None:
-    """Download an icon, using cache_dir as a file cache."""
-    icon_hash = _extract_icon_hash(icon_ref)
-    if not icon_hash:
-        return None
-
-    cached = cache_dir / f"{icon_hash}.png"
-    if cached.exists():
-        return cached.read_bytes()
-
-    if icon_ref.startswith("http"):
-        url = icon_ref
-    else:
-        url = f"{ICON_BASE_URL}/{icon_hash}"
-
-    try:
-        data = _download_file(url)
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        cached.write_bytes(data)
-        return data
-    except Exception:
-        return None
-
-
-def _apply_icon(mka_path: Path, icon_data: bytes) -> None:
-    """Attach icon PNG to MKA and set macOS Finder icon."""
-    icon_tmp = mka_path.parent / f".icon_tmp_{mka_path.stem}.png"
-    try:
-        icon_tmp.write_bytes(icon_data)
-        set_attachment(mka_path, icon_tmp, name="icon", mime_type="image/png")
-    finally:
-        icon_tmp.unlink(missing_ok=True)
-
-    try:
-        img = Image.open(io.BytesIO(icon_data))
-        set_macos_file_icon(mka_path, img)
-    except Exception:
-        pass
 
 
 def _sanitize_filename(name: str) -> str:
@@ -123,9 +69,9 @@ def _process_track(job: _TrackJob, folder: Path, cache_dir: Path) -> tuple[bool,
 
     if job.icon_ref:
         try:
-            icon_data = _get_icon(job.icon_ref, cache_dir)
+            icon_data = download_icon(job.icon_ref, cache_dir)
             if icon_data:
-                _apply_icon(mka_path, icon_data)
+                apply_icon_to_mka(mka_path, icon_data)
                 icon_ok = True
         except Exception as exc:
             error = f"Failed to set icon for {job.title}: {exc}"

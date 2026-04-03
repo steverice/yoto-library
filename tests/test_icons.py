@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import io
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 from PIL import Image
@@ -11,7 +13,10 @@ from yoto_lib.icons import (
     ICNS_SIZES,
     ICNS_TYPE_MAP,
     ICON_SIZE,
+    build_icon_prompt,
+    extract_icon_hash,
     generate_icns_sizes,
+    generate_track_icon,
     match_public_icon,
     nearest_neighbor_upscale,
 )
@@ -122,4 +127,88 @@ class TestMatchPublicIcon:
             ("Space Explorer", "id-space"),
         ])
         result = match_public_icon("Completely Unrelated Topic Here", icons)
+        assert result is None
+
+
+# ── TestExtractIconHash ──────────────────────────────────────────────────────
+
+
+class TestExtractIconHash:
+    def test_yoto_format(self):
+        assert extract_icon_hash("yoto:#abc123") == "abc123"
+
+    def test_url_format(self):
+        assert extract_icon_hash("https://media.api.yotoplay.com/icons/def456") == "def456"
+
+    def test_empty_string(self):
+        assert extract_icon_hash("") is None
+
+    def test_bare_hash_passes_through(self):
+        """A bare string is returned as-is (treated as a hash/mediaId)."""
+        assert extract_icon_hash("abc123") == "abc123"
+
+
+# ── TestBuildIconPrompt ──────────────────────────────────────────────────────
+
+
+class TestBuildIconPrompt:
+    def test_includes_title(self):
+        prompt = build_icon_prompt("Jungle Adventure")
+        assert "Jungle Adventure" in prompt
+
+    def test_grid_instructions(self):
+        prompt = build_icon_prompt("Song")
+        assert "8x8" in prompt
+        assert "1024x1024" in prompt
+        assert "128x128" in prompt
+
+    def test_style_constraints(self):
+        prompt = build_icon_prompt("Song")
+        assert "bold" in prompt.lower()
+        assert "flat" in prompt.lower()
+        assert "no" in prompt.lower() and "text" in prompt.lower()
+
+
+# ── TestGenerateTrackIcon ────────────────────────────────────────────────────
+
+
+def _make_1024x1024() -> bytes:
+    """Create a 1024x1024 test image with a distinct center tile."""
+    img = Image.new("RGB", (1024, 1024), color="blue")
+    # Paint the center tile (4*128=512, 4*128=512) -> (640, 640) red
+    for y in range(512, 640):
+        for x in range(512, 640):
+            img.putpixel((x, y), (255, 0, 0))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+class TestGenerateTrackIcon:
+    def test_returns_16x16_png(self):
+        """Grid image → crop center tile → downscale to 16x16 PNG."""
+        fake_image = _make_1024x1024()
+        mock_provider = MagicMock()
+        mock_provider.generate.return_value = fake_image
+
+        with patch("yoto_lib.image_providers.get_provider", return_value=mock_provider):
+            result = generate_track_icon("Test Song")
+
+        assert result is not None
+        img = Image.open(io.BytesIO(result))
+        assert img.size == (16, 16)
+
+    def test_returns_none_on_no_provider(self):
+        """Returns None if no image provider is configured."""
+        with patch("yoto_lib.image_providers.get_provider", side_effect=ValueError("no key")):
+            result = generate_track_icon("Test Song")
+        assert result is None
+
+    def test_returns_none_on_generate_error(self):
+        """Returns None if the provider fails to generate."""
+        mock_provider = MagicMock()
+        mock_provider.generate.side_effect = RuntimeError("API error")
+
+        with patch("yoto_lib.image_providers.get_provider", return_value=mock_provider):
+            result = generate_track_icon("Test Song")
         assert result is None
