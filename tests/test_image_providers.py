@@ -1,0 +1,101 @@
+"""Tests for image provider interface and implementations."""
+import base64
+import os
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from yoto_lib.image_providers import ImageProvider, get_provider
+
+
+class TestImageProviderInterface:
+    def test_provider_has_generate_method(self):
+        """ImageProvider protocol requires a generate method."""
+        assert hasattr(ImageProvider, "generate")
+
+    def test_get_provider_openai(self, monkeypatch):
+        """get_provider returns OpenAIProvider when env var is 'openai'."""
+        monkeypatch.setenv("YOTO_IMAGE_PROVIDER", "openai")
+        with patch("yoto_lib.image_providers.openai_provider.OpenAI"):
+            provider = get_provider()
+        from yoto_lib.image_providers.openai_provider import OpenAIProvider
+        assert isinstance(provider, OpenAIProvider)
+
+    def test_get_provider_gemini(self, monkeypatch):
+        """get_provider returns GeminiProvider when env var is 'gemini'."""
+        monkeypatch.setenv("YOTO_IMAGE_PROVIDER", "gemini")
+        with patch("yoto_lib.image_providers.gemini_provider.genai"):
+            provider = get_provider()
+        from yoto_lib.image_providers.gemini_provider import GeminiProvider
+        assert isinstance(provider, GeminiProvider)
+
+    def test_get_provider_defaults_to_openai(self, monkeypatch):
+        """get_provider defaults to OpenAIProvider when env var is not set."""
+        monkeypatch.delenv("YOTO_IMAGE_PROVIDER", raising=False)
+        with patch("yoto_lib.image_providers.openai_provider.OpenAI"):
+            provider = get_provider()
+        from yoto_lib.image_providers.openai_provider import OpenAIProvider
+        assert isinstance(provider, OpenAIProvider)
+
+    def test_get_provider_raises_for_unknown(self, monkeypatch):
+        """get_provider raises ValueError for unknown provider names."""
+        monkeypatch.setenv("YOTO_IMAGE_PROVIDER", "unknown_provider")
+        with pytest.raises(ValueError, match="unknown_provider"):
+            get_provider()
+
+
+class TestOpenAIProvider:
+    def test_generate_returns_bytes(self, monkeypatch):
+        """generate() returns PNG bytes decoded from b64_json response."""
+        monkeypatch.setenv("YOTO_IMAGE_PROVIDER", "openai")
+
+        # Build a fake PNG bytes payload (just any bytes for the test)
+        fake_png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
+        fake_b64 = base64.b64encode(fake_png).decode()
+
+        mock_image_data = MagicMock()
+        mock_image_data.b64_json = fake_b64
+
+        mock_response = MagicMock()
+        mock_response.data = [mock_image_data]
+
+        mock_client = MagicMock()
+        mock_client.images.generate.return_value = mock_response
+
+        with patch("yoto_lib.image_providers.openai_provider.OpenAI", return_value=mock_client):
+            from yoto_lib.image_providers.openai_provider import OpenAIProvider
+            provider = OpenAIProvider()
+
+        result = provider.generate("a cute cat", 1024, 1024)
+        assert result == fake_png
+        assert isinstance(result, bytes)
+
+
+class TestGeminiProvider:
+    def test_generate_returns_bytes(self, monkeypatch):
+        """generate() returns image bytes from inline_data part."""
+        fake_image_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
+
+        mock_part = MagicMock()
+        mock_part.inline_data.mime_type = "image/png"
+        mock_part.inline_data.data = fake_image_bytes
+
+        mock_candidate = MagicMock()
+        mock_candidate.content.parts = [mock_part]
+
+        mock_response = MagicMock()
+        mock_response.candidates = [mock_candidate]
+
+        mock_model = MagicMock()
+        mock_model.generate_content.return_value = mock_response
+
+        mock_genai = MagicMock()
+        mock_genai.GenerativeModel.return_value = mock_model
+
+        with patch("yoto_lib.image_providers.gemini_provider.genai", mock_genai):
+            from yoto_lib.image_providers.gemini_provider import GeminiProvider
+            provider = GeminiProvider()
+            result = provider.generate("a cute cat", 512, 512)
+
+        assert result == fake_image_bytes
+        assert isinstance(result, bytes)
