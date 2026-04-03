@@ -107,6 +107,8 @@ def pull(path_or_card_id, dry_run):
 def status(path):
     """Show diff between local and remote state."""
     folder = Path(path)
+    if not (folder / "playlist.jsonl").exists() and not scan_audio_files(folder):
+        raise click.ClickException("Not a playlist folder (no playlist.jsonl or audio files)")
     playlist = load_playlist(folder)
 
     remote_state = None
@@ -263,7 +265,10 @@ def list_cmd():
     for card in cards:
         card_id = card.get("cardId", "")
         title = card.get("title", "")
-        content = card.get("content", {})
-        chapters = content.get("chapters", {})
-        num_tracks = len(chapters) if isinstance(chapters, dict) else len(chapters)
+        try:
+            detail = api.get_content(card_id)
+            chapters = detail.get("card", {}).get("content", {}).get("chapters", [])
+            num_tracks = len(chapters)
+        except Exception:
+            num_tracks = "?"
         click.echo(f"{card_id:<{col_id}}  {title:<{col_title}}  {num_tracks}")
