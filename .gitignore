@@ -27,5 +27,8 @@ htmlcov/
 # OS
 .DS_Store
 
+# Secrets
+.env
+
 # Data
 data
