@@ -211,7 +211,7 @@ def diff_playlists(playlist: Playlist, remote: Optional[dict]) -> PlaylistDiff:
 
     remote dict shape (when not None):
       {
-        "tracks": list[str],          # ordered track filenames
+        "tracks": list[str],          # ordered track titles
         "description": str | None,    # optional
         "has_cover": bool,            # optional
       }
@@ -228,16 +228,19 @@ def diff_playlists(playlist: Playlist, remote: Optional[dict]) -> PlaylistDiff:
         )
 
     remote_tracks: list[str] = remote.get("tracks", [])
-    local_tracks = playlist.track_files
 
-    local_set = set(local_tracks)
+    # Compare by title: local filenames map to titles via stem
+    local_titles = [_title_from_filename(f) for f in playlist.track_files]
+    local_set = set(local_titles)
     remote_set = set(remote_tracks)
 
-    new_tracks = [t for t in local_tracks if t not in remote_set]
+    # Report new/removed using filenames for local, titles for remote
+    title_to_file = {_title_from_filename(f): f for f in playlist.track_files}
+    new_tracks = [f for f in playlist.track_files if _title_from_filename(f) not in remote_set]
     removed_tracks = [t for t in remote_tracks if t not in local_set]
 
     # Order changed if same tracks but different order
-    common_local = [t for t in local_tracks if t in remote_set]
+    common_local = [t for t in local_titles if t in remote_set]
     common_remote = [t for t in remote_tracks if t in local_set]
     order_changed = common_local != common_remote
 
