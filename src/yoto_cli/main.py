@@ -233,6 +233,15 @@ def init(path):
 # ── import ────────────────────────────────────────────────────────────────────
 
 
+def _strip_track_number(stem: str) -> str:
+    """Strip leading track number prefix from a filename stem.
+
+    Handles: '01 Song', '01. Song', '01 - Song', '1-Song', '01_Song'
+    """
+    stripped = re.sub(r"^\d+[\s.\-_]+", "", stem)
+    return stripped if stripped else stem
+
+
 @cli.command(name="import")
 @click.argument("source", type=click.Path(exists=True))
 @click.option(
@@ -255,7 +264,8 @@ def import_cmd(source, output):
 
     filenames = []
     for audio in audio_files:
-        mka_name = audio.stem + ".mka"
+        clean_stem = _strip_track_number(audio.stem)
+        mka_name = clean_stem + ".mka"
         mka_dest = output_path / mka_name
         if audio.suffix.lower() == ".mka" and source_path == output_path:
             # Already MKA in place — just record it
@@ -265,6 +275,8 @@ def import_cmd(source, output):
                 wrap_in_mka(audio, mka_dest)
                 filenames.append(mka_name)
                 click.echo(f"  Wrapped {audio.name} -> {mka_name}")
+                if source_path == output_path:
+                    audio.unlink()
             except Exception as exc:
                 click.echo(f"  Error wrapping {audio.name}: {exc}", err=True)
 
