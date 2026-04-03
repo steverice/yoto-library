@@ -71,27 +71,30 @@ def sync(path, dry_run):
                 click.echo(f"Error: {error}", err=True)
         return
 
-    from tqdm import tqdm
+    if sys.stderr.isatty():
+        from tqdm import tqdm
 
-    # Load playlist to get total track count for the progress bar
-    from yoto_lib.playlist import load_playlist as _load
-    playlist = _load(Path(path))
-    total = len(playlist.track_files)
-    # Steps: icons + uploads + cover + save
-    pbar = tqdm(total=total * 2 + 2, desc=playlist.title, bar_format="{desc}: {bar} {n_fmt}/{total_fmt}")
-    step = [0]
+        # Load playlist to get total track count for the progress bar
+        from yoto_lib.playlist import load_playlist as _load
+        playlist = _load(Path(path))
+        total = len(playlist.track_files)
+        # Steps: icons + uploads + cover + save
+        pbar = tqdm(total=total * 2 + 2, desc=playlist.title, bar_format="{desc}: {bar} {n_fmt}/{total_fmt}")
+        step = [0]
 
-    def log(msg: str):
-        pbar.set_postfix_str(msg, refresh=True)
-        tqdm.write(msg)
-        step[0] += 1
-        pbar.n = min(step[0], pbar.total)
+        def log(msg: str):
+            pbar.set_postfix_str(msg, refresh=True)
+            tqdm.write(msg)
+            step[0] += 1
+            pbar.n = min(step[0], pbar.total)
+            pbar.refresh()
+
+        results = sync_path(Path(path), dry_run=False, log=log)
+        pbar.n = pbar.total
         pbar.refresh()
-
-    results = sync_path(Path(path), dry_run=False, log=log)
-    pbar.n = pbar.total
-    pbar.refresh()
-    pbar.close()
+        pbar.close()
+    else:
+        results = sync_path(Path(path), dry_run=False, log=lambda msg: click.echo(msg))
 
     for result in results:
         icon_msg = f", {result.icons_uploaded} icons" if result.icons_uploaded else ""
