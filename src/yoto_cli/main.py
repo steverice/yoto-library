@@ -60,10 +60,12 @@ def auth():
 @cli.command()
 @click.argument("path", default=".", type=click.Path(exists=True))
 @click.option("--dry-run", is_flag=True, help="Preview changes without executing")
-def sync(path, dry_run):
+@click.option("--no-trim", is_flag=True, help="Skip silence trimming on YouTube downloads")
+def sync(path, dry_run, no_trim):
     """Push local playlist state to Yoto."""
+    trim = not no_trim
     if dry_run:
-        results = sync_path(Path(path), dry_run=True)
+        results = sync_path(Path(path), dry_run=True, trim=trim)
         for result in results:
             icon_msg = f", {result.icons_uploaded} icons" if result.icons_uploaded else ""
             click.echo(f"[Dry run] Would upload {result.tracks_uploaded} tracks{icon_msg}")
@@ -89,12 +91,12 @@ def sync(path, dry_run):
             pbar.n = min(step[0], pbar.total)
             pbar.refresh()
 
-        results = sync_path(Path(path), dry_run=False, log=log)
+        results = sync_path(Path(path), dry_run=False, trim=trim, log=log)
         pbar.n = pbar.total
         pbar.refresh()
         pbar.close()
     else:
-        results = sync_path(Path(path), dry_run=False, log=lambda msg: click.echo(msg))
+        results = sync_path(Path(path), dry_run=False, trim=trim, log=lambda msg: click.echo(msg))
 
     for result in results:
         icon_msg = f", {result.icons_uploaded} icons" if result.icons_uploaded else ""
