@@ -18,6 +18,11 @@ if TYPE_CHECKING:
     from yoto_lib.api import YotoAPI
     from yoto_lib.playlist import Playlist
 
+try:
+    from yoto_lib.image_providers.retrodiffusion_provider import RetroDiffusionProvider
+except Exception:
+    RetroDiffusionProvider = None  # type: ignore[assignment,misc]
+
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 ICON_SIZE = 16
@@ -592,6 +597,37 @@ def generate_retrodiffusion_icon(track_title: str) -> tuple[bytes | None, bytes 
     img.save(buf, format="PNG")
     icon_bytes = buf.getvalue()
     return image_bytes, icon_bytes
+
+
+def generate_retrodiffusion_batch(
+    track_title: str,
+    count: int = 3,
+) -> list[tuple[bytes, Image.Image]]:
+    """Generate multiple 16x16 icons via Retro Diffusion.
+
+    Returns list of (raw_bytes, processed_Image) pairs. Returns empty list on failure.
+    """
+    try:
+        if RetroDiffusionProvider is None:
+            return []
+        provider = RetroDiffusionProvider()
+    except Exception:
+        return []
+
+    prompt = _build_pixelart_prompt(track_title)
+
+    try:
+        raw_list = provider.generate_batch(prompt, ICON_SIZE, ICON_SIZE, count=count)
+    except Exception:
+        return []
+
+    results: list[tuple[bytes, Image.Image]] = []
+    for raw_bytes in raw_list:
+        img = Image.open(io.BytesIO(raw_bytes))
+        img = remove_solid_background(img)
+        results.append((raw_bytes, img))
+
+    return results
 
 
 # ── Strategy: textmodel (Claude CLI / OpenAI text model) ─────────────────────
