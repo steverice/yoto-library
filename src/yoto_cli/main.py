@@ -730,6 +730,62 @@ def reset_icon(tracks):
             click.echo(f"  Error ({path.name}): {exc}", err=True)
 
 
+# ── cover ────────────────────────────────────────────────────────────────
+
+
+@cli.command()
+@click.argument("path", default=".", type=click.Path(exists=True), shell_complete=_complete_dirs)
+@click.option("--force", is_flag=True, help="Regenerate even if cover.png exists")
+def cover(path, force):
+    """Generate cover art for a playlist folder."""
+    from yoto_lib.cover import generate_cover_if_missing, build_cover_prompt, resize_cover, COVER_WIDTH, COVER_HEIGHT
+    from yoto_lib.image_providers import get_provider
+    from yoto_lib import mka
+    import tempfile
+
+    folder = Path(path)
+    playlist = load_playlist(folder)
+    cover_path = playlist.cover_path
+
+    if cover_path.exists() and not force:
+        click.echo(f"Cover already exists: {cover_path}")
+        click.echo("Use --force to regenerate.")
+        return
+
+    # Build prompt from track metadata
+    track_titles: list[str] = []
+    artists: list[str] = []
+    for filename in playlist.track_files:
+        track_path = folder / filename
+        try:
+            tags = mka.read_tags(track_path)
+            title = tags.get("title") or Path(filename).stem
+            artist = tags.get("artist", "")
+        except Exception:
+            title = Path(filename).stem
+            artist = ""
+        track_titles.append(title)
+        if artist:
+            artists.append(artist)
+
+    prompt = build_cover_prompt(playlist.description, track_titles, artists)
+
+    click.echo("Generating cover art...")
+    provider = get_provider()
+    image_bytes = provider.generate(prompt, COVER_WIDTH, COVER_HEIGHT)
+
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+        tmp.write(image_bytes)
+        tmp_path = Path(tmp.name)
+
+    try:
+        resize_cover(tmp_path, cover_path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    click.echo(f"Saved cover to {cover_path}")
+
+
 # ── completions ──────────────────────────────────────────────────────────────
 
 
