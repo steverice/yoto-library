@@ -9,6 +9,7 @@ from typing import Callable, Optional
 
 from yoto_lib.api import YotoAPI
 from yoto_lib.cover import generate_cover_if_missing
+from yoto_lib.description import generate_description
 from yoto_lib.icons import resolve_icons
 from yoto_lib.sources import resolve_weblocs
 from yoto_lib.playlist import (
@@ -139,6 +140,12 @@ def sync_playlist(
     diff = diff_playlists(playlist, remote_state)
 
     _log = log or (lambda msg: None)
+
+    # 4b. Generate description if missing
+    generate_description(playlist, log=_log)
+    # Reload description after potential generation
+    if playlist.description is None and playlist.description_path.exists():
+        playlist.description = playlist.description_path.read_text(encoding="utf-8")
 
     # 5. Generate cover if missing
     if not playlist.has_cover:
