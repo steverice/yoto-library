@@ -21,6 +21,13 @@ TAG_MAP = {
     "category": "YOTO_CATEGORY",
     "min_age": "YOTO_MIN_AGE",
     "max_age": "YOTO_MAX_AGE",
+    "genre": "GENRE",
+    "composer": "COMPOSER",
+    "album_artist": "ALBUM_ARTIST",
+    "album": "ALBUM",
+    "date": "DATE_RELEASED",
+    "track": "PART_NUMBER",
+    "disc": "DISC_NUMBER",
 }
 
 # Reverse map for reading tags back (first occurrence wins, so "artist" beats "author")
@@ -28,6 +35,11 @@ _REVERSE_TAG_MAP = {}
 for _k, _v in TAG_MAP.items():
     if _v not in _REVERSE_TAG_MAP:
         _REVERSE_TAG_MAP[_v] = _k
+
+# ffprobe normalises some Matroska tag names when reading back; add aliases so
+# read_tags() can resolve them via the same .upper() lookup path.
+# PART_NUMBER is exposed by ffprobe as the conventional "track" key.
+_REVERSE_TAG_MAP["TRACK"] = "track"
 
 
 def _run(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:

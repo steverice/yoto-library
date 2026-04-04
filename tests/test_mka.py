@@ -47,6 +47,15 @@ class TestTagMap:
         assert TAG_MAP["category"] == "YOTO_CATEGORY"
         assert TAG_MAP["read_by"] == "YOTO_READ_BY"
 
+    def test_extended_tags_mapped(self):
+        assert TAG_MAP["genre"] == "GENRE"
+        assert TAG_MAP["composer"] == "COMPOSER"
+        assert TAG_MAP["album_artist"] == "ALBUM_ARTIST"
+        assert TAG_MAP["album"] == "ALBUM"
+        assert TAG_MAP["date"] == "DATE_RELEASED"
+        assert TAG_MAP["track"] == "PART_NUMBER"
+        assert TAG_MAP["disc"] == "DISC_NUMBER"
+
 
 class TestWrapInMka:
     @needs_ffmpeg
@@ -96,6 +105,32 @@ class TestReadWriteTags:
         assert result["min_age"] == "3"
         assert result["max_age"] == "8"
         assert result["category"] == "music"
+
+    @needs_ffmpeg
+    @needs_mkvtoolnix
+    def test_write_and_read_extended_tags(self, sample_wav, tmp_path):
+        mka = tmp_path / "tagged.mka"
+        wrap_in_mka(sample_wav, mka)
+
+        tags = {
+            "genre": "Children's Music",
+            "composer": "Fred Rogers",
+            "album_artist": "Daniel Tiger",
+            "album": "Big Feelings",
+            "date": "2012-12-10",
+            "track": "1/13",
+            "disc": "1/1",
+        }
+        write_tags(mka, tags)
+
+        result = read_tags(mka)
+        assert result["genre"] == "Children's Music"
+        assert result["composer"] == "Fred Rogers"
+        assert result["album_artist"] == "Daniel Tiger"
+        assert result["album"] == "Big Feelings"
+        assert result["date"] == "2012-12-10"
+        assert result["track"] == "1/13"
+        assert result["disc"] == "1/1"
 
 
 class TestAttachments:
