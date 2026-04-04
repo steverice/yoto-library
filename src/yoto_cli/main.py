@@ -435,10 +435,19 @@ def select_icon(track):
 
     track_path = Path(track)
     title = track_path.stem
+    use_tqdm = sys.stderr.isatty()
 
     # Get best Yoto icon match
     api = YotoAPI()
     catalog = get_catalog(api)
+
+    if use_tqdm:
+        from tqdm import tqdm
+        pbar = tqdm(total=3, desc=title, bar_format="{desc}: {bar} {n_fmt}/{total_fmt} {postfix}")
+        pbar.set_postfix_str("matching Yoto icon")
+    else:
+        pbar = None
+
     yoto_media_id, yoto_confidence = match_icon_llm(title, catalog)
     yoto_img: "Image.Image | None" = None
     yoto_title: str | None = None
@@ -453,14 +462,22 @@ def select_icon(track):
                     yoto_title = icon.get("title", "") or icon.get("name", "")
                     break
 
-    click.echo(f"Generating 3 icons for: {title}")
+    if pbar:
+        pbar.update(1)
+        pbar.set_postfix_str("generating icons")
 
     tmpdir = Path(tempfile.mkdtemp(prefix="yoto-icon-"))
 
     while True:
         batch = generate_retrodiffusion_batch(title, count=3)
         if not batch:
+            if pbar:
+                pbar.close()
             raise click.ClickException("Icon generation failed")
+
+        if pbar:
+            pbar.update(1)
+            pbar.set_postfix_str("evaluating icons")
 
         icons_16: list[Image.Image] = []
         raw_bytes_list: list[bytes] = []
@@ -482,11 +499,15 @@ def select_icon(track):
             prompt_text = "Pick an icon (or 'r' to regenerate)"
 
         # LLM comparison
-        click.echo("Evaluating icons...")
         winner, scores = compare_icons_llm(
             title, raw_bytes_list,
             yoto_icon=yoto_bytes if yoto_img is not None else None,
         )
+
+        if pbar:
+            pbar.update(1)
+            pbar.close()
+            pbar = None
 
         # Build score labels
         score_labels = []
@@ -501,7 +522,10 @@ def select_icon(track):
         default_choice = str(winner) if 1 <= winner <= max_choice else "1"
         raw = click.prompt(prompt_text, default=default_choice)
         if raw.lower() == "r":
-            click.echo("Regenerating...")
+            if use_tqdm:
+                from tqdm import tqdm
+                pbar = tqdm(total=2, desc=title, bar_format="{desc}: {bar} {n_fmt}/{total_fmt} {postfix}")
+                pbar.set_postfix_str("generating icons")
             continue
 
         try:
