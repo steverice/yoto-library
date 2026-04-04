@@ -4,23 +4,22 @@ from google.genai import types
 
 
 class GeminiProvider:
-    """Generates images using the Gemini generative AI API."""
+    """Generates images using the Gemini Imagen API."""
 
     def __init__(self) -> None:
         self._client = genai.Client()
 
     def generate(self, prompt: str, width: int, height: int) -> bytes:
-        """Generate an image from a text prompt. Returns image bytes."""
-        response = self._client.models.generate_content(
-            model="gemini-2.0-flash-exp",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_modalities=["IMAGE"],
+        """Generate an image from a text prompt. Returns image bytes (always 1024x1024)."""
+        response = self._client.models.generate_images(
+            model="imagen-4.0-fast-generate-001",
+            prompt=prompt,
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
             ),
         )
 
-        for part in response.candidates[0].content.parts:
-            if part.inline_data and part.inline_data.mime_type.startswith("image/"):
-                return part.inline_data.data
+        if response.generated_images:
+            return response.generated_images[0].image.image_bytes
 
         raise RuntimeError("No image found in Gemini response")

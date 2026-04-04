@@ -328,30 +328,81 @@ def import_cmd(source, output):
 
 @cli.command(name="preview-icon")
 @click.argument("title")
-def preview_icon(title):
+@click.option("-s", "--strategy", default="all",
+              type=click.Choice(["grid", "pixelart", "dalle2", "flux", "sd3", "gemini", "retrodiffusion", "textmodel", "all"]),
+              help="Icon generation strategy to preview")
+def preview_icon(title, strategy):
     """Generate an icon for a title and save preview images to the current directory."""
-    from yoto_lib.icons import generate_raw_grid, crop_icon_from_grid, nearest_neighbor_upscale
+    from yoto_lib.icons import (
+        generate_raw_grid, crop_icon_from_grid, nearest_neighbor_upscale,
+        generate_pixelart_icon,
+        generate_dalle2_icon, generate_flux_icon, generate_sd3_icon,
+        generate_gemini_icon, generate_retrodiffusion_icon,
+        generate_textmodel_icon_claude, generate_textmodel_icon_openai,
+    )
     from PIL import Image
     import io
 
-    click.echo(f"Generating icon for: {title}")
-    image_bytes = generate_raw_grid(title)
-    if image_bytes is None:
-        raise click.ClickException("Failed to generate image (check API key)")
+    ALL_STRATEGIES = ["retrodiffusion", "dalle2", "flux", "sd3", "gemini", "pixelart", "grid", "textmodel"]
+    strategies = [strategy] if strategy != "all" else ALL_STRATEGIES
 
-    img = Image.open(io.BytesIO(image_bytes))
+    for strat in strategies:
+        click.echo(f"\n=== {strat} === {title}")
 
-    Path("preview_full.png").write_bytes(image_bytes)
-    click.echo(f"  preview_full.png  ({img.size[0]}x{img.size[1]})")
+        if strat == "grid":
+            image_bytes = generate_raw_grid(title)
+            if image_bytes is None:
+                click.echo("  Failed (check API key)")
+                continue
+            img = Image.open(io.BytesIO(image_bytes))
+            Path("preview_grid_full.png").write_bytes(image_bytes)
+            click.echo(f"  preview_grid_full.png  ({img.size[0]}x{img.size[1]})")
+            _, icon_16 = crop_icon_from_grid(img)
+            preview = nearest_neighbor_upscale(icon_16, 128)
+            preview.save("preview_grid_icon.png")
+            click.echo(f"  preview_grid_icon.png  (16x16 upscaled to 128x128)")
 
-    tile, icon_16 = crop_icon_from_grid(img)
+        elif strat in ("pixelart", "dalle2", "flux", "sd3", "gemini", "retrodiffusion"):
+            gen_fn = {
+                "pixelart": generate_pixelart_icon,
+                "dalle2": generate_dalle2_icon,
+                "flux": generate_flux_icon,
+                "sd3": generate_sd3_icon,
+                "gemini": generate_gemini_icon,
+                "retrodiffusion": generate_retrodiffusion_icon,
+            }[strat]
+            try:
+                raw_bytes, icon_bytes = gen_fn(title)
+            except Exception as exc:
+                click.echo(f"  Failed: {exc}")
+                continue
+            if raw_bytes:
+                fname = f"preview_{strat}_full.png"
+                Path(fname).write_bytes(raw_bytes)
+                img = Image.open(io.BytesIO(raw_bytes))
+                click.echo(f"  {fname}  ({img.size[0]}x{img.size[1]})")
+            if icon_bytes:
+                icon_16 = Image.open(io.BytesIO(icon_bytes))
+                preview = nearest_neighbor_upscale(icon_16, 128)
+                fname = f"preview_{strat}_icon.png"
+                preview.save(fname)
+                click.echo(f"  {fname}  (16x16 upscaled to 128x128)")
+            else:
+                click.echo("  Failed (no icon produced)")
 
-    tile.save("preview_crop.png")
-    click.echo(f"  preview_crop.png  ({tile.size[0]}x{tile.size[1]})")
-
-    preview = nearest_neighbor_upscale(icon_16, 128)
-    preview.save("preview_icon.png")
-    click.echo(f"  preview_icon.png  (16x16 upscaled to 128x128)")
+        elif strat == "textmodel":
+            for name, fn in [("claude", generate_textmodel_icon_claude),
+                             ("openai", generate_textmodel_icon_openai)]:
+                click.echo(f"  [{name}]")
+                icon_bytes = fn(title)
+                if icon_bytes:
+                    icon_16 = Image.open(io.BytesIO(icon_bytes))
+                    preview = nearest_neighbor_upscale(icon_16, 128)
+                    fname = f"preview_textmodel_{name}_icon.png"
+                    preview.save(fname)
+                    click.echo(f"  {fname}  (16x16 upscaled to 128x128)")
+                else:
+                    click.echo(f"  Failed (skipped or no API key)")
 
 
 # ── reset-icon ───────────────────────────────────────────────────────────
