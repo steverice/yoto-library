@@ -80,9 +80,9 @@ def _complete_path(incomplete: str, filter_fn):
         value = entry.name if str(search_dir) == "." else str(search_dir / entry.name)
 
         if entry.is_dir():
-            items.append(CompletionItem(value + "/", type="dir"))
+            items.append(CompletionItem(value + "/", type="plain"))
         elif filter_fn(entry):
-            items.append(CompletionItem(value, type="file"))
+            items.append(CompletionItem(value, type="plain"))
     return items
 
 
