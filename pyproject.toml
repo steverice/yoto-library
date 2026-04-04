@@ -34,3 +34,6 @@ packages = ["src/yoto_lib", "src/yoto_cli"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "integration: tests requiring network access and external tools (yt-dlp)",
+]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import plistlib
+import shutil
 import struct
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -311,3 +312,55 @@ class TestResolveWeblocs:
 
         assert len(results) == 1
         assert results[0].name == "My Song 2.mka"
+
+
+@pytest.mark.integration
+class TestYouTubeIntegration:
+    """Integration tests that require yt-dlp and network access.
+
+    Run with: pytest -m integration tests/test_sources.py -v
+    """
+
+    @pytest.fixture(autouse=True)
+    def check_ytdlp(self):
+        if not shutil.which("yt-dlp"):
+            pytest.skip("yt-dlp not installed")
+
+    def test_download_real_video(self, tmp_path):
+        """Download a real YouTube video's audio."""
+        provider = YouTubeProvider()
+        url = "https://www.youtube.com/watch?v=GxtknJ9KFKY"
+
+        audio_path, metadata = provider.download(url, tmp_path, trim=False)
+
+        assert audio_path.exists()
+        assert audio_path.stat().st_size > 1000  # non-trivial file
+        assert metadata["source_url"] == url
+        assert len(metadata["title"]) > 0
+
+    def test_download_and_trim_real_video(self, tmp_path):
+        """Download and trim a real YouTube video."""
+        provider = YouTubeProvider()
+        url = "https://www.youtube.com/watch?v=GxtknJ9KFKY"
+
+        audio_path, metadata = provider.download(url, tmp_path, trim=True)
+
+        assert audio_path.exists()
+        assert audio_path.stat().st_size > 1000
+
+    def test_full_webloc_resolve(self, tmp_path):
+        """Full pipeline: .webloc → download → trim → .mka."""
+        playlist_dir = tmp_path / "Test Playlist"
+        playlist_dir.mkdir()
+
+        webloc = playlist_dir / "test.webloc"
+        webloc.write_bytes(plistlib.dumps({
+            "URL": "https://www.youtube.com/watch?v=GxtknJ9KFKY"
+        }))
+
+        created = resolve_weblocs(playlist_dir, trim=True)
+
+        assert len(created) == 1
+        assert created[0].suffix == ".mka"
+        assert created[0].exists()
+        assert not webloc.exists()  # consumed
