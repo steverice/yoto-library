@@ -49,6 +49,32 @@ def generate_icns_sizes(icon_16: Image.Image) -> dict[int, Image.Image]:
     return {size: nearest_neighbor_upscale(icon_16, size) for size in ICNS_SIZES}
 
 
+def _dominant_color_downscale(img: Image.Image, grid_size: int) -> Image.Image:
+    """Downscale by taking the most common color in each cell.
+
+    Divides *img* into a grid_size x grid_size grid of equal cells and picks
+    the single most-frequent RGB value per cell.  This cleanly collapses
+    anti-aliased pixel-art into hard-edged pixels.
+    """
+    w, h = img.size
+    cell_w = w // grid_size
+    cell_h = h // grid_size
+    out = Image.new("RGB", (grid_size, grid_size))
+
+    for gy in range(grid_size):
+        for gx in range(grid_size):
+            box = (gx * cell_w, gy * cell_h, (gx + 1) * cell_w, (gy + 1) * cell_h)
+            cell = img.crop(box)
+            # Count pixel frequencies
+            colors: dict[tuple, int] = {}
+            for pixel in cell.getdata():
+                colors[pixel] = colors.get(pixel, 0) + 1
+            dominant = max(colors, key=colors.get)  # type: ignore[arg-type]
+            out.putpixel((gx, gy), dominant)
+
+    return out
+
+
 # ── ICNS builder ──────────────────────────────────────────────────────────────
 
 
@@ -261,8 +287,8 @@ def crop_icon_from_grid(img: Image.Image) -> tuple[Image.Image, Image.Image]:
     center = GRID_SIZE // 2
     left = center * TILE_SIZE
     top = center * TILE_SIZE
-    tile = img.crop((left, top, left + TILE_SIZE, top + TILE_SIZE))
-    icon_16 = tile.resize((ICON_SIZE, ICON_SIZE), Image.LANCZOS)
+    tile = img.crop((left, top, left + TILE_SIZE, top + TILE_SIZE)).convert("RGB")
+    icon_16 = _dominant_color_downscale(tile, ICON_SIZE)
     return tile, icon_16
 
 
@@ -295,7 +321,19 @@ def generate_raw_grid(track_title: str) -> bytes | None:
 
 
 def generate_track_icon(track_title: str) -> bytes | None:
-    """Generate a 16x16 icon via the AI grid technique. Returns PNG bytes or None."""
+    """Generate a 16x16 icon. Returns PNG bytes or None.
+
+    Tries Retro Diffusion (native 16x16) first, falls back to the grid technique.
+    """
+    # Primary: Retro Diffusion — generates true 16x16 pixel art
+    try:
+        _, icon_bytes = generate_retrodiffusion_icon(track_title)
+        if icon_bytes:
+            return icon_bytes
+    except Exception:
+        pass
+
+    # Fallback: old grid technique (1024x1024 → crop → downscale)
     image_bytes = generate_raw_grid(track_title)
     if image_bytes is None:
         return None
@@ -305,6 +343,252 @@ def generate_track_icon(track_title: str) -> bytes | None:
         _, icon_16 = crop_icon_from_grid(img)
         buf = io.BytesIO()
         icon_16.save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception:
+        return None
+
+
+# ── Strategy: pixelart (image gen with pixel-block prompt) ────────────────────
+
+
+def _build_pixelart_prompt(track_title: str) -> str:
+    """Prompt for a simple pixel-art icon that downscales cleanly to 16x16."""
+    return (
+        f"Create a simple pixel art icon depicting: {track_title}. "
+        f"Style: very low resolution pixel art, maximum 6-8 colors, large blocky shapes. "
+        f"Think original Game Boy or early NES sprite — extremely chunky pixels, no fine detail. "
+        f"The subject should fill most of the canvas. Use a solid background color. "
+        f"No text, letters, numbers, or lettering. No anti-aliasing. No gradients."
+    )
+
+
+def generate_pixelart_icon(track_title: str) -> tuple[bytes | None, bytes | None]:
+    """Generate a 16x16 icon via the pixel-art block technique.
+
+    Returns (raw_1024_bytes, icon_16_bytes) — either may be None on failure.
+    """
+    try:
+        from yoto_lib.image_providers import get_provider
+        provider = get_provider()
+    except Exception:
+        return None, None
+
+    prompt = _build_pixelart_prompt(track_title)
+
+    try:
+        image_bytes = provider.generate(prompt, CANVAS_SIZE, CANVAS_SIZE)
+    except Exception:
+        return None, None
+
+    try:
+        raw_dir = ICON_CACHE_DIR / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        (raw_dir / f"{_sanitize_title(track_title)}_pixelart.png").write_bytes(image_bytes)
+    except Exception:
+        pass
+
+    try:
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        icon_16 = _dominant_color_downscale(img, ICON_SIZE)
+        buf = io.BytesIO()
+        icon_16.save(buf, format="PNG")
+        return image_bytes, buf.getvalue()
+    except Exception:
+        return image_bytes, None
+
+
+# ── Strategy: small-image providers (256x256) ────────────────────────────────
+
+
+def _generate_small_icon(
+    provider,
+    track_title: str,
+    width: int,
+    height: int,
+    label: str = "unknown",
+) -> tuple[bytes | None, bytes | None]:
+    """Generate an icon using a provider that supports small output sizes.
+
+    Returns (raw_bytes, icon_16_bytes).
+    """
+    prompt = _build_pixelart_prompt(track_title)
+
+    try:
+        image_bytes = provider.generate(prompt, width, height)
+    except Exception:
+        return None, None
+
+    try:
+        raw_dir = ICON_CACHE_DIR / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        (raw_dir / f"{_sanitize_title(track_title)}_{label}.png").write_bytes(image_bytes)
+    except Exception:
+        pass
+
+    try:
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        icon_16 = _dominant_color_downscale(img, ICON_SIZE)
+        buf = io.BytesIO()
+        icon_16.save(buf, format="PNG")
+        return image_bytes, buf.getvalue()
+    except Exception:
+        return image_bytes, None
+
+
+def generate_dalle2_icon(track_title: str) -> tuple[bytes | None, bytes | None]:
+    """Generate via DALL-E 2 at 256x256. Returns (raw_bytes, icon_16_bytes)."""
+    from yoto_lib.image_providers.dalle2_provider import DallE2Provider
+    return _generate_small_icon(DallE2Provider(), track_title, 256, 256, "dalle2")
+
+
+def generate_flux_icon(track_title: str) -> tuple[bytes | None, bytes | None]:
+    """Generate via FLUX.1-schnell at 256x256. Returns (raw_bytes, icon_16_bytes)."""
+    from yoto_lib.image_providers.together_provider import TogetherProvider
+    return _generate_small_icon(
+        TogetherProvider("black-forest-labs/FLUX.1-schnell"),
+        track_title, 256, 256, "flux",
+    )
+
+
+def generate_sd3_icon(track_title: str) -> tuple[bytes | None, bytes | None]:
+    """Generate via Stable Diffusion 3 at 256x256. Returns (raw_bytes, icon_16_bytes)."""
+    from yoto_lib.image_providers.together_provider import TogetherProvider
+    return _generate_small_icon(
+        TogetherProvider("stabilityai/stable-diffusion-3-medium"),
+        track_title, 256, 256, "sd3",
+    )
+
+
+def generate_gemini_icon(track_title: str) -> tuple[bytes | None, bytes | None]:
+    """Generate via Gemini Imagen 4.0 (1024x1024). Returns (raw_bytes, icon_16_bytes)."""
+    from yoto_lib.image_providers.gemini_provider import GeminiProvider
+    return _generate_small_icon(GeminiProvider(), track_title, 1024, 1024, "gemini")
+
+
+def generate_retrodiffusion_icon(track_title: str) -> tuple[bytes | None, bytes | None]:
+    """Generate via Retro Diffusion at native 16x16. Returns (raw_bytes, icon_16_bytes).
+
+    Retro Diffusion is purpose-built for pixel art and generates true 16x16 output.
+    No downscaling needed — the raw output IS the icon.
+    """
+    from yoto_lib.image_providers.retrodiffusion_provider import RetroDiffusionProvider
+    provider = RetroDiffusionProvider()
+    prompt = _build_pixelart_prompt(track_title)
+
+    try:
+        image_bytes = provider.generate(prompt, ICON_SIZE, ICON_SIZE)
+    except Exception:
+        return None, None
+
+    try:
+        raw_dir = ICON_CACHE_DIR / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        (raw_dir / f"{_sanitize_title(track_title)}_retrodiffusion.png").write_bytes(image_bytes)
+    except Exception:
+        pass
+
+    # The output IS 16x16 already — no downscaling needed
+    return image_bytes, image_bytes
+
+
+# ── Strategy: textmodel (Claude CLI / OpenAI text model) ─────────────────────
+
+
+def _build_textmodel_prompt(track_title: str) -> str:
+    """Prompt for a text model to output a 16x16 pixel grid as JSON."""
+    return (
+        f"Design a 16x16 pixel art icon that depicts: {track_title}\n\n"
+        f"Output ONLY a JSON array of 16 rows, each containing 16 hex color strings.\n"
+        f"Use a limited palette (8 colors max). Make bold, recognizable shapes.\n"
+        f"Use a solid background color. The icon should read clearly at tiny size.\n\n"
+        f"Example format (2x2):\n"
+        f'[["#000000","#FF0000"],["#FF0000","#000000"]]\n\n'
+        f"Now output the full 16x16 grid (16 rows of 16 hex colors). Output ONLY the JSON array, nothing else."
+    )
+
+
+def _parse_pixel_json(text: str) -> Image.Image | None:
+    """Parse a JSON grid of hex colors into a 16x16 PIL Image."""
+    import json as _json
+    import re
+    # Strip markdown code fences if present
+    text = re.sub(r"```(?:json)?\s*", "", text)
+    # Find the outermost JSON array — may be compact [[...]] or pretty-printed [\n  [...]\n]
+    start = text.find("[")
+    end = text.rfind("]")
+    if start == -1 or end == -1:
+        return None
+    try:
+        grid = _json.loads(text[start:end + 1])
+    except _json.JSONDecodeError:
+        return None
+
+    if len(grid) != 16 or any(len(row) != 16 for row in grid):
+        return None
+
+    img = Image.new("RGB", (16, 16))
+    for y, row in enumerate(grid):
+        for x, color in enumerate(row):
+            try:
+                r = int(color[1:3], 16)
+                g = int(color[3:5], 16)
+                b = int(color[5:7], 16)
+                img.putpixel((x, y), (r, g, b))
+            except (ValueError, IndexError):
+                pass
+    return img
+
+
+def generate_textmodel_icon_claude(track_title: str) -> bytes | None:
+    """Generate a 16x16 icon by asking Claude CLI for pixel data."""
+    import subprocess
+    prompt = _build_textmodel_prompt(track_title)
+    try:
+        result = subprocess.run(
+            ["claude", "-p", prompt, "--output-format", "json", "--model", "haiku"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            return None
+        # --output-format json wraps response in {"result": "..."}
+        import json as _json
+        try:
+            wrapper = _json.loads(result.stdout)
+            text = wrapper.get("result", result.stdout)
+        except _json.JSONDecodeError:
+            text = result.stdout
+
+        img = _parse_pixel_json(text)
+        if img is None:
+            return None
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception:
+        return None
+
+
+def generate_textmodel_icon_openai(track_title: str) -> bytes | None:
+    """Generate a 16x16 icon by asking GPT-4o for pixel data."""
+    try:
+        import openai
+        client = openai.OpenAI()
+    except Exception:
+        return None
+
+    prompt = _build_textmodel_prompt(track_title)
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+        )
+        text = response.choices[0].message.content or ""
+        img = _parse_pixel_json(text)
+        if img is None:
+            return None
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
         return buf.getvalue()
     except Exception:
         return None
