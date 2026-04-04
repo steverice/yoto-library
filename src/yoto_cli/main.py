@@ -17,6 +17,7 @@ from yoto_lib.sync import sync_path
 from yoto_lib.pull import pull_playlist
 from yoto_lib.playlist import read_jsonl, write_jsonl, scan_audio_files, load_playlist, diff_playlists
 from yoto_lib.mka import wrap_in_mka, remove_attachment, set_attachment
+from yoto_lib.sources import resolve_weblocs
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -105,6 +106,27 @@ def sync(path, dry_run, no_trim):
         )
         for error in result.errors:
             click.echo(f"Error: {error}", err=True)
+
+
+# ── download ─────────────────────────────────────────────────────────────────
+
+
+@cli.command()
+@click.argument("path", default=".", type=click.Path(exists=True))
+@click.option("--no-trim", is_flag=True, help="Skip silence trimming on YouTube downloads")
+def download(path, no_trim):
+    """Download audio from .webloc URLs in a playlist folder."""
+    trim = not no_trim
+    folder = Path(path)
+    created = resolve_weblocs(folder, trim=trim)
+
+    if not created:
+        click.echo("No .webloc files resolved.")
+        return
+
+    for mka_path in created:
+        click.echo(f"  Downloaded: {mka_path.name}")
+    click.echo(f"Downloaded {len(created)} tracks.")
 
 
 # ── pull ──────────────────────────────────────────────────────────────────────

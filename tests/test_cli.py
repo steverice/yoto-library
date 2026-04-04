@@ -209,3 +209,43 @@ class TestInitCommand:
         assert "Already exists" in result.output
         # Original content must be preserved
         assert json.loads(jsonl.read_text().strip()) == "track.mka"
+
+
+# ── test_download_command ─────────────────────────────────────────────────────
+
+
+class TestDownloadCommand:
+    def test_download_resolves_weblocs(self, runner, tmp_path):
+        """download calls resolve_weblocs on the given path."""
+        folder = tmp_path / "playlist"
+        folder.mkdir()
+        (folder / "song.webloc").write_bytes(b"fake")
+
+        with patch("yoto_cli.main.resolve_weblocs", return_value=[]) as mock_resolve:
+            result = runner.invoke(cli, ["download", str(folder)])
+
+        assert result.exit_code == 0
+        mock_resolve.assert_called_once_with(folder, trim=True)
+
+    def test_download_no_trim(self, runner, tmp_path):
+        """download --no-trim passes trim=False."""
+        folder = tmp_path / "playlist"
+        folder.mkdir()
+
+        with patch("yoto_cli.main.resolve_weblocs", return_value=[]) as mock_resolve:
+            result = runner.invoke(cli, ["download", "--no-trim", str(folder)])
+
+        assert result.exit_code == 0
+        mock_resolve.assert_called_once_with(folder, trim=False)
+
+    def test_download_reports_created_files(self, runner, tmp_path):
+        """download prints the names of created .mka files."""
+        folder = tmp_path / "playlist"
+        folder.mkdir()
+
+        fake_mka = folder / "Cool Song.mka"
+        with patch("yoto_cli.main.resolve_weblocs", return_value=[fake_mka]):
+            result = runner.invoke(cli, ["download", str(folder)])
+
+        assert result.exit_code == 0
+        assert "Cool Song.mka" in result.output
