@@ -390,53 +390,75 @@ def _render_icon_ansi(img: "Image.Image", label: str = "") -> str:
 @cli.command(name="select-icon")
 @click.argument("track", type=click.Path(exists=True))
 def select_icon(track):
-    """Generate 3 icon options for a track and attach the chosen one."""
+    """Generate 3 icon options for a track, show best Yoto match, and attach the chosen one."""
     import io
     import tempfile
     from PIL import Image
-    from yoto_lib.icons import _build_pixelart_prompt, ICON_SIZE, remove_solid_background, nearest_neighbor_upscale
-    from yoto_lib.image_providers.retrodiffusion_provider import RetroDiffusionProvider
+    from yoto_lib.icons import generate_retrodiffusion_batch, download_icon
+    from yoto_lib.icon_catalog import get_catalog
+    from yoto_lib.icon_llm import match_icon_llm
 
     track_path = Path(track)
     title = track_path.stem
 
-    click.echo(f"Generating 3 icons for: {title}")
+    # Get best Yoto icon match
+    catalog = get_catalog()
+    yoto_media_id, yoto_confidence = match_icon_llm(title, catalog)
+    yoto_img: "Image.Image | None" = None
+    yoto_title: str | None = None
 
-    provider = RetroDiffusionProvider()
-    prompt = _build_pixelart_prompt(title)
+    if yoto_media_id:
+        yoto_bytes = download_icon(yoto_media_id)
+        if yoto_bytes:
+            yoto_img = Image.open(io.BytesIO(yoto_bytes)).convert("RGBA")
+            for icon in catalog:
+                if icon.get("mediaId") == yoto_media_id:
+                    yoto_title = icon.get("title", "") or icon.get("name", "")
+                    break
+
+    click.echo(f"Generating 3 icons for: {title}")
 
     tmpdir = Path(tempfile.mkdtemp(prefix="yoto-icon-"))
 
     while True:
+        batch = generate_retrodiffusion_batch(title, count=3)
+        if not batch:
+            raise click.ClickException("Icon generation failed")
+
         icons_16: list[Image.Image] = []
-
-        for i in range(3):
-            try:
-                image_bytes = provider.generate(prompt, ICON_SIZE, ICON_SIZE)
-            except Exception as exc:
-                raise click.ClickException(f"Icon generation failed: {exc}") from exc
-
-            img = Image.open(io.BytesIO(image_bytes))
-            img = remove_solid_background(img)
-            icons_16.append(img)
-
-            click.echo(_render_icon_ansi(img, label=f"  [{i + 1}]"))
+        for i, (raw_bytes, processed_img) in enumerate(batch):
+            icons_16.append(processed_img)
+            click.echo(_render_icon_ansi(processed_img, label=f"  [{i + 1}] AI"))
             click.echo()
 
-        raw = click.prompt("Pick an icon (or 'r' to regenerate)", default="1")
+        # Show Yoto option [4]
+        if yoto_img is not None:
+            label = f"  [4] Yoto: \"{yoto_title}\" (confidence: {yoto_confidence:.2f})"
+            click.echo(_render_icon_ansi(yoto_img, label=label))
+            click.echo()
+            max_choice = 4
+            prompt_text = "Pick an icon (1-4, or 'r' to regenerate)"
+        else:
+            max_choice = 3
+            prompt_text = "Pick an icon (or 'r' to regenerate)"
+
+        raw = click.prompt(prompt_text, default="1")
         if raw.lower() == "r":
             click.echo("Regenerating...")
             continue
 
         try:
             choice = int(raw)
-            if not 1 <= choice <= 3:
+            if not 1 <= choice <= max_choice:
                 raise ValueError
         except ValueError:
             click.echo("Invalid choice.")
             continue
 
-        chosen = icons_16[choice - 1]
+        if choice == 4 and yoto_img is not None:
+            chosen = yoto_img
+        else:
+            chosen = icons_16[choice - 1]
         break
 
     buf = io.BytesIO()
