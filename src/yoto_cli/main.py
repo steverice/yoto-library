@@ -359,6 +359,34 @@ def import_cmd(source, output):
 # ── select-icon ──────────────────────────────────────────────────────────
 
 
+def _render_icon_ansi(img: "Image.Image", label: str = "") -> str:
+    """Render a 16x16 RGBA image as ANSI art using half-block characters.
+
+    Each character cell encodes 2 vertical pixels using ▀ with
+    foreground = top pixel, background = bottom pixel.
+    """
+    img = img.convert("RGBA")
+    w, h = img.size
+    lines = []
+    if label:
+        lines.append(label)
+    for y in range(0, h, 2):
+        row = ""
+        for x in range(w):
+            top = img.getpixel((x, y))
+            bot = img.getpixel((x, y + 1)) if y + 1 < h else (0, 0, 0, 0)
+            if top[3] == 0 and bot[3] == 0:
+                row += " "
+            elif top[3] == 0:
+                row += f"\033[48;2;{bot[0]};{bot[1]};{bot[2]}m\033[38;2;{bot[0]};{bot[1]};{bot[2]}m▄\033[0m"
+            elif bot[3] == 0:
+                row += f"\033[38;2;{top[0]};{top[1]};{top[2]}m▀\033[0m"
+            else:
+                row += f"\033[38;2;{top[0]};{top[1]};{top[2]}m\033[48;2;{bot[0]};{bot[1]};{bot[2]}m▀\033[0m"
+        lines.append(row)
+    return "\n".join(lines)
+
+
 @cli.command(name="select-icon")
 @click.argument("track", type=click.Path(exists=True))
 def select_icon(track):
@@ -377,42 +405,52 @@ def select_icon(track):
     provider = RetroDiffusionProvider()
     prompt = _build_pixelart_prompt(title)
 
-    icons_16: list[Image.Image] = []
     tmpdir = Path(tempfile.mkdtemp(prefix="yoto-icon-"))
-    preview_paths: list[Path] = []
 
-    for i in range(3):
+    while True:
+        icons_16: list[Image.Image] = []
+
+        for i in range(3):
+            try:
+                image_bytes = provider.generate(prompt, ICON_SIZE, ICON_SIZE)
+            except Exception as exc:
+                raise click.ClickException(f"Icon generation failed: {exc}") from exc
+
+            img = Image.open(io.BytesIO(image_bytes))
+            img = remove_solid_background(img)
+            icons_16.append(img)
+
+            click.echo(_render_icon_ansi(img, label=f"  [{i + 1}]"))
+            click.echo()
+
+        raw = click.prompt("Pick an icon (or 'r' to regenerate)", default="1")
+        if raw.lower() == "r":
+            click.echo("Regenerating...")
+            continue
+
         try:
-            image_bytes = provider.generate(prompt, ICON_SIZE, ICON_SIZE)
-        except Exception as exc:
-            raise click.ClickException(f"Icon generation failed: {exc}") from exc
+            choice = int(raw)
+            if not 1 <= choice <= 3:
+                raise ValueError
+        except ValueError:
+            click.echo("Invalid choice.")
+            continue
 
-        img = Image.open(io.BytesIO(image_bytes))
-        img = remove_solid_background(img)
-        icons_16.append(img)
+        chosen = icons_16[choice - 1]
+        break
 
-        preview = nearest_neighbor_upscale(img, 128)
-        preview_path = tmpdir / f"option_{i + 1}.png"
-        preview.save(str(preview_path))
-        preview_paths.append(preview_path)
-        click.echo(f"  [{i + 1}] {preview_path}")
-
-    choice = click.prompt("Pick an icon", type=click.IntRange(1, 3))
-
-    chosen = icons_16[choice - 1]
     buf = io.BytesIO()
     chosen.save(buf, format="PNG")
     icon_bytes = buf.getvalue()
 
-    # Write icon to temp file and attach to MKA
     icon_tmp = tmpdir / "chosen_icon.png"
     icon_tmp.write_bytes(icon_bytes)
     set_attachment(track_path, icon_tmp, name="icon", mime_type="image/png")
+
+    from yoto_lib.icons import set_macos_file_icon
+    set_macos_file_icon(track_path, chosen)
     click.echo(f"Attached icon to {track_path.name}")
 
-    # Clean up temp files
-    for p in preview_paths:
-        p.unlink(missing_ok=True)
     icon_tmp.unlink(missing_ok=True)
     tmpdir.rmdir()
 
