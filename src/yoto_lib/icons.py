@@ -841,6 +841,32 @@ def resolve_icons(
             if catalog is None:
                 catalog = get_catalog(api)
 
+            # Exact-match shortcut: skip LLM for obvious matches
+            exact_match_id = None
+            title_lower = track_title.lower()
+            for icon in catalog:
+                icon_title = (icon.get("title", "") or icon.get("name", "")).lower()
+                if icon_title and icon_title == title_lower:
+                    exact_match_id = icon.get("mediaId")
+                    break
+
+            if exact_match_id:
+                _log(f"Icon {i}/{total}: {title} (exact match)")
+                dl_bytes = download_icon(exact_match_id)
+                if dl_bytes:
+                    apply_icon_to_mka(track_path, dl_bytes)
+                    icon_bytes = dl_bytes
+                media_id = exact_match_id
+                if media_id is not None:
+                    if icon_bytes is not None:
+                        try:
+                            img = Image.open(io.BytesIO(icon_bytes))
+                            set_macos_file_icon(track_path, img)
+                        except Exception:
+                            pass
+                    result[filename] = media_id
+                    continue
+
             # 2. LLM-based matching
             matched_id, confidence = match_icon_llm(track_title, catalog)
 
