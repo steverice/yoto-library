@@ -10,6 +10,7 @@ from typing import Callable, Optional
 from yoto_lib.api import YotoAPI
 from yoto_lib.cover import generate_cover_if_missing
 from yoto_lib.icons import resolve_icons
+from yoto_lib.sources import resolve_weblocs
 from yoto_lib.playlist import (
     AUDIO_EXTENSIONS,
     Playlist,
@@ -87,6 +88,7 @@ def _parse_remote_state(remote_content: dict) -> dict:
 def sync_playlist(
     folder: Path,
     dry_run: bool = False,
+    trim: bool = True,
     on_track_done: Optional[Callable[[str], None]] = None,
     log: Optional[Callable[[str], None]] = None,
 ) -> SyncResult:
@@ -108,6 +110,10 @@ def sync_playlist(
       12. Write cardId to .yoto-card-id if new
     """
     folder = Path(folder)
+
+    # 0. Resolve .webloc files into .mka tracks
+    resolve_weblocs(folder, trim=trim)
+
     result = SyncResult(dry_run=dry_run)
 
     # 1. Load local playlist
@@ -225,9 +231,9 @@ def sync_playlist(
 
 
 def _has_audio_files(folder: Path) -> bool:
-    """Return True if folder contains any audio files directly."""
+    """Return True if folder contains any audio files or .webloc files directly."""
     return any(
-        p.is_file() and p.suffix.lower() in AUDIO_EXTENSIONS
+        p.is_file() and (p.suffix.lower() in AUDIO_EXTENSIONS or p.suffix.lower() == ".webloc")
         for p in folder.iterdir()
     )
 
@@ -235,6 +241,7 @@ def _has_audio_files(folder: Path) -> bool:
 def sync_path(
     path: Path,
     dry_run: bool = False,
+    trim: bool = True,
     on_track_done: Optional[Callable[[str], None]] = None,
     log: Optional[Callable[[str], None]] = None,
 ) -> list[SyncResult]:
@@ -248,11 +255,11 @@ def sync_path(
     results: list[SyncResult] = []
 
     if _has_audio_files(path):
-        results.append(sync_playlist(path, dry_run=dry_run, on_track_done=on_track_done, log=log))
+        results.append(sync_playlist(path, dry_run=dry_run, trim=trim, on_track_done=on_track_done, log=log))
     else:
         subdirs = sorted(p for p in path.iterdir() if p.is_dir())
         for subdir in subdirs:
             if _has_audio_files(subdir):
-                results.append(sync_playlist(subdir, dry_run=dry_run, on_track_done=on_track_done, log=log))
+                results.append(sync_playlist(subdir, dry_run=dry_run, trim=trim, on_track_done=on_track_done, log=log))
 
     return results

@@ -135,3 +135,30 @@ class TestSyncPlaylist:
 
         assert result.cover_uploaded is True
         mock_api.upload_cover.assert_called_once_with(folder / "cover.png")
+
+
+class TestSyncWithWeblocs:
+    def test_sync_resolves_weblocs_before_scanning(self, tmp_path):
+        """sync_playlist calls resolve_weblocs before loading the playlist."""
+        folder = _make_audio_folder(tmp_path, ["track01.mp3"])
+
+        mock_api = MagicMock()
+        mock_api.upload_and_transcode.return_value = {"transcodedSha256": "abc"}
+        mock_api.create_or_update_content.return_value = {"cardId": "NEW-002"}
+
+        resolve_called = [False]
+
+        def fake_resolve(d, trim=True):
+            resolve_called[0] = True
+            return []
+
+        with (
+            patch("yoto_lib.sync.YotoAPI", return_value=mock_api),
+            patch("yoto_lib.sync.generate_cover_if_missing"),
+            patch("yoto_lib.sync.resolve_icons", return_value={}),
+            patch("yoto_lib.sync.resolve_weblocs", side_effect=fake_resolve) as mock_resolve,
+        ):
+            result = sync_playlist(folder)
+
+        mock_resolve.assert_called_once_with(folder, trim=True)
+        assert resolve_called[0]

@@ -103,7 +103,7 @@ class TestSyncCommand:
             result = runner.invoke(cli, ["sync", str(folder)])
 
         assert result.exit_code == 0
-        mock_sync.assert_called_once_with(folder, dry_run=False, log=mock_sync.call_args.kwargs["log"])
+        mock_sync.assert_called_once_with(folder, dry_run=False, trim=True, log=mock_sync.call_args.kwargs["log"])
         assert "SYNCED-001" in result.output
         assert "3 tracks" in result.output
 
@@ -119,9 +119,26 @@ class TestSyncCommand:
             result = runner.invoke(cli, ["sync", "--dry-run", str(folder)])
 
         assert result.exit_code == 0
-        mock_sync.assert_called_once_with(folder, dry_run=True)
+        mock_sync.assert_called_once_with(folder, dry_run=True, trim=True)
         assert "[Dry run]" in result.output
         assert "2 tracks" in result.output
+
+
+class TestSyncNoTrim:
+    def test_sync_passes_no_trim(self, runner, tmp_path):
+        """sync --no-trim passes trim=False to sync_path."""
+        folder = tmp_path / "album"
+        folder.mkdir()
+        (folder / "track01.mp3").write_bytes(b"\x00" * 16)
+
+        fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1)]
+
+        with patch("yoto_cli.main.sync_path", return_value=fake_results) as mock_sync:
+            result = runner.invoke(cli, ["sync", "--no-trim", str(folder)])
+
+        assert result.exit_code == 0
+        assert mock_sync.call_args.kwargs.get("trim") is False or \
+               (len(mock_sync.call_args) > 0 and mock_sync.call_args[1].get("trim") is False)
 
 
 # ── test_reorder_opens_editor ─────────────────────────────────────────────────
