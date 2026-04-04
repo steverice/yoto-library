@@ -30,5 +30,8 @@ htmlcov/
 # Secrets
 .env
 
+# Worktrees
+.worktrees/
+
 # Data
 data
