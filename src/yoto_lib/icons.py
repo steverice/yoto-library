@@ -44,6 +44,73 @@ def nearest_neighbor_upscale(img: Image.Image, target_size: int) -> Image.Image:
     return img.resize((target_size, target_size), Image.NEAREST)
 
 
+def _color_distance(a: tuple[int, ...], b: tuple[int, ...]) -> int:
+    """Manhattan distance between two RGB colors."""
+    return abs(a[0] - b[0]) + abs(a[1] - b[1]) + abs(a[2] - b[2])
+
+
+def remove_solid_background(
+    img: Image.Image, threshold: float = 0.5, tolerance: int = 80,
+) -> Image.Image:
+    """Flood-fill the dominant border color to transparency.
+
+    Examines the outermost ring of pixels. Groups similar border colors
+    (within *tolerance* Manhattan distance) to find the dominant background.
+    Flood-fills from every matching border pixel inward, treating any color
+    within *tolerance* of the dominant as background.
+    """
+    img = img.convert("RGBA")
+    w, h = img.size
+
+    # Collect border pixel positions and colors
+    border_positions: list[tuple[int, int]] = []
+    for x in range(w):
+        border_positions.append((x, 0))
+        border_positions.append((x, h - 1))
+    for y in range(1, h - 1):
+        border_positions.append((0, y))
+        border_positions.append((w - 1, y))
+
+    pixels = img.load()
+    border_colors: list[tuple[int, ...]] = [pixels[x, y] for x, y in border_positions]
+
+    # Group similar colors: count each color, then merge groups within tolerance
+    counts: dict[tuple[int, ...], int] = {}
+    for px in border_colors:
+        counts[px] = counts.get(px, 0) + 1
+
+    # Find the dominant group: start from most frequent color, absorb neighbors
+    dominant = max(counts, key=counts.get)  # type: ignore[arg-type]
+    group_total = sum(
+        c for color, c in counts.items() if _color_distance(color[:3], dominant[:3]) <= tolerance
+    )
+
+    if group_total / len(border_colors) < threshold:
+        return img  # no clear background color
+
+    bg_rgb = dominant[:3]
+
+    # Seed flood-fill from every border pixel within tolerance of dominant
+    visited: set[tuple[int, int]] = set()
+    queue: list[tuple[int, int]] = []
+    for pos, color in zip(border_positions, border_colors):
+        if _color_distance(color[:3], bg_rgb) <= tolerance:
+            queue.append(pos)
+            visited.add(pos)
+
+    while queue:
+        x, y = queue.pop()
+        pixels[x, y] = (0, 0, 0, 0)
+        for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+            if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in visited:
+                visited.add((nx, ny))
+                if _color_distance(pixels[nx, ny][:3], bg_rgb) <= tolerance:
+                    queue.append((nx, ny))
+
+    return img
+
+
+
 def generate_icns_sizes(icon_16: Image.Image) -> dict[int, Image.Image]:
     """Generate all ICNS sizes from a 16x16 source image using nearest-neighbor upscaling."""
     return {size: nearest_neighbor_upscale(icon_16, size) for size in ICNS_SIZES}
@@ -67,7 +134,7 @@ def _dominant_color_downscale(img: Image.Image, grid_size: int) -> Image.Image:
             cell = img.crop(box)
             # Count pixel frequencies
             colors: dict[tuple, int] = {}
-            for pixel in cell.getdata():
+            for pixel in cell.get_flattened_data():
                 colors[pixel] = colors.get(pixel, 0) + 1
             dominant = max(colors, key=colors.get)  # type: ignore[arg-type]
             out.putpixel((gx, gy), dominant)
@@ -357,8 +424,10 @@ def _build_pixelart_prompt(track_title: str) -> str:
         f"Create a simple pixel art icon depicting: {track_title}. "
         f"Style: very low resolution pixel art, maximum 6-8 colors, large blocky shapes. "
         f"Think original Game Boy or early NES sprite — extremely chunky pixels, no fine detail. "
-        f"The subject should fill most of the canvas. Use a solid background color. "
-        f"No text, letters, numbers, or lettering. No anti-aliasing. No gradients."
+        f"The subject should fill most of the canvas. "
+        f"Use a solid black (#000000) background. "
+        f"No text, letters, numbers, or lettering. No anti-aliasing. No gradients. "
+        f"Emoji style, bright colors, simple"
     )
 
 
@@ -470,25 +539,37 @@ def generate_retrodiffusion_icon(track_title: str) -> tuple[bytes | None, bytes 
 
     Retro Diffusion is purpose-built for pixel art and generates true 16x16 output.
     No downscaling needed — the raw output IS the icon.
+    Checks the cache first to avoid unnecessary API calls.
     """
-    from yoto_lib.image_providers.retrodiffusion_provider import RetroDiffusionProvider
-    provider = RetroDiffusionProvider()
-    prompt = _build_pixelart_prompt(track_title)
+    raw_dir = ICON_CACHE_DIR / "raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    cache_path = raw_dir / f"{_sanitize_title(track_title)}_retrodiffusion.png"
 
-    try:
-        image_bytes = provider.generate(prompt, ICON_SIZE, ICON_SIZE)
-    except Exception:
-        return None, None
+    if cache_path.exists():
+        image_bytes = cache_path.read_bytes()
+    else:
+        from yoto_lib.image_providers.retrodiffusion_provider import RetroDiffusionProvider
+        provider = RetroDiffusionProvider()
+        prompt = _build_pixelart_prompt(track_title)
 
-    try:
-        raw_dir = ICON_CACHE_DIR / "raw"
-        raw_dir.mkdir(parents=True, exist_ok=True)
-        (raw_dir / f"{_sanitize_title(track_title)}_retrodiffusion.png").write_bytes(image_bytes)
-    except Exception:
-        pass
+        try:
+            image_bytes = provider.generate(prompt, ICON_SIZE, ICON_SIZE)
+        except Exception:
+            return None, None
+
+        try:
+            cache_path.write_bytes(image_bytes)
+        except Exception:
+            pass
 
     # The output IS 16x16 already — no downscaling needed
-    return image_bytes, image_bytes
+    # Flood-fill near-black background to transparent
+    img = Image.open(io.BytesIO(image_bytes))
+    img = remove_solid_background(img)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    icon_bytes = buf.getvalue()
+    return image_bytes, icon_bytes
 
 
 # ── Strategy: textmodel (Claude CLI / OpenAI text model) ─────────────────────
