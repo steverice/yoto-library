@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from yoto_lib import mka
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from yoto_lib.playlist import Playlist
 
 
