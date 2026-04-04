@@ -13,10 +13,11 @@ load_dotenv(find_dotenv(usecwd=True))
 
 from yoto_lib.auth import AuthError, run_device_code_flow
 from yoto_lib.api import YotoAPI
+from yoto_lib.description import generate_description
 from yoto_lib.sync import sync_path
 from yoto_lib.pull import pull_playlist
 from yoto_lib.playlist import read_jsonl, write_jsonl, scan_audio_files, load_playlist, diff_playlists
-from yoto_lib.mka import wrap_in_mka, remove_attachment, set_attachment
+from yoto_lib.mka import wrap_in_mka, remove_attachment, set_attachment, read_source_tags, write_tags
 from yoto_lib.sources import resolve_weblocs
 
 
@@ -336,6 +337,10 @@ def import_cmd(source, output):
         else:
             try:
                 wrap_in_mka(audio, mka_dest)
+                # Copy metadata from source file to MKA
+                source_tags = read_source_tags(audio)
+                if source_tags:
+                    write_tags(mka_dest, source_tags)
                 filenames.append(mka_name)
                 click.echo(f"  Wrapped {audio.name} -> {mka_name}")
                 if source_path == output_path:
@@ -345,6 +350,10 @@ def import_cmd(source, output):
 
     write_jsonl(output_path / "playlist.jsonl", filenames)
     click.echo(f"Imported {len(filenames)} tracks into {output_path}")
+
+    # Generate description from track metadata
+    playlist = load_playlist(output_path)
+    generate_description(playlist, log=lambda msg: click.echo(msg))
 
 
 # ── select-icon ──────────────────────────────────────────────────────────

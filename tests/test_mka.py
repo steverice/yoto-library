@@ -47,6 +47,15 @@ class TestTagMap:
         assert TAG_MAP["category"] == "YOTO_CATEGORY"
         assert TAG_MAP["read_by"] == "YOTO_READ_BY"
 
+    def test_extended_tags_mapped(self):
+        assert TAG_MAP["genre"] == "GENRE"
+        assert TAG_MAP["composer"] == "COMPOSER"
+        assert TAG_MAP["album_artist"] == "ALBUM_ARTIST"
+        assert TAG_MAP["album"] == "ALBUM"
+        assert TAG_MAP["date"] == "DATE_RELEASED"
+        assert TAG_MAP["track"] == "PART_NUMBER"
+        assert TAG_MAP["disc"] == "DISC_NUMBER"
+
 
 class TestWrapInMka:
     @needs_ffmpeg
@@ -96,6 +105,83 @@ class TestReadWriteTags:
         assert result["min_age"] == "3"
         assert result["max_age"] == "8"
         assert result["category"] == "music"
+
+    @needs_ffmpeg
+    @needs_mkvtoolnix
+    def test_write_and_read_extended_tags(self, sample_wav, tmp_path):
+        mka = tmp_path / "tagged.mka"
+        wrap_in_mka(sample_wav, mka)
+
+        tags = {
+            "genre": "Children's Music",
+            "composer": "Fred Rogers",
+            "album_artist": "Daniel Tiger",
+            "album": "Big Feelings",
+            "date": "2012-12-10",
+            "track": "1/13",
+            "disc": "1/1",
+        }
+        write_tags(mka, tags)
+
+        result = read_tags(mka)
+        assert result["genre"] == "Children's Music"
+        assert result["composer"] == "Fred Rogers"
+        assert result["album_artist"] == "Daniel Tiger"
+        assert result["album"] == "Big Feelings"
+        assert result["date"] == "2012-12-10"
+        assert result["track"] == "1/13"
+        assert result["disc"] == "1/1"
+
+
+class TestReadSourceTags:
+    @needs_ffmpeg
+    def test_reads_tags_from_wav(self, sample_wav, tmp_path):
+        """read_source_tags returns empty dict for a tag-less WAV (baseline)."""
+        from yoto_lib.mka import read_source_tags
+        tags = read_source_tags(sample_wav)
+        assert isinstance(tags, dict)
+
+    @needs_ffmpeg
+    @needs_mkvtoolnix
+    def test_reads_tags_from_tagged_mka(self, sample_wav, tmp_path):
+        """read_source_tags works on MKA files too (ffprobe reads both)."""
+        from yoto_lib.mka import read_source_tags
+        mka = tmp_path / "tagged.mka"
+        wrap_in_mka(sample_wav, mka)
+        write_tags(mka, {"title": "Hello", "artist": "World", "genre": "Pop"})
+
+        tags = read_source_tags(mka)
+        assert tags["title"] == "Hello"
+        assert tags["artist"] == "World"
+        assert tags["genre"] == "Pop"
+
+
+class TestMetadataPreservation:
+    @needs_ffmpeg
+    @needs_mkvtoolnix
+    def test_source_tags_survive_mka_roundtrip(self, sample_wav, tmp_path):
+        """Tags read from source can be written to MKA and read back."""
+        from yoto_lib.mka import read_source_tags
+
+        # WAV has no tags, so write some to the MKA manually to simulate
+        mka = tmp_path / "output.mka"
+        wrap_in_mka(sample_wav, mka)
+
+        source_tags = {
+            "title": "Test Song",
+            "artist": "Test Artist",
+            "genre": "Children's Music",
+            "composer": "Test Composer",
+            "album": "Test Album",
+        }
+        write_tags(mka, source_tags)
+
+        result = read_tags(mka)
+        assert result["title"] == "Test Song"
+        assert result["artist"] == "Test Artist"
+        assert result["genre"] == "Children's Music"
+        assert result["composer"] == "Test Composer"
+        assert result["album"] == "Test Album"
 
 
 class TestAttachments:
