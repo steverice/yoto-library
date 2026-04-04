@@ -762,6 +762,41 @@ def _upload_icon_bytes(api: "YotoAPI", icon_bytes: bytes) -> str | None:
         tmp_path.unlink(missing_ok=True)
 
 
+def _pick_ai_icon(
+    track_title: str,
+    batch: "list[tuple[bytes, Image.Image]]",
+    yoto_icon_bytes: "bytes | None" = None,
+    yoto_media_id: "str | None" = None,
+) -> "tuple[bytes | None, Image.Image | None, str | None]":
+    """Use LLM to pick the best icon from AI candidates (+ optional Yoto icon).
+
+    Returns (icon_bytes, icon_image, media_id_if_yoto_won).
+    media_id_if_yoto_won is set only when the Yoto icon wins; otherwise None.
+    """
+    if not batch:
+        return None, None, None
+
+    raw_images = [raw for raw, _ in batch]
+    winner, _ = compare_icons_llm(
+        track_title, raw_images, yoto_icon=yoto_icon_bytes,
+    )
+
+    total = len(batch) + (1 if yoto_icon_bytes else 0)
+    winner = max(1, min(winner, total))  # clamp to valid range
+
+    if yoto_icon_bytes and winner == total:
+        # Yoto icon won
+        yoto_img = Image.open(io.BytesIO(yoto_icon_bytes))
+        return yoto_icon_bytes, yoto_img, yoto_media_id
+
+    # AI icon won
+    idx = winner - 1
+    raw_bytes, processed_img = batch[idx]
+    buf = io.BytesIO()
+    processed_img.save(buf, format="PNG")
+    return buf.getvalue(), processed_img, None
+
+
 def resolve_icons(
     playlist: "Playlist",
     api: "YotoAPI",
@@ -769,26 +804,26 @@ def resolve_icons(
 ) -> dict[str, str]:
     """Resolve and embed icons for each track in the playlist.
 
-    For each track, ensures an icon is written to the MKA file on disk,
-    then returns the mediaId for the content schema.
-
     Resolution order:
     1. MKA attachment named "icon" → already on disk, upload to API
-    2. Match from Yoto public icon library → download, write to MKA
-    3. AI generation via grid technique → generate, write to MKA
+    2. LLM match against Yoto public icon catalog:
+       - High confidence (>= 0.8) → use Yoto icon directly
+       - Gray zone (0.4 - 0.8) → generate 3 AI, LLM picks best of 4
+       - Low confidence (< 0.4) → generate 3 AI, LLM picks best of 3
+    3. Fallback: lexical match → single AI generation (if LLM unavailable)
 
     Returns dict mapping filename → mediaId.
     """
     _log = log or (lambda msg: None)
     result: dict[str, str] = {}
-    public_icons: list[dict] | None = None  # lazy-loaded
+    catalog: "list[dict] | None" = None  # lazy-loaded
     total = len(playlist.track_files)
 
     for i, filename in enumerate(playlist.track_files, 1):
         track_path = playlist.path / filename
         title = Path(filename).stem
-        media_id: str | None = None
-        icon_bytes: bytes | None = None
+        media_id: "str | None" = None
+        icon_bytes: "bytes | None" = None
 
         # 1. Check for existing MKA icon attachment
         try:
@@ -802,37 +837,78 @@ def resolve_icons(
         else:
             track_title = _derive_track_title(track_path, filename)
 
-            # 2. Public icon match
-            if public_icons is None:
-                try:
-                    public_icons = api.get_public_icons()
-                except Exception:
-                    public_icons = []
+            # Load catalog once
+            if catalog is None:
+                catalog = get_catalog(api)
 
-            matched_id = match_public_icon(track_title, public_icons)
-            if matched_id:
-                _log(f"Icon {i}/{total}: {title} (matched)")
+            # 2. LLM-based matching
+            matched_id, confidence = match_icon_llm(track_title, catalog)
+
+            if matched_id and confidence >= CONFIDENCE_HIGH:
+                # High confidence — use Yoto icon directly
+                _log(f"Icon {i}/{total}: {title} (matched, confidence: {confidence:.2f})")
                 dl_bytes = download_icon(matched_id)
                 if dl_bytes:
                     apply_icon_to_mka(track_path, dl_bytes)
                     icon_bytes = dl_bytes
-                media_id = matched_id  # use Yoto's public ID directly
+                media_id = matched_id
 
-            # 3. AI generation
-            if media_id is None:
-                _log(f"Icon {i}/{total}: {title} (generating...)")
-                icon_bytes = generate_track_icon(track_title)
-                if icon_bytes:
-                    _log(f"Icon {i}/{total}: {title} (generated, uploading...)")
-                    apply_icon_to_mka(track_path, icon_bytes)
-                    media_id = _upload_icon_bytes(api, icon_bytes)
+            elif matched_id and confidence >= CONFIDENCE_LOW:
+                # Gray zone — generate 3 AI, compare with Yoto icon
+                _log(f"Icon {i}/{total}: {title} (comparing, confidence: {confidence:.2f})")
+                yoto_bytes = download_icon(matched_id)
+                batch = generate_retrodiffusion_batch(track_title)
+
+                icon_bytes_result, icon_img, yoto_won_id = _pick_ai_icon(
+                    track_title, batch,
+                    yoto_icon_bytes=yoto_bytes,
+                    yoto_media_id=matched_id,
+                )
+
+                if yoto_won_id:
+                    _log(f"Icon {i}/{total}: {title} (compared, chose: yoto)")
+                    if yoto_bytes:
+                        apply_icon_to_mka(track_path, yoto_bytes)
+                    icon_bytes = yoto_bytes
+                    media_id = yoto_won_id
+                elif icon_bytes_result:
+                    _log(f"Icon {i}/{total}: {title} (compared, chose: AI)")
+                    apply_icon_to_mka(track_path, icon_bytes_result)
+                    icon_bytes = icon_bytes_result
+                    media_id = _upload_icon_bytes(api, icon_bytes_result)
                     if media_id:
                         ICON_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-                        (ICON_CACHE_DIR / f"{media_id}.png").write_bytes(icon_bytes)
-                else:
-                    _log(f"Icon {i}/{total}: {title} (no icon)")
+                        (ICON_CACHE_DIR / f"{media_id}.png").write_bytes(icon_bytes_result)
 
-        # Set macOS Finder icon (best-effort, skip if already set by apply_icon_to_mka)
+            else:
+                # Low confidence — generate 3 AI, pick best
+                _log(f"Icon {i}/{total}: {title} (generating...)")
+                batch = generate_retrodiffusion_batch(track_title)
+
+                if batch:
+                    icon_bytes_result, icon_img, _ = _pick_ai_icon(track_title, batch)
+                    if icon_bytes_result:
+                        apply_icon_to_mka(track_path, icon_bytes_result)
+                        icon_bytes = icon_bytes_result
+                        media_id = _upload_icon_bytes(api, icon_bytes_result)
+                        if media_id:
+                            ICON_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                            (ICON_CACHE_DIR / f"{media_id}.png").write_bytes(icon_bytes_result)
+                        _log(f"Icon {i}/{total}: {title} (generated)")
+
+                if media_id is None:
+                    # Fallback: old single-icon generation
+                    icon_bytes = generate_track_icon(track_title)
+                    if icon_bytes:
+                        apply_icon_to_mka(track_path, icon_bytes)
+                        media_id = _upload_icon_bytes(api, icon_bytes)
+                        if media_id:
+                            ICON_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                            (ICON_CACHE_DIR / f"{media_id}.png").write_bytes(icon_bytes)
+                    else:
+                        _log(f"Icon {i}/{total}: {title} (no icon)")
+
+        # Set macOS Finder icon
         if icon_bytes is not None and media_id is not None:
             try:
                 img = Image.open(io.BytesIO(icon_bytes))
@@ -844,3 +920,14 @@ def resolve_icons(
             result[filename] = media_id
 
     return result
+
+
+# Late imports — placed after all definitions to avoid circular dependency
+# with icon_catalog.py (which imports download_icon from this module).
+from yoto_lib.icon_catalog import get_catalog  # noqa: E402
+from yoto_lib.icon_llm import (  # noqa: E402
+    CONFIDENCE_HIGH,
+    CONFIDENCE_LOW,
+    compare_icons_llm,
+    match_icon_llm,
+)
