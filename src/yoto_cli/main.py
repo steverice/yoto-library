@@ -96,18 +96,24 @@ def _complete_dirs(ctx, param, incomplete):
     return _complete_path(incomplete, lambda _: False)
 
 
+def _is_mka(p):
+    return p.suffix.lower() == ".mka"
+
+
 def _complete_mka_with_icon(ctx, param, incomplete):
-    """Complete .mka files that have a custom icon."""
-    return _complete_path(
-        incomplete, lambda p: p.suffix.lower() == ".mka" and _has_custom_icon(p)
-    )
+    """Complete .mka files that have a custom icon, falling back to all .mka."""
+    results = _complete_path(incomplete, lambda p: _is_mka(p) and _has_custom_icon(p))
+    if not any(item.type == "plain" and not item.value.endswith("/") for item in results):
+        results = _complete_path(incomplete, _is_mka)
+    return results
 
 
 def _complete_mka_without_icon(ctx, param, incomplete):
-    """Complete .mka files that lack a custom icon."""
-    return _complete_path(
-        incomplete, lambda p: p.suffix.lower() == ".mka" and not _has_custom_icon(p)
-    )
+    """Complete .mka files that lack a custom icon, falling back to all .mka."""
+    results = _complete_path(incomplete, lambda p: _is_mka(p) and not _has_custom_icon(p))
+    if not any(item.type == "plain" and not item.value.endswith("/") for item in results):
+        results = _complete_path(incomplete, _is_mka)
+    return results
 
 
 # ── CLI group ─────────────────────────────────────────────────────────────────
