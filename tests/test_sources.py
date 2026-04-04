@@ -10,7 +10,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from yoto_lib.sources import parse_webloc
+from yoto_lib.sources import parse_webloc, resolve_weblocs
 from yoto_lib.sources.youtube import YouTubeProvider, _parse_silence_ranges, _trim_silence
 
 
@@ -208,3 +208,106 @@ class TestTrimSilence:
             trimmed = _trim_silence(audio)
 
         assert trimmed == audio  # unchanged
+
+
+class TestResolveWeblocs:
+    def test_resolve_webloc_downloads_and_wraps_mka(self, tmp_path):
+        """A .webloc with a YouTube URL is resolved into an .mka, webloc deleted."""
+        playlist_dir = tmp_path / "My Playlist"
+        playlist_dir.mkdir()
+
+        url = "https://www.youtube.com/watch?v=GxtknJ9KFKY"
+        webloc = playlist_dir / "song.webloc"
+        webloc.write_bytes(plistlib.dumps({"URL": url}))
+
+        fake_audio = tmp_path / "temp_audio.opus"
+        _make_wav(fake_audio)
+
+        mock_provider = MagicMock()
+        mock_provider.can_handle.return_value = True
+        mock_provider.download.return_value = (fake_audio, {"title": "My Song", "source_url": url})
+
+        with (
+            patch("yoto_lib.sources._get_providers", return_value=[mock_provider]),
+            patch("yoto_lib.sources.wrap_in_mka") as mock_wrap,
+            patch("yoto_lib.sources.write_tags") as mock_tags,
+        ):
+            def fake_wrap(src, dst):
+                dst.write_bytes(b"fake mka")
+            mock_wrap.side_effect = fake_wrap
+
+            results = resolve_weblocs(playlist_dir)
+
+        assert len(results) == 1
+        assert results[0].name == "My Song.mka"
+        assert not webloc.exists()  # consumed
+        mock_tags.assert_called_once()
+        tags_arg = mock_tags.call_args[0][1]
+        assert tags_arg["title"] == "My Song"
+        assert tags_arg["source_url"] == url
+
+    def test_resolve_webloc_unrecognized_url_skipped(self, tmp_path):
+        """A .webloc with a non-YouTube URL is left in place."""
+        playlist_dir = tmp_path / "My Playlist"
+        playlist_dir.mkdir()
+
+        webloc = playlist_dir / "random.webloc"
+        webloc.write_bytes(plistlib.dumps({"URL": "https://example.com/audio"}))
+
+        mock_provider = MagicMock()
+        mock_provider.can_handle.return_value = False
+
+        with patch("yoto_lib.sources._get_providers", return_value=[mock_provider]):
+            results = resolve_weblocs(playlist_dir)
+
+        assert results == []
+        assert webloc.exists()  # not consumed
+
+    def test_resolve_webloc_download_failure_leaves_webloc(self, tmp_path):
+        """If download fails, .webloc is left in place and error is not raised."""
+        playlist_dir = tmp_path / "My Playlist"
+        playlist_dir.mkdir()
+
+        webloc = playlist_dir / "broken.webloc"
+        webloc.write_bytes(plistlib.dumps({"URL": "https://youtu.be/bad"}))
+
+        mock_provider = MagicMock()
+        mock_provider.can_handle.return_value = True
+        mock_provider.download.side_effect = RuntimeError("video unavailable")
+
+        with patch("yoto_lib.sources._get_providers", return_value=[mock_provider]):
+            results = resolve_weblocs(playlist_dir)
+
+        assert results == []
+        assert webloc.exists()
+
+    def test_resolve_filename_collision_appends_number(self, tmp_path):
+        """If the derived MKA filename already exists, append a number."""
+        playlist_dir = tmp_path / "My Playlist"
+        playlist_dir.mkdir()
+        (playlist_dir / "My Song.mka").write_bytes(b"existing")
+
+        url = "https://youtu.be/abc"
+        webloc = playlist_dir / "dup.webloc"
+        webloc.write_bytes(plistlib.dumps({"URL": url}))
+
+        fake_audio = tmp_path / "temp.opus"
+        _make_wav(fake_audio)
+
+        mock_provider = MagicMock()
+        mock_provider.can_handle.return_value = True
+        mock_provider.download.return_value = (fake_audio, {"title": "My Song", "source_url": url})
+
+        with (
+            patch("yoto_lib.sources._get_providers", return_value=[mock_provider]),
+            patch("yoto_lib.sources.wrap_in_mka") as mock_wrap,
+            patch("yoto_lib.sources.write_tags"),
+        ):
+            def fake_wrap(src, dst):
+                dst.write_bytes(b"fake mka")
+            mock_wrap.side_effect = fake_wrap
+
+            results = resolve_weblocs(playlist_dir)
+
+        assert len(results) == 1
+        assert results[0].name == "My Song 2.mka"
