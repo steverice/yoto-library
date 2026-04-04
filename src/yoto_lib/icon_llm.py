@@ -21,12 +21,12 @@ def _extract_json(text: str) -> str:
     return text.strip()
 
 
-def _call_claude(prompt: str, *, allowed_tools: str = "", timeout: int = 120) -> str | None:
+def _call_claude(prompt: str, *, allowed_tools: str = "", timeout: int = 120, model: str = "haiku") -> str | None:
     """Call Claude CLI and return the response text, or None on failure."""
     cmd = [
         "claude", "-p", prompt,
         "--output-format", "json",
-        "--model", "haiku",
+        "--model", model,
     ]
     if allowed_tools:
         cmd += ["--allowedTools", allowed_tools]
@@ -134,8 +134,10 @@ def compare_icons_llm(
     track_title: str,
     candidates: list[bytes],
     yoto_icon: bytes | None = None,
+    descriptions: list[str] | None = None,
+    album_description: str | None = None,
 ) -> tuple[int, list[float]]:
-    """Compare candidate icon images using Claude Haiku with vision.
+    """Compare candidate icon images using Claude Sonnet with vision.
 
     Writes images to temp files and asks Claude CLI to read and evaluate them.
 
@@ -143,6 +145,8 @@ def compare_icons_llm(
         track_title: The track title the icon should represent.
         candidates: List of PNG bytes (AI-generated icons).
         yoto_icon: Optional PNG bytes for the Yoto catalog icon (appended last).
+        descriptions: Visual descriptions used to generate each candidate.
+        album_description: Album/show description for context.
 
     Returns:
         (winner, scores) where winner is 1-indexed. On failure, returns (1, []).
@@ -165,22 +169,31 @@ def compare_icons_llm(
         file_list = []
         for i, p in enumerate(paths, 1):
             label = f"Option {i}"
+            if descriptions and i <= len(descriptions):
+                label += f' (prompted as: "{descriptions[i - 1]}")'
             if yoto_icon is not None and i == len(paths):
                 label += " (Yoto library icon)"
             file_list.append(f"{label}: {p}")
 
+        context = ""
+        if album_description:
+            context = f'\nAlbum/show context: {album_description}\n'
+
         prompt = (
-            f'Read each of these icon images and evaluate which best represents '
-            f'the track titled "{track_title}". '
-            f'Score each from 0.0-1.0 on relevance and visual clarity. '
-            f'Return ONLY a JSON object: '
-            f'{{"winner": <1-indexed>, "scores": [<score_per_option>]}}. '
-            f'No explanation, no markdown, just JSON.\n\n'
+            f'You are evaluating 16x16 pixel art icons for a children\'s audio '
+            f'track called "{track_title}".{context}\n'
+            f'Read each icon image and evaluate it on these criteria:\n'
+            f'1. Does it clearly depict the intended subject at tiny 16x16 size?\n'
+            f'2. Is it recognizable at a glance — bold shapes, not muddy detail?\n'
+            f'3. Does it capture the meaning or emotion of the track title?\n\n'
+            f'Think through each option briefly, then return a JSON object:\n'
+            f'{{"winner": <1-indexed>, "scores": [<score_per_option>]}}\n'
+            f'Scores should be 0.0-1.0. End your response with the JSON.\n\n'
             + "\n".join(file_list)
         )
 
         try:
-            text = _call_claude(prompt, allowed_tools="Read", timeout=60)
+            text = _call_claude(prompt, allowed_tools="Read", timeout=120, model="sonnet")
             if text is None:
                 return 1, []
             data = json.loads(text)
@@ -189,3 +202,38 @@ def compare_icons_llm(
             return winner, scores
         except Exception:
             return 1, []
+
+
+FEEDBACK_PATH = Path.home() / ".yoto" / "icon-feedback.jsonl"
+
+
+def log_icon_feedback(
+    track_title: str,
+    llm_winner: int,
+    llm_scores: list[float],
+    user_choice: int,
+    descriptions: list[str] | None = None,
+    album: str | None = None,
+    chose_yoto: bool = False,
+) -> None:
+    """Log LLM vs user icon choice for tuning analysis."""
+    from datetime import datetime, timezone
+
+    entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "track_title": track_title,
+        "album": album,
+        "descriptions": descriptions,
+        "llm_winner": llm_winner,
+        "llm_scores": llm_scores,
+        "user_choice": user_choice,
+        "agreed": llm_winner == user_choice,
+        "chose_yoto": chose_yoto,
+    }
+
+    try:
+        FEEDBACK_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(FEEDBACK_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception:
+        pass

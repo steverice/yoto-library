@@ -783,6 +783,8 @@ def _pick_ai_icon(
     batch: "list[tuple[bytes, Image.Image]]",
     yoto_icon_bytes: "bytes | None" = None,
     yoto_media_id: "str | None" = None,
+    descriptions: "list[str] | None" = None,
+    album_description: "str | None" = None,
 ) -> "tuple[bytes | None, Image.Image | None, str | None]":
     """Use LLM to pick the best icon from AI candidates (+ optional Yoto icon).
 
@@ -795,6 +797,7 @@ def _pick_ai_icon(
     raw_images = [raw for raw, _ in batch]
     winner, _ = compare_icons_llm(
         track_title, raw_images, yoto_icon=yoto_icon_bytes,
+        descriptions=descriptions, album_description=album_description,
     )
 
     total = len(batch) + (1 if yoto_icon_bytes else 0)
@@ -915,6 +918,8 @@ def resolve_icons(
                     track_title, batch,
                     yoto_icon_bytes=yoto_bytes,
                     yoto_media_id=matched_id,
+                    descriptions=descriptions,
+                    album_description=album_desc,
                 )
 
                 if yoto_won_id:
@@ -940,7 +945,11 @@ def resolve_icons(
                 batch = generate_retrodiffusion_icons(descriptions) if descriptions else []
 
                 if batch:
-                    icon_bytes_result, icon_img, _ = _pick_ai_icon(track_title, batch)
+                    icon_bytes_result, icon_img, _ = _pick_ai_icon(
+                        track_title, batch,
+                        descriptions=descriptions,
+                        album_description=album_desc,
+                    )
                     if icon_bytes_result:
                         apply_icon_to_mka(track_path, icon_bytes_result)
                         icon_bytes = icon_bytes_result
