@@ -11,7 +11,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from yoto_lib.sources import parse_webloc
-from yoto_lib.sources.youtube import YouTubeProvider
+from yoto_lib.sources.youtube import YouTubeProvider, _parse_silence_ranges, _trim_silence
 
 
 class TestParseWebloc:
@@ -115,3 +115,96 @@ class TestYouTubeDownload:
         ):
             with pytest.raises(RuntimeError, match="yt-dlp is required"):
                 provider.download("https://youtu.be/abc", tmp_path, trim=False)
+
+
+class TestSilenceDetection:
+    def test_parse_silence_ranges_from_ffmpeg_output(self):
+        """_parse_silence_ranges extracts (start, end) pairs from ffmpeg stderr."""
+        stderr = (
+            "[silencedetect @ 0x1234] silence_start: 0\n"
+            "[silencedetect @ 0x1234] silence_end: 1.5 | silence_duration: 1.5\n"
+            "[silencedetect @ 0x1234] silence_start: 30.2\n"
+            "[silencedetect @ 0x1234] silence_end: 31.0 | silence_duration: 0.8\n"
+            "[silencedetect @ 0x1234] silence_start: 65.0\n"
+            "[silencedetect @ 0x1234] silence_end: 66.5 | silence_duration: 1.5\n"
+        )
+        ranges = _parse_silence_ranges(stderr)
+        assert ranges == [(0.0, 1.5), (30.2, 31.0), (65.0, 66.5)]
+
+    def test_parse_silence_ranges_empty(self):
+        """_parse_silence_ranges returns empty list when no silence found."""
+        assert _parse_silence_ranges("some random output\n") == []
+
+    def test_parse_silence_ranges_unterminated(self):
+        """A silence_start without a matching silence_end is ignored."""
+        stderr = (
+            "[silencedetect @ 0x1234] silence_start: 0\n"
+            "[silencedetect @ 0x1234] silence_end: 1.5 | silence_duration: 1.5\n"
+            "[silencedetect @ 0x1234] silence_start: 60.0\n"
+        )
+        ranges = _parse_silence_ranges(stderr)
+        assert ranges == [(0.0, 1.5)]
+
+
+class TestTrimSilence:
+    def test_trim_with_two_gaps_extracts_middle(self, tmp_path):
+        """When >=2 silence gaps, trim extracts audio between first and last gap."""
+        audio = tmp_path / "song.wav"
+        _make_wav(audio, duration_seconds=2.0)
+
+        silence_stderr = (
+            "[silencedetect @ 0x1234] silence_start: 0\n"
+            "[silencedetect @ 0x1234] silence_end: 0.5 | silence_duration: 0.5\n"
+            "[silencedetect @ 0x1234] silence_start: 1.5\n"
+            "[silencedetect @ 0x1234] silence_end: 2.0 | silence_duration: 0.5\n"
+        )
+
+        call_count = [0]
+        def fake_run(cmd, **kwargs):
+            result = MagicMock()
+            result.returncode = 0
+            if call_count[0] == 0:
+                # silencedetect call
+                result.stderr = silence_stderr
+                call_count[0] += 1
+                return result
+            else:
+                # ffmpeg trim call — write a trimmed file
+                for i, arg in enumerate(cmd):
+                    if i > 0 and cmd[i - 1] == "-ss":
+                        assert arg == "0.5"  # start after first silence
+                for i, arg in enumerate(cmd):
+                    if i > 0 and cmd[i - 1] == "-to":
+                        assert arg == "1.5"  # end at start of last silence
+                # Find output path (last argument)
+                out = Path(cmd[-1])
+                _make_wav(out, duration_seconds=1.0)
+                result.returncode = 0
+                return result
+
+        with patch("yoto_lib.sources.youtube.subprocess.run", side_effect=fake_run):
+            trimmed = _trim_silence(audio)
+
+        assert trimmed == audio  # same path, file replaced in-place
+        assert trimmed.exists()
+
+    def test_trim_with_fewer_than_two_gaps_returns_original(self, tmp_path):
+        """When <2 silence gaps, return original file untouched."""
+        audio = tmp_path / "clean.wav"
+        _make_wav(audio, duration_seconds=2.0)
+
+        silence_stderr = (
+            "[silencedetect @ 0x1234] silence_start: 0\n"
+            "[silencedetect @ 0x1234] silence_end: 0.3 | silence_duration: 0.3\n"
+        )
+
+        def fake_run(cmd, **kwargs):
+            result = MagicMock()
+            result.returncode = 0
+            result.stderr = silence_stderr
+            return result
+
+        with patch("yoto_lib.sources.youtube.subprocess.run", side_effect=fake_run):
+            trimmed = _trim_silence(audio)
+
+        assert trimmed == audio  # unchanged
