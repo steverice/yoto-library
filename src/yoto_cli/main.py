@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 from pathlib import Path
 
 import click
+from click.shell_completion import CompletionItem
 from dotenv import find_dotenv, load_dotenv
 
 load_dotenv(find_dotenv(usecwd=True))
@@ -32,6 +34,79 @@ def _is_card_id(value: str) -> bool:
     return (
         bool(re.fullmatch(r"[A-Za-z0-9]{1,10}", value))
         and not Path(value).exists()
+    )
+
+
+# ── Shell completion helpers ──────────────────────────────────────────────────
+
+
+def _has_custom_icon(path: Path) -> bool:
+    """Check if an MKA file has an icon attachment."""
+    import json
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["mkvmerge", "-J", str(path)],
+            capture_output=True, text=True, timeout=5,
+        )
+        data = json.loads(result.stdout)
+        return any(a.get("file_name") == "icon" for a in data.get("attachments", []))
+    except Exception:
+        return False
+
+
+def _complete_path(incomplete: str, filter_fn):
+    """Complete filesystem paths, yielding dirs (for navigation) and filtered files."""
+    inc_path = Path(incomplete) if incomplete else Path(".")
+
+    if inc_path.is_dir() and (not incomplete or incomplete.endswith("/")):
+        search_dir = inc_path
+        prefix = ""
+    else:
+        search_dir = inc_path.parent
+        prefix = inc_path.name
+
+    if not search_dir.is_dir():
+        return []
+
+    items = []
+    for entry in sorted(search_dir.iterdir()):
+        if entry.name.startswith("."):
+            continue
+        if prefix and not entry.name.lower().startswith(prefix.lower()):
+            continue
+
+        value = entry.name if str(search_dir) == "." else str(search_dir / entry.name)
+
+        if entry.is_dir():
+            items.append(CompletionItem(value + "/", type="dir"))
+        elif filter_fn(entry):
+            items.append(CompletionItem(value, type="file"))
+    return items
+
+
+def _complete_weblocs(ctx, param, incomplete):
+    """Complete .webloc file paths."""
+    return _complete_path(incomplete, lambda p: p.suffix.lower() == ".webloc")
+
+
+def _complete_dirs(ctx, param, incomplete):
+    """Complete directory paths only."""
+    return _complete_path(incomplete, lambda _: False)
+
+
+def _complete_mka_with_icon(ctx, param, incomplete):
+    """Complete .mka files that have a custom icon."""
+    return _complete_path(
+        incomplete, lambda p: p.suffix.lower() == ".mka" and _has_custom_icon(p)
+    )
+
+
+def _complete_mka_without_icon(ctx, param, incomplete):
+    """Complete .mka files that lack a custom icon."""
+    return _complete_path(
+        incomplete, lambda p: p.suffix.lower() == ".mka" and not _has_custom_icon(p)
     )
 
 
@@ -113,7 +188,7 @@ def sync(path, dry_run, no_trim):
 
 
 @cli.command()
-@click.argument("path", default=".", type=click.Path(exists=True))
+@click.argument("path", default=".", type=click.Path(exists=True), shell_complete=_complete_weblocs)
 @click.option("--no-trim", is_flag=True, help="Skip silence trimming on YouTube downloads")
 def download(path, no_trim):
     """Download audio from .webloc URLs in a playlist folder."""
@@ -307,7 +382,7 @@ def _strip_track_number(stem: str) -> str:
 
 
 @cli.command(name="import")
-@click.argument("source", type=click.Path(exists=True))
+@click.argument("source", type=click.Path(exists=True), shell_complete=_complete_dirs)
 @click.option(
     "--output", "-o",
     default=None,
@@ -423,7 +498,7 @@ def _render_icons_side_by_side(
 
 
 @cli.command(name="select-icon")
-@click.argument("track", type=click.Path(exists=True))
+@click.argument("track", type=click.Path(exists=True), shell_complete=_complete_mka_without_icon)
 def select_icon(track):
     """Generate 3 icon options for a track, show best Yoto match, and attach the chosen one."""
     import io
@@ -562,7 +637,7 @@ def select_icon(track):
 
 
 @cli.command(name="reset-icon")
-@click.argument("tracks", nargs=-1, required=True, type=click.Path(exists=True))
+@click.argument("tracks", nargs=-1, required=True, type=click.Path(exists=True), shell_complete=_complete_mka_with_icon)
 def reset_icon(tracks):
     """Remove the icon from one or more MKA tracks so sync regenerates them."""
     from yoto_lib.icons import clear_macos_file_icon
@@ -575,6 +650,46 @@ def reset_icon(tracks):
             click.echo(f"  Cleared icon: {path.name}")
         except Exception as exc:
             click.echo(f"  Error ({path.name}): {exc}", err=True)
+
+
+# ── completions ──────────────────────────────────────────────────────────────
+
+
+@cli.command()
+@click.argument("shell", required=False, default=None, type=click.Choice(["zsh", "bash", "fish"]))
+def completions(shell):
+    """Install context-aware shell completions."""
+    if shell is None:
+        parent_shell = Path(os.environ.get("SHELL", "")).name
+        shell = parent_shell if parent_shell in ("zsh", "bash", "fish") else None
+        if shell is None:
+            raise click.ClickException("Could not detect shell. Pass zsh, bash, or fish.")
+
+    env_var = f"_YOTO_COMPLETE={shell}_source"
+    marker = "# yoto shell completions"
+
+    if shell == "zsh":
+        line = f'eval "$({env_var} yoto)"'
+        config = Path.home() / ".zshrc"
+    elif shell == "bash":
+        line = f'eval "$({env_var} yoto)"'
+        config = Path.home() / ".bashrc"
+    else:
+        line = f"eval ({env_var} yoto)"
+        config = Path.home() / ".config" / "fish" / "completions" / "yoto.fish"
+
+    # Check if already installed
+    if config.exists() and marker in config.read_text(encoding="utf-8"):
+        click.echo(f"Completions already installed in {config}")
+        return
+
+    # Append to config
+    config.parent.mkdir(parents=True, exist_ok=True)
+    with open(config, "a", encoding="utf-8") as f:
+        f.write(f"\n{marker}\n{line}\n")
+
+    click.echo(f"Installed completions in {config}")
+    click.echo(f"Run this to activate now:  source {config}")
 
 
 # ── list ──────────────────────────────────────────────────────────────────────
