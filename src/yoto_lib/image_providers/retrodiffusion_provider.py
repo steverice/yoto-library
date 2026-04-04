@@ -16,6 +16,12 @@ class RetroDiffusionProvider:
 
     def generate(self, prompt: str, width: int, height: int) -> bytes:
         """Generate pixel art. Returns PNG bytes at the exact requested size."""
+        return self.generate_batch(prompt, width, height, count=1)[0]
+
+    def generate_batch(
+        self, prompt: str, width: int, height: int, count: int = 1,
+    ) -> list[bytes]:
+        """Generate multiple pixel art images. Returns list of PNG bytes."""
         response = httpx.post(
             "https://api.retrodiffusion.ai/v1/inferences",
             headers={"X-RD-Token": self._api_key},
@@ -23,12 +29,11 @@ class RetroDiffusionProvider:
                 "prompt": prompt,
                 "width": width,
                 "height": height,
-                "num_images": 1,
+                "num_images": count,
                 "prompt_style": self._style,
             },
             timeout=60,
         )
         response.raise_for_status()
         data = response.json()
-        b64_data = data["base64_images"][0]
-        return base64.b64decode(b64_data)
+        return [base64.b64decode(b64) for b64 in data["base64_images"]]
