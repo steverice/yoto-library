@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PIL import Image
 
+from yoto_lib.icon_llm import CONFIDENCE_HIGH, CONFIDENCE_LOW
 from yoto_lib.icons import (
     ICNS_SIZES,
     ICNS_TYPE_MAP,
@@ -257,3 +258,111 @@ class TestGenerateRetrodiffusionBatch:
             results = generate_retrodiffusion_batch("Test Song")
 
         assert results == []
+
+
+class TestResolveIconsZones:
+    """Tests for the three-zone confidence logic in resolve_icons."""
+
+    def _make_playlist(self, tmp_path, track_names):
+        """Create a minimal Playlist with MKA stubs."""
+        from yoto_lib.playlist import Playlist
+
+        playlist_dir = tmp_path / "test_playlist"
+        playlist_dir.mkdir()
+        for name in track_names:
+            (playlist_dir / name).write_bytes(b"")
+
+        playlist = MagicMock(spec=Playlist)
+        playlist.path = playlist_dir
+        playlist.track_files = track_names
+        return playlist
+
+    def _make_icon_png(self):
+        buf = io.BytesIO()
+        Image.new("RGB", (16, 16), "blue").save(buf, format="PNG")
+        return buf.getvalue()
+
+    def test_high_confidence_uses_yoto_icon(self, tmp_path):
+        """Score >= 0.8: uses Yoto icon directly, no AI generation."""
+        playlist = self._make_playlist(tmp_path, ["track.mka"])
+        api = MagicMock()
+
+        icon_png = self._make_icon_png()
+        catalog = [{"mediaId": "yoto-dino", "title": "Dinosaur"}]
+
+        with (
+            patch("yoto_lib.icons.mka.get_attachment", side_effect=Exception),
+            patch("yoto_lib.icons.mka.read_tags", return_value={"title": "Dinosaur Story"}),
+            patch("yoto_lib.icons.get_catalog", return_value=catalog),
+            patch("yoto_lib.icons.match_icon_llm", return_value=("yoto-dino", 0.92)),
+            patch("yoto_lib.icons.download_icon", return_value=icon_png),
+            patch("yoto_lib.icons.apply_icon_to_mka"),
+            patch("yoto_lib.icons.set_macos_file_icon"),
+            patch("yoto_lib.icons.generate_retrodiffusion_batch") as mock_gen,
+        ):
+            from yoto_lib.icons import resolve_icons
+            result = resolve_icons(playlist, api)
+
+        assert result["track.mka"] == "yoto-dino"
+        mock_gen.assert_not_called()
+
+    def test_low_confidence_generates_ai_picks_best(self, tmp_path):
+        """Score < 0.4: generates 3 AI icons, LLM picks best of 3."""
+        playlist = self._make_playlist(tmp_path, ["track.mka"])
+        api = MagicMock()
+
+        icon_png = self._make_icon_png()
+        catalog = [{"mediaId": "star-id", "title": "Star"}]
+
+        with (
+            patch("yoto_lib.icons.mka.get_attachment", side_effect=Exception),
+            patch("yoto_lib.icons.mka.read_tags", return_value={"title": "Quantum Physics"}),
+            patch("yoto_lib.icons.get_catalog", return_value=catalog),
+            patch("yoto_lib.icons.match_icon_llm", return_value=(None, 0.1)),
+            patch("yoto_lib.icons.generate_retrodiffusion_batch") as mock_gen,
+            patch("yoto_lib.icons.compare_icons_llm", return_value=(2, [0.5, 0.9, 0.6])),
+            patch("yoto_lib.icons.apply_icon_to_mka"),
+            patch("yoto_lib.icons._upload_icon_bytes", return_value="uploaded-id"),
+            patch("yoto_lib.icons.set_macos_file_icon"),
+        ):
+            img = Image.new("RGBA", (16, 16), "red")
+            mock_gen.return_value = [(icon_png, img)] * 3
+
+            from yoto_lib.icons import resolve_icons
+            result = resolve_icons(playlist, api)
+
+        assert result["track.mka"] == "uploaded-id"
+        mock_gen.assert_called_once()
+
+    def test_gray_zone_compares_four_candidates(self, tmp_path):
+        """Score 0.4-0.8: generates 3 AI + includes Yoto icon, LLM picks best of 4."""
+        playlist = self._make_playlist(tmp_path, ["track.mka"])
+        api = MagicMock()
+
+        icon_png = self._make_icon_png()
+        catalog = [{"mediaId": "yoto-dino", "title": "Dinosaur"}]
+
+        with (
+            patch("yoto_lib.icons.mka.get_attachment", side_effect=Exception),
+            patch("yoto_lib.icons.mka.read_tags", return_value={"title": "Dino Fun"}),
+            patch("yoto_lib.icons.get_catalog", return_value=catalog),
+            patch("yoto_lib.icons.match_icon_llm", return_value=("yoto-dino", 0.6)),
+            patch("yoto_lib.icons.download_icon", return_value=icon_png),
+            patch("yoto_lib.icons.generate_retrodiffusion_batch") as mock_gen,
+            patch("yoto_lib.icons.compare_icons_llm") as mock_compare,
+            patch("yoto_lib.icons.apply_icon_to_mka"),
+            patch("yoto_lib.icons._upload_icon_bytes", return_value="uploaded-id"),
+            patch("yoto_lib.icons.set_macos_file_icon"),
+        ):
+            img = Image.new("RGBA", (16, 16), "red")
+            mock_gen.return_value = [(icon_png, img)] * 3
+            mock_compare.return_value = (4, [0.5, 0.6, 0.5, 0.85])
+
+            from yoto_lib.icons import resolve_icons
+            result = resolve_icons(playlist, api)
+
+        assert result["track.mka"] == "yoto-dino"
+        call_args = mock_compare.call_args
+        ai_candidates = call_args.args[1] if len(call_args.args) > 1 else call_args.kwargs.get("candidates", [])
+        assert len(ai_candidates) == 3
+        assert call_args.kwargs.get("yoto_icon") is not None or (len(call_args.args) > 2 and call_args.args[2] is not None)
