@@ -99,11 +99,11 @@ class TestGenerateIcnsSizes:
 
 class TestMatchPublicIcon:
     def _icons(self, entries: list[tuple[str, str]]) -> list[dict]:
-        """Build a list of public-icon dicts from (name, mediaId) pairs."""
-        return [{"name": name, "mediaId": mid} for name, mid in entries]
+        """Build a list of public-icon dicts from (title, mediaId) pairs."""
+        return [{"title": title, "mediaId": mid} for title, mid in entries]
 
     def test_exact_title_match(self):
-        """An icon whose name exactly equals the track title returns its mediaId."""
+        """An icon whose title exactly equals the track title returns its mediaId."""
         icons = self._icons([
             ("Jungle Adventure", "id-jungle"),
             ("Space Explorer", "id-space"),
@@ -117,7 +117,6 @@ class TestMatchPublicIcon:
             ("Adventure Time", "id-adventure"),
             ("Bedtime Story", "id-bedtime"),
         ])
-        # "Adventure Time Stories" shares "Adventure" and "Time" with first icon (2/3 ≈ 0.67)
         result = match_public_icon("Adventure Time Stories", icons)
         assert result == "id-adventure"
 
@@ -129,6 +128,12 @@ class TestMatchPublicIcon:
         ])
         result = match_public_icon("Completely Unrelated Topic Here", icons)
         assert result is None
+
+    def test_falls_back_to_name_field(self):
+        """Falls back to 'name' if 'title' is missing."""
+        icons = [{"name": "Jungle Adventure", "mediaId": "id-jungle"}]
+        result = match_public_icon("Jungle Adventure", icons)
+        assert result == "id-jungle"
 
 
 # ── TestExtractIconHash ──────────────────────────────────────────────────────

@@ -315,7 +315,7 @@ def match_public_icon(
     best_id: str | None = None
 
     for icon in public_icons:
-        name: str = icon.get("name", "") or ""
+        name: str = icon.get("title", "") or icon.get("name", "") or ""
         media_id: str = icon.get("mediaId", "") or ""
         if not media_id:
             continue
