@@ -366,3 +366,64 @@ class TestResolveIconsZones:
         ai_candidates = call_args.args[1] if len(call_args.args) > 1 else call_args.kwargs.get("candidates", [])
         assert len(ai_candidates) == 3
         assert call_args.kwargs.get("yoto_icon") is not None or (len(call_args.args) > 2 and call_args.args[2] is not None)
+
+
+class TestResolveIconsLexicalShortcut:
+    def _make_playlist(self, tmp_path, track_names):
+        from yoto_lib.playlist import Playlist
+        playlist_dir = tmp_path / "test_playlist"
+        playlist_dir.mkdir()
+        for name in track_names:
+            (playlist_dir / name).write_bytes(b"")
+        playlist = MagicMock(spec=Playlist)
+        playlist.path = playlist_dir
+        playlist.track_files = track_names
+        return playlist
+
+    def _make_icon_png(self):
+        buf = io.BytesIO()
+        Image.new("RGB", (16, 16), "blue").save(buf, format="PNG")
+        return buf.getvalue()
+
+    def test_exact_title_match_skips_llm(self, tmp_path):
+        """When track title exactly matches an icon title, skip the LLM call."""
+        playlist = self._make_playlist(tmp_path, ["Dinosaur.mka"])
+        api = MagicMock()
+        icon_png = self._make_icon_png()
+        catalog = [{"mediaId": "dino-id", "title": "Dinosaur"}]
+
+        with (
+            patch("yoto_lib.icons.mka.get_attachment", side_effect=Exception),
+            patch("yoto_lib.icons.mka.read_tags", return_value={"title": "Dinosaur"}),
+            patch("yoto_lib.icons.get_catalog", return_value=catalog),
+            patch("yoto_lib.icons.match_icon_llm") as mock_llm,
+            patch("yoto_lib.icons.download_icon", return_value=icon_png),
+            patch("yoto_lib.icons.apply_icon_to_mka"),
+            patch("yoto_lib.icons.set_macos_file_icon"),
+        ):
+            from yoto_lib.icons import resolve_icons
+            result = resolve_icons(playlist, api)
+
+        assert result["Dinosaur.mka"] == "dino-id"
+        mock_llm.assert_not_called()
+
+    def test_partial_lexical_match_does_not_skip_llm(self, tmp_path):
+        """A partial match (e.g. 'Dinosaur Stories' vs 'Dinosaur') still goes to LLM."""
+        playlist = self._make_playlist(tmp_path, ["track.mka"])
+        api = MagicMock()
+        icon_png = self._make_icon_png()
+        catalog = [{"mediaId": "dino-id", "title": "Dinosaur"}]
+
+        with (
+            patch("yoto_lib.icons.mka.get_attachment", side_effect=Exception),
+            patch("yoto_lib.icons.mka.read_tags", return_value={"title": "Dinosaur Stories"}),
+            patch("yoto_lib.icons.get_catalog", return_value=catalog),
+            patch("yoto_lib.icons.match_icon_llm", return_value=("dino-id", 0.85)) as mock_llm,
+            patch("yoto_lib.icons.download_icon", return_value=icon_png),
+            patch("yoto_lib.icons.apply_icon_to_mka"),
+            patch("yoto_lib.icons.set_macos_file_icon"),
+        ):
+            from yoto_lib.icons import resolve_icons
+            result = resolve_icons(playlist, api)
+
+        mock_llm.assert_called_once()
