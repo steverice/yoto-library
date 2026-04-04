@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -15,15 +15,6 @@ from yoto_lib.icon_llm import (
 )
 
 
-def _make_mock_response(content_text: str):
-    """Build a mock Anthropic API response."""
-    mock_block = MagicMock()
-    mock_block.text = content_text
-    mock_response = MagicMock()
-    mock_response.content = [mock_block]
-    return mock_response
-
-
 class TestMatchIconLlm:
     def test_high_confidence_match(self):
         """Returns mediaId and confidence when LLM finds a strong match."""
@@ -33,7 +24,7 @@ class TestMatchIconLlm:
         ]
         response_json = json.dumps({"mediaId": "dino-id", "confidence": 0.92})
 
-        with patch("yoto_lib.icon_llm._call_anthropic", return_value=response_json):
+        with patch("yoto_lib.icon_llm._call_claude", return_value=response_json):
             media_id, confidence = match_icon_llm("Dinosaur Stories", icons)
 
         assert media_id == "dino-id"
@@ -44,17 +35,17 @@ class TestMatchIconLlm:
         icons = [{"mediaId": "star-id", "title": "Star"}]
         response_json = json.dumps({"mediaId": "none", "confidence": 0.0})
 
-        with patch("yoto_lib.icon_llm._call_anthropic", return_value=response_json):
+        with patch("yoto_lib.icon_llm._call_claude", return_value=response_json):
             media_id, confidence = match_icon_llm("Quantum Physics Lecture", icons)
 
         assert media_id is None
         assert confidence == 0.0
 
     def test_api_failure_returns_none(self):
-        """Returns (None, 0.0) when the Anthropic API call fails."""
+        """Returns (None, 0.0) when the Claude CLI call fails."""
         icons = [{"mediaId": "star-id", "title": "Star"}]
 
-        with patch("yoto_lib.icon_llm._call_anthropic", side_effect=Exception("API down")):
+        with patch("yoto_lib.icon_llm._call_claude", return_value=None):
             media_id, confidence = match_icon_llm("Anything", icons)
 
         assert media_id is None
@@ -70,7 +61,7 @@ class TestMatchIconLlm:
         """Returns (None, 0.0) when the LLM returns unparseable output."""
         icons = [{"mediaId": "star-id", "title": "Star"}]
 
-        with patch("yoto_lib.icon_llm._call_anthropic", return_value="not json at all"):
+        with patch("yoto_lib.icon_llm._call_claude", return_value="not json at all"):
             media_id, confidence = match_icon_llm("Anything", icons)
 
         assert media_id is None
@@ -92,7 +83,7 @@ class TestCompareIconsLlm:
         candidates = [_make_red_png(), _make_red_png(), _make_red_png()]
         response_json = json.dumps({"winner": 2, "scores": [0.5, 0.9, 0.6]})
 
-        with patch("yoto_lib.icon_llm._call_anthropic", return_value=response_json):
+        with patch("yoto_lib.icon_llm._call_claude", return_value=response_json):
             winner, scores = compare_icons_llm("Dinosaur Story", candidates)
 
         assert winner == 2
@@ -104,7 +95,7 @@ class TestCompareIconsLlm:
         yoto_icon = _make_red_png()
         response_json = json.dumps({"winner": 4, "scores": [0.5, 0.6, 0.5, 0.85]})
 
-        with patch("yoto_lib.icon_llm._call_anthropic", return_value=response_json):
+        with patch("yoto_lib.icon_llm._call_claude", return_value=response_json):
             winner, scores = compare_icons_llm(
                 "Dinosaur Story", ai_icons, yoto_icon=yoto_icon,
             )
@@ -116,7 +107,7 @@ class TestCompareIconsLlm:
         """On API failure, returns winner=1 (first candidate)."""
         candidates = [_make_red_png(), _make_red_png()]
 
-        with patch("yoto_lib.icon_llm._call_anthropic", side_effect=Exception("fail")):
+        with patch("yoto_lib.icon_llm._call_claude", return_value=None):
             winner, scores = compare_icons_llm("Title", candidates)
 
         assert winner == 1
