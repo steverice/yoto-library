@@ -7,6 +7,9 @@ import re
 import subprocess
 from pathlib import Path
 
+_SILENCE_START_RE = re.compile(r"silence_start:\s*([\d.]+)")
+_SILENCE_END_RE = re.compile(r"silence_end:\s*([\d.]+)")
+
 _YOUTUBE_PATTERNS = [
     re.compile(r"https?://(www\.)?youtube\.com/watch"),
     re.compile(r"https?://youtu\.be/"),
@@ -20,9 +23,63 @@ def _sanitize_filename(title: str) -> str:
     return title.replace("/", "").replace(":", "").strip()
 
 
+def _parse_silence_ranges(stderr: str) -> list[tuple[float, float]]:
+    """Parse ffmpeg silencedetect output into (start, end) pairs."""
+    ranges: list[tuple[float, float]] = []
+    current_start: float | None = None
+    for line in stderr.splitlines():
+        m = _SILENCE_START_RE.search(line)
+        if m:
+            current_start = float(m.group(1))
+            continue
+        m = _SILENCE_END_RE.search(line)
+        if m and current_start is not None:
+            ranges.append((current_start, float(m.group(1))))
+            current_start = None
+    return ranges
+
+
 def _trim_silence(audio_path: Path) -> Path:
-    """Trim pre-roll/post-roll silence. Implemented in Task 3."""
-    raise NotImplementedError("Silence trimming not yet implemented")
+    """Trim pre-roll and post-roll from audio using silence detection.
+
+    Runs ffmpeg silencedetect, then extracts the segment between the end
+    of the first silence gap and the start of the last silence gap.
+    Returns the original path unchanged if fewer than 2 gaps are found.
+    """
+    result = subprocess.run(
+        [
+            "ffmpeg", "-i", str(audio_path),
+            "-af", "silencedetect=noise=-30dB:d=0.5",
+            "-f", "null", "-",
+        ],
+        capture_output=True, text=True,
+    )
+    ranges = _parse_silence_ranges(result.stderr)
+
+    if len(ranges) < 2:
+        return audio_path
+
+    start = ranges[0][1]   # end of first silence gap
+    end = ranges[-1][0]    # start of last silence gap
+
+    if end <= start:
+        return audio_path
+
+    trimmed_path = audio_path.with_stem(audio_path.stem + "_trimmed")
+    trim_result = subprocess.run(
+        [
+            "ffmpeg", "-y", "-i", str(audio_path),
+            "-ss", str(start), "-to", str(end),
+            "-c", "copy", str(trimmed_path),
+        ],
+        capture_output=True, text=True,
+    )
+    if trim_result.returncode != 0:
+        return audio_path
+
+    audio_path.unlink()
+    trimmed_path.rename(audio_path)
+    return audio_path
 
 
 class YouTubeProvider:
