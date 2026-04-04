@@ -20,6 +20,11 @@ def _sanitize_filename(title: str) -> str:
     return title.replace("/", "").replace(":", "").strip()
 
 
+def _trim_silence(audio_path: Path) -> Path:
+    """Trim pre-roll/post-roll silence. Implemented in Task 3."""
+    raise NotImplementedError("Silence trimming not yet implemented")
+
+
 class YouTubeProvider:
     def can_handle(self, url: str) -> bool:
         """Return True if url is a YouTube video URL."""
