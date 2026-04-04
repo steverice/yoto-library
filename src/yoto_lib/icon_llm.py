@@ -1,34 +1,49 @@
-"""LLM-based icon matching and comparison via Anthropic SDK."""
+"""LLM-based icon matching and comparison via Claude CLI."""
 
 from __future__ import annotations
 
-import base64
 import json
+import re
+import subprocess
+import tempfile
+from pathlib import Path
 
 # Zone thresholds
 CONFIDENCE_HIGH = 0.8
 CONFIDENCE_LOW = 0.4
 
 
-def _call_anthropic(
-    system: str,
-    user_content: str | list,
-    max_tokens: int = 256,
-) -> str:
-    """Call Claude Haiku and return the text response.
+def _extract_json(text: str) -> str:
+    """Strip markdown code fences from Claude output to get raw JSON."""
+    m = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
+    if m:
+        return m.group(1).strip()
+    return text.strip()
 
-    Raises on any failure so callers can handle gracefully.
-    """
-    import anthropic
 
-    client = anthropic.Anthropic()
-    response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=max_tokens,
-        system=system,
-        messages=[{"role": "user", "content": user_content}],
-    )
-    return response.content[0].text
+def _call_claude(prompt: str, *, allowed_tools: str = "", timeout: int = 120) -> str | None:
+    """Call Claude CLI and return the response text, or None on failure."""
+    cmd = [
+        "claude", "-p", prompt,
+        "--output-format", "json",
+        "--model", "haiku",
+    ]
+    if allowed_tools:
+        cmd += ["--allowedTools", allowed_tools]
+    else:
+        cmd += ["--tools", ""]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        if result.returncode != 0:
+            return None
+        wrapper = json.loads(result.stdout)
+        if wrapper.get("is_error"):
+            return None
+        text = wrapper.get("result", result.stdout).strip()
+        return _extract_json(text)
+    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError):
+        return None
 
 
 def match_icon_llm(
@@ -52,21 +67,19 @@ def match_icon_llm(
     if not icon_lines:
         return None, 0.0
 
-    system = (
-        "You match track titles to icons. Respond with ONLY a JSON object: "
-        '{"mediaId": "<best_match_id>", "confidence": <0.0-1.0>}. '
-        'If nothing fits, return {"mediaId": "none", "confidence": 0.0}. '
-        "No explanation, no markdown, just JSON."
-    )
-
-    user_msg = (
-        f'Track title: "{track_title}"\n\n'
-        f"Which icon best represents this track?\n\n"
-        f"Icons:\n" + "\n".join(icon_lines)
+    prompt = (
+        f'Given the track title "{track_title}", which of these Yoto icons best '
+        f'represents it? Return ONLY a JSON object: '
+        f'{{"mediaId": "<best_match_id>", "confidence": <0.0-1.0>}}. '
+        f'If nothing fits, return {{"mediaId": "none", "confidence": 0.0}}. '
+        f'No explanation, no markdown, just JSON.\n\n'
+        f'Icons:\n' + "\n".join(icon_lines)
     )
 
     try:
-        text = _call_anthropic(system, user_msg)
+        text = _call_claude(prompt)
+        if text is None:
+            return None, 0.0
         data = json.loads(text)
         media_id = data.get("mediaId", "none")
         confidence = float(data.get("confidence", 0.0))
@@ -84,6 +97,8 @@ def compare_icons_llm(
 ) -> tuple[int, list[float]]:
     """Compare candidate icon images using Claude Haiku with vision.
 
+    Writes images to temp files and asks Claude CLI to read and evaluate them.
+
     Args:
         track_title: The track title the icon should represent.
         candidates: List of PNG bytes (AI-generated icons).
@@ -99,41 +114,38 @@ def compare_icons_llm(
     if not all_images:
         return 1, []
 
-    content: list[dict] = []
-    for i, img_bytes in enumerate(all_images, 1):
-        label = f"Option {i}"
-        if yoto_icon is not None and i == len(all_images):
-            label += " (Yoto library icon)"
-        content.append({"type": "text", "text": f"{label}:"})
-        content.append({
-            "type": "image",
-            "source": {
-                "type": "base64",
-                "media_type": "image/png",
-                "data": base64.b64encode(img_bytes).decode(),
-            },
-        })
+    with tempfile.TemporaryDirectory(prefix="yoto-compare-") as tmpdir:
+        tmp = Path(tmpdir)
+        paths = []
+        for i, img_bytes in enumerate(all_images):
+            p = tmp / f"option_{i + 1}.png"
+            p.write_bytes(img_bytes)
+            paths.append(p)
 
-    content.append({
-        "type": "text",
-        "text": (
-            f'\nTrack title: "{track_title}"\n'
-            f"Which icon best represents this track? "
-            f"Score each from 0.0-1.0 on relevance and visual clarity."
-        ),
-    })
+        file_list = []
+        for i, p in enumerate(paths, 1):
+            label = f"Option {i}"
+            if yoto_icon is not None and i == len(paths):
+                label += " (Yoto library icon)"
+            file_list.append(f"{label}: {p}")
 
-    system = (
-        "You evaluate icons for audio tracks. Respond with ONLY a JSON object: "
-        '{"winner": <1-indexed>, "scores": [<score_per_option>]}. '
-        "No explanation, no markdown, just JSON."
-    )
+        prompt = (
+            f'Read each of these icon images and evaluate which best represents '
+            f'the track titled "{track_title}". '
+            f'Score each from 0.0-1.0 on relevance and visual clarity. '
+            f'Return ONLY a JSON object: '
+            f'{{"winner": <1-indexed>, "scores": [<score_per_option>]}}. '
+            f'No explanation, no markdown, just JSON.\n\n'
+            + "\n".join(file_list)
+        )
 
-    try:
-        text = _call_anthropic(system, content, max_tokens=256)
-        data = json.loads(text)
-        winner = int(data["winner"])
-        scores = [float(s) for s in data["scores"]]
-        return winner, scores
-    except Exception:
-        return 1, []
+        try:
+            text = _call_claude(prompt, allowed_tools="Read", timeout=60)
+            if text is None:
+                return 1, []
+            data = json.loads(text)
+            winner = int(data["winner"])
+            scores = [float(s) for s in data["scores"]]
+            return winner, scores
+        except Exception:
+            return 1, []

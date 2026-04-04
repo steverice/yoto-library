@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -49,6 +50,27 @@ def is_catalog_stale(cache_dir: Path = _DEFAULT_CACHE_DIR) -> bool:
         return True
 
 
+_JUNK_TITLE = re.compile(r"_test$|^MYO_radio", re.IGNORECASE)
+
+
+def _filter_catalog(icons: list[dict]) -> list[dict]:
+    """Remove test entries, empty titles, and duplicates from the catalog."""
+    seen_titles: set[str] = set()
+    filtered = []
+    for icon in icons:
+        title = (icon.get("title", "") or icon.get("name", "")).strip()
+        if not title:
+            continue
+        if _JUNK_TITLE.search(title):
+            continue
+        key = title.lower()
+        if key in seen_titles:
+            continue
+        seen_titles.add(key)
+        filtered.append(icon)
+    return filtered
+
+
 def refresh_catalog(
     api: "YotoAPI",
     cache_dir: Path = _DEFAULT_CACHE_DIR,
@@ -56,7 +78,7 @@ def refresh_catalog(
     """Fetch the catalog from the API, save it, and download missing PNGs."""
     from yoto_lib.icons import download_icon  # lazy to avoid circular import
 
-    icons = api.get_public_icons()
+    icons = _filter_catalog(api.get_public_icons())
     save_catalog(icons, cache_dir)
 
     # Download any icon PNGs not already cached

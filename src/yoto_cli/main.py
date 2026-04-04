@@ -359,17 +359,15 @@ def import_cmd(source, output):
 # ── select-icon ──────────────────────────────────────────────────────────
 
 
-def _render_icon_ansi(img: "Image.Image", label: str = "") -> str:
-    """Render a 16x16 RGBA image as ANSI art using half-block characters.
+def _icon_to_ansi_rows(img: "Image.Image") -> list[str]:
+    """Render a 16x16 RGBA image as ANSI rows using half-block characters.
 
-    Each character cell encodes 2 vertical pixels using ▀ with
+    Each row encodes 2 vertical pixels using ▀ with
     foreground = top pixel, background = bottom pixel.
     """
     img = img.convert("RGBA")
     w, h = img.size
-    lines = []
-    if label:
-        lines.append(label)
+    rows = []
     for y in range(0, h, 2):
         row = ""
         for x in range(w):
@@ -383,7 +381,44 @@ def _render_icon_ansi(img: "Image.Image", label: str = "") -> str:
                 row += f"\033[38;2;{top[0]};{top[1]};{top[2]}m▀\033[0m"
             else:
                 row += f"\033[38;2;{top[0]};{top[1]};{top[2]}m\033[48;2;{bot[0]};{bot[1]};{bot[2]}m▀\033[0m"
-        lines.append(row)
+        rows.append(row)
+    return rows
+
+
+def _render_icons_side_by_side(
+    images: list["Image.Image"],
+    labels: list[str],
+    footers: list[str] | None = None,
+    gap: int = 3,
+) -> str:
+    """Render multiple icons side-by-side with labels above and optional footers below."""
+    import re
+
+    def _pad(text: str, width: int) -> str:
+        visible_len = len(re.sub(r"\033\[[^m]*m", "", text))
+        return text + " " * max(0, width - visible_len)
+
+    all_rows = [_icon_to_ansi_rows(img) for img in images]
+    max_height = max(len(r) for r in all_rows) if all_rows else 0
+    icon_width = images[0].size[0] if images else 16
+    for rows in all_rows:
+        while len(rows) < max_height:
+            rows.append(" " * icon_width)
+
+    spacer = " " * gap
+    lines = []
+
+    # Label row
+    lines.append(spacer.join(_pad(l, icon_width) for l in labels))
+
+    # Image rows
+    for y in range(max_height):
+        lines.append(spacer.join(_pad(all_rows[i][y], icon_width) for i in range(len(all_rows))))
+
+    # Footer row
+    if footers:
+        lines.append(spacer.join(_pad(f, icon_width) for f in footers))
+
     return "\n".join(lines)
 
 
@@ -396,21 +431,23 @@ def select_icon(track):
     from PIL import Image
     from yoto_lib.icons import generate_retrodiffusion_batch, download_icon
     from yoto_lib.icon_catalog import get_catalog
-    from yoto_lib.icon_llm import match_icon_llm
+    from yoto_lib.icon_llm import match_icon_llm, compare_icons_llm
 
     track_path = Path(track)
     title = track_path.stem
 
     # Get best Yoto icon match
-    catalog = get_catalog()
+    api = YotoAPI()
+    catalog = get_catalog(api)
     yoto_media_id, yoto_confidence = match_icon_llm(title, catalog)
     yoto_img: "Image.Image | None" = None
     yoto_title: str | None = None
+    yoto_bytes: bytes | None = None
 
     if yoto_media_id:
         yoto_bytes = download_icon(yoto_media_id)
         if yoto_bytes:
-            yoto_img = Image.open(io.BytesIO(yoto_bytes)).convert("RGBA")
+            yoto_img = Image.open(io.BytesIO(yoto_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)
             for icon in catalog:
                 if icon.get("mediaId") == yoto_media_id:
                     yoto_title = icon.get("title", "") or icon.get("name", "")
@@ -426,23 +463,43 @@ def select_icon(track):
             raise click.ClickException("Icon generation failed")
 
         icons_16: list[Image.Image] = []
+        raw_bytes_list: list[bytes] = []
+        images_to_show: list[Image.Image] = []
+        labels_to_show: list[str] = []
         for i, (raw_bytes, processed_img) in enumerate(batch):
             icons_16.append(processed_img)
-            click.echo(_render_icon_ansi(processed_img, label=f"  [{i + 1}] AI"))
-            click.echo()
+            raw_bytes_list.append(raw_bytes)
+            images_to_show.append(processed_img)
+            labels_to_show.append(f"[{i + 1}] AI")
 
-        # Show Yoto option [4]
         if yoto_img is not None:
-            label = f"  [4] Yoto: \"{yoto_title}\" (confidence: {yoto_confidence:.2f})"
-            click.echo(_render_icon_ansi(yoto_img, label=label))
-            click.echo()
+            images_to_show.append(yoto_img)
+            labels_to_show.append(f"[4] \"{yoto_title}\"")
             max_choice = 4
             prompt_text = "Pick an icon (1-4, or 'r' to regenerate)"
         else:
             max_choice = 3
             prompt_text = "Pick an icon (or 'r' to regenerate)"
 
-        raw = click.prompt(prompt_text, default="1")
+        # LLM comparison
+        click.echo("Evaluating icons...")
+        winner, scores = compare_icons_llm(
+            title, raw_bytes_list,
+            yoto_icon=yoto_bytes if yoto_img is not None else None,
+        )
+
+        # Build score labels
+        score_labels = []
+        for i in range(len(images_to_show)):
+            score = f"{scores[i]:.1f}" if i < len(scores) else "?"
+            marker = " *" if (i + 1) == winner else ""
+            score_labels.append(f"{'score: ' + score + marker}")
+
+        click.echo(_render_icons_side_by_side(images_to_show, labels_to_show, score_labels))
+        click.echo()
+
+        default_choice = str(winner) if 1 <= winner <= max_choice else "1"
+        raw = click.prompt(prompt_text, default=default_choice)
         if raw.lower() == "r":
             click.echo("Regenerating...")
             continue

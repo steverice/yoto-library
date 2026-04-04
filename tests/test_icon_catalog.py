@@ -12,6 +12,7 @@ import pytest
 from yoto_lib.icon_catalog import (
     CATALOG_FILENAME,
     CATALOG_TTL_SECONDS,
+    _filter_catalog,
     load_catalog,
     save_catalog,
     refresh_catalog,
@@ -71,6 +72,29 @@ class TestIsCatalogStale:
         data["fetched_at"] = time.time() - CATALOG_TTL_SECONDS - 1
         catalog_path.write_text(json.dumps(data))
         assert is_catalog_stale(cache_dir) is True
+
+
+class TestFilterCatalog:
+    def test_removes_empty_titles(self):
+        icons = [{"mediaId": "a", "title": ""}, {"mediaId": "b", "title": "Star"}]
+        assert len(_filter_catalog(icons)) == 1
+
+    def test_removes_test_icons(self):
+        icons = [
+            {"mediaId": "a", "title": "01_MYO_radio_icon_test"},
+            {"mediaId": "b", "title": "Star"},
+        ]
+        assert [i["title"] for i in _filter_catalog(icons)] == ["Star"]
+
+    def test_deduplicates_by_title(self):
+        icons = [
+            {"mediaId": "a", "title": "Star"},
+            {"mediaId": "b", "title": "star"},
+            {"mediaId": "c", "title": "Moon"},
+        ]
+        result = _filter_catalog(icons)
+        assert len(result) == 2
+        assert result[0]["mediaId"] == "a"  # keeps first
 
 
 class TestRefreshCatalog:
