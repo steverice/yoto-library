@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -14,7 +15,7 @@ if TYPE_CHECKING:
 
 def generate_description(
     playlist: "Playlist",
-    log: callable = None,
+    log: "Callable[[str], None] | None" = None,
 ) -> None:
     """Generate description.txt from track metadata via Claude CLI.
 
@@ -122,7 +123,6 @@ def _call_claude(prompt: str) -> str | None:
         if result.returncode != 0:
             return None
 
-        import json
         try:
             wrapper = json.loads(result.stdout)
             text = wrapper.get("result", result.stdout)
