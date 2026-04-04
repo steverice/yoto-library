@@ -13,6 +13,7 @@ load_dotenv(find_dotenv(usecwd=True))
 
 from yoto_lib.auth import AuthError, run_device_code_flow
 from yoto_lib.api import YotoAPI
+from yoto_lib.description import generate_description
 from yoto_lib.sync import sync_path
 from yoto_lib.pull import pull_playlist
 from yoto_lib.playlist import read_jsonl, write_jsonl, scan_audio_files, load_playlist, diff_playlists
@@ -325,6 +326,10 @@ def import_cmd(source, output):
 
     write_jsonl(output_path / "playlist.jsonl", filenames)
     click.echo(f"Imported {len(filenames)} tracks into {output_path}")
+
+    # Generate description from track metadata
+    playlist = load_playlist(output_path)
+    generate_description(playlist, log=lambda msg: click.echo(msg))
 
 
 # ── select-icon ──────────────────────────────────────────────────────────

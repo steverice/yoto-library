@@ -145,3 +145,30 @@ class TestGenerateDescriptionIntegration:
 
         assert not playlist.description_path.exists()
         assert any("Warning" in m for m in log_messages)
+
+
+class TestSyncIntegration:
+    def test_sync_calls_generate_description_before_cover(self, tmp_path):
+        """generate_description is called before generate_cover_if_missing in sync."""
+        call_order = []
+
+        with patch("yoto_lib.sync.generate_description") as mock_desc, \
+             patch("yoto_lib.sync.generate_cover_if_missing") as mock_cover, \
+             patch("yoto_lib.sync.resolve_icons", return_value={}), \
+             patch("yoto_lib.sync.load_playlist") as mock_load, \
+             patch("yoto_lib.sync.YotoAPI") as mock_api:
+
+            mock_desc.side_effect = lambda p, log=None: call_order.append("description")
+            mock_cover.side_effect = lambda p: call_order.append("cover")
+
+            playlist = MagicMock()
+            playlist.card_id = None
+            playlist.has_cover = False
+            playlist.track_files = []
+            playlist.cover_path = tmp_path / "cover.png"
+            mock_load.return_value = playlist
+
+            from yoto_lib.sync import sync_playlist
+            sync_playlist(tmp_path, dry_run=True)
+
+        assert call_order == ["description", "cover"]
