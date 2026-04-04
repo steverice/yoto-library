@@ -445,10 +445,10 @@ def generate_track_icon(track_title: str) -> bytes | None:
 # ── Strategy: pixelart (image gen with pixel-block prompt) ────────────────────
 
 
-def _build_pixelart_prompt(track_title: str) -> str:
-    """Prompt for a simple pixel-art icon that downscales cleanly to 16x16."""
+def _build_pixelart_prompt(visual_description: str) -> str:
+    """Wrap a visual description in pixel-art style instructions."""
     return (
-        f"Create a simple pixel art icon depicting: {track_title}. "
+        f"Create a simple pixel art icon depicting: {visual_description}. "
         f"Style: very low resolution pixel art, maximum 6-8 colors, large blocky shapes. "
         f"Think original Game Boy or early NES sprite — extremely chunky pixels, no fine detail. "
         f"The subject should fill most of the canvas. "
@@ -599,14 +599,18 @@ def generate_retrodiffusion_icon(track_title: str) -> tuple[bytes | None, bytes 
     return image_bytes, icon_bytes
 
 
-def generate_retrodiffusion_batch(
-    track_title: str,
-    count: int = 3,
+def generate_retrodiffusion_icons(
+    descriptions: list[str],
+    on_progress: "Callable[[int], None] | None" = None,
 ) -> list[tuple[bytes, Image.Image]]:
-    """Generate multiple 16x16 icons via Retro Diffusion.
+    """Generate one 16x16 icon per visual description via Retro Diffusion.
 
-    Returns list of (raw_bytes, processed_Image) pairs. Returns empty list on failure.
+    Calls the API in parallel (one request per description) and reports
+    progress as each completes.
+    Returns list of (raw_bytes, processed_Image) pairs in input order.
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     try:
         if RetroDiffusionProvider is None:
             return []
@@ -614,20 +618,32 @@ def generate_retrodiffusion_batch(
     except Exception:
         return []
 
-    prompt = _build_pixelart_prompt(track_title)
-
-    try:
-        raw_list = provider.generate_batch(prompt, ICON_SIZE, ICON_SIZE, count=count)
-    except Exception:
-        return []
-
-    results: list[tuple[bytes, Image.Image]] = []
-    for raw_bytes in raw_list:
+    def _generate_one(desc: str) -> tuple[bytes, Image.Image] | None:
+        prompt = _build_pixelart_prompt(desc)
+        try:
+            raw_bytes = provider.generate(prompt, ICON_SIZE, ICON_SIZE)
+        except Exception:
+            return None
         img = Image.open(io.BytesIO(raw_bytes))
         img = remove_solid_background(img)
-        results.append((raw_bytes, img))
+        return (raw_bytes, img)
 
-    return results
+    # Submit all in parallel, track completion for progress
+    ordered: dict[int, tuple[bytes, Image.Image] | None] = {}
+    done_count = 0
+    with ThreadPoolExecutor(max_workers=len(descriptions)) as pool:
+        future_to_idx = {
+            pool.submit(_generate_one, desc): i
+            for i, desc in enumerate(descriptions)
+        }
+        for future in as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            ordered[idx] = future.result()
+            done_count += 1
+            if on_progress:
+                on_progress(done_count)
+
+    return [ordered[i] for i in range(len(descriptions)) if ordered.get(i) is not None]
 
 
 # ── Strategy: textmodel (Claude CLI / OpenAI text model) ─────────────────────
@@ -797,6 +813,14 @@ def _pick_ai_icon(
     return buf.getvalue(), processed_img, None
 
 
+def _read_album_description(playlist_path: Path) -> str | None:
+    """Read description.txt from a playlist folder, if it exists."""
+    desc_path = playlist_path / "description.txt"
+    if desc_path.exists():
+        return desc_path.read_text(encoding="utf-8")
+    return None
+
+
 def resolve_icons(
     playlist: "Playlist",
     api: "YotoAPI",
@@ -883,7 +907,9 @@ def resolve_icons(
                 # Gray zone — generate 3 AI, compare with Yoto icon
                 _log(f"Icon {i}/{total}: {title} (comparing, confidence: {confidence:.2f})")
                 yoto_bytes = download_icon(matched_id)
-                batch = generate_retrodiffusion_batch(track_title)
+                album_desc = _read_album_description(playlist.path)
+                descriptions = describe_icons_llm(track_title, album_description=album_desc)
+                batch = generate_retrodiffusion_icons(descriptions) if descriptions else []
 
                 icon_bytes_result, icon_img, yoto_won_id = _pick_ai_icon(
                     track_title, batch,
@@ -909,7 +935,9 @@ def resolve_icons(
             else:
                 # Low confidence — generate 3 AI, pick best
                 _log(f"Icon {i}/{total}: {title} (generating...)")
-                batch = generate_retrodiffusion_batch(track_title)
+                album_desc = _read_album_description(playlist.path)
+                descriptions = describe_icons_llm(track_title, album_description=album_desc)
+                batch = generate_retrodiffusion_icons(descriptions) if descriptions else []
 
                 if batch:
                     icon_bytes_result, icon_img, _ = _pick_ai_icon(track_title, batch)
@@ -955,5 +983,6 @@ from yoto_lib.icon_llm import (  # noqa: E402
     CONFIDENCE_HIGH,
     CONFIDENCE_LOW,
     compare_icons_llm,
+    describe_icons_llm,
     match_icon_llm,
 )
