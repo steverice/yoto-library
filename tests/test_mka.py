@@ -133,6 +133,29 @@ class TestReadWriteTags:
         assert result["disc"] == "1/1"
 
 
+class TestReadSourceTags:
+    @needs_ffmpeg
+    def test_reads_tags_from_wav(self, sample_wav, tmp_path):
+        """read_source_tags returns empty dict for a tag-less WAV (baseline)."""
+        from yoto_lib.mka import read_source_tags
+        tags = read_source_tags(sample_wav)
+        assert isinstance(tags, dict)
+
+    @needs_ffmpeg
+    @needs_mkvtoolnix
+    def test_reads_tags_from_tagged_mka(self, sample_wav, tmp_path):
+        """read_source_tags works on MKA files too (ffprobe reads both)."""
+        from yoto_lib.mka import read_source_tags
+        mka = tmp_path / "tagged.mka"
+        wrap_in_mka(sample_wav, mka)
+        write_tags(mka, {"title": "Hello", "artist": "World", "genre": "Pop"})
+
+        tags = read_source_tags(mka)
+        assert tags["title"] == "Hello"
+        assert tags["artist"] == "World"
+        assert tags["genre"] == "Pop"
+
+
 class TestAttachments:
     @needs_ffmpeg
     @needs_mkvtoolnix

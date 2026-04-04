@@ -128,6 +128,60 @@ def read_tags(mka_path: Path) -> dict[str, str]:
     return tags
 
 
+# Maps common source-format tag names (as reported by ffprobe) to internal field names.
+# ffprobe normalises tag keys to lowercase for most formats.
+_SOURCE_TAG_ALIASES: dict[str, str] = {
+    "title": "title",
+    "artist": "artist",
+    "album_artist": "album_artist",
+    "album": "album",
+    "genre": "genre",
+    "composer": "composer",
+    "date": "date",
+    "track": "track",
+    "disc": "disc",
+    "language": "language",
+    "copyright": "copyright",
+    "comment": "description",
+    # MKA/Matroska names (uppercase in ffprobe output for matroska)
+    "TITLE": "title",
+    "ARTIST": "artist",
+    "ALBUM_ARTIST": "album_artist",
+    "ALBUM": "album",
+    "GENRE": "genre",
+    "COMPOSER": "composer",
+    "DATE_RELEASED": "date",
+    "PART_NUMBER": "track",
+    "DISC_NUMBER": "disc",
+    "LANGUAGE": "language",
+    "COPYRIGHT": "copyright",
+    "COMMENT": "description",
+}
+
+
+def read_source_tags(path: Path) -> dict[str, str]:
+    """Read metadata tags from any audio file via ffprobe.
+
+    Works with mp3, m4a, flac, wav, ogg, mka, etc. Returns a dict
+    using internal field names (title, artist, genre, etc.).
+    """
+    result = _run([
+        "ffprobe", "-v", "quiet",
+        "-print_format", "json",
+        "-show_format",
+        str(path),
+    ])
+    fmt_data = json.loads(result.stdout)
+    raw_tags = fmt_data.get("format", {}).get("tags", {})
+
+    tags: dict[str, str] = {}
+    for raw_name, value in raw_tags.items():
+        field = _SOURCE_TAG_ALIASES.get(raw_name)
+        if field and field not in tags:  # first occurrence wins
+            tags[field] = value
+    return tags
+
+
 def set_attachment(
     mka_path: Path,
     file_path: Path,
