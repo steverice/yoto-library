@@ -94,7 +94,7 @@ def resolve_weblocs(playlist_dir: Path, trim: bool = True) -> list[Path]:
             mka_path.unlink(missing_ok=True)
             continue
         finally:
-            # Clean up downloaded audio (now wrapped in MKA)
+            # Clean up intermediate audio file regardless of MKA outcome
             audio_path.unlink(missing_ok=True)
 
         # Success — consume the .webloc
