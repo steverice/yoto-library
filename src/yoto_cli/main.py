@@ -628,6 +628,8 @@ def select_icon(track):
         winner, scores = compare_icons_llm(
             title, raw_bytes_list,
             yoto_icon=yoto_bytes if yoto_img is not None else None,
+            descriptions=descriptions,
+            album_description=album_desc,
         )
 
         if pbar:
@@ -673,6 +675,18 @@ def select_icon(track):
             chosen = yoto_img
         else:
             chosen = icons_16[choice - 1]
+
+        # Log feedback for tuning
+        from yoto_lib.icon_llm import log_icon_feedback
+        log_icon_feedback(
+            track_title=title,
+            llm_winner=winner,
+            llm_scores=scores,
+            user_choice=choice,
+            descriptions=descriptions,
+            album=track_path.resolve().parent.name,
+            chose_yoto=(choice == yoto_choice),
+        )
         break
 
     buf = io.BytesIO()
