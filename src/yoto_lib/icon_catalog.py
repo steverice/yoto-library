@@ -10,11 +10,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from yoto_lib.api import YotoAPI
 
-# Import at module level so it can be patched in tests.
-# The lazy-import comment below explains why it was previously deferred;
-# keeping it top-level is safe because icons.py does not import icon_catalog.
-from yoto_lib.icons import download_icon  # noqa: E402
-
 CATALOG_FILENAME = "catalog.json"
 CATALOG_TTL_SECONDS = 24 * 60 * 60  # 24 hours
 
@@ -59,6 +54,8 @@ def refresh_catalog(
     cache_dir: Path = _DEFAULT_CACHE_DIR,
 ) -> list[dict]:
     """Fetch the catalog from the API, save it, and download missing PNGs."""
+    from yoto_lib.icons import download_icon  # lazy to avoid circular import
+
     icons = api.get_public_icons()
     save_catalog(icons, cache_dir)
 
