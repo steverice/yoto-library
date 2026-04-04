@@ -46,6 +46,46 @@ def _call_claude(prompt: str, *, allowed_tools: str = "", timeout: int = 120) ->
         return None
 
 
+def describe_icons_llm(
+    track_title: str,
+    album_description: str | None = None,
+) -> list[str]:
+    """Generate 3 visual descriptions for a track icon using Claude Haiku.
+
+    The LLM interprets the track title and returns concrete visual concepts
+    that an image generation model can render as 16x16 pixel art icons.
+
+    Returns a list of 3 short visual descriptions, or empty list on failure.
+    """
+    context = ""
+    if album_description:
+        context = f"\n\nAlbum/show description:\n{album_description}\n"
+
+    prompt = (
+        f'I need 3 different visual concepts for a 16x16 pixel art icon '
+        f'representing a children\'s audio track called "{track_title}".{context}\n'
+        f'Each concept should be a concrete visual subject — an object, animal, '
+        f'scene, or symbol that captures the track\'s meaning. '
+        f'Do NOT describe characters from the show. '
+        f'Focus on the emotion or concept the title conveys.\n\n'
+        f'Return ONLY a JSON array of 3 short image prompts (under 15 words each). '
+        f'Example: ["a smiling sun with rainbow", "two hands holding a heart", '
+        f'"a bright yellow star with sparkles"]\n'
+        f'No explanation, no markdown, just the JSON array.'
+    )
+
+    try:
+        text = _call_claude(prompt)
+        if text is None:
+            return []
+        descriptions = json.loads(text)
+        if isinstance(descriptions, list) and len(descriptions) >= 3:
+            return [str(d) for d in descriptions[:3]]
+        return []
+    except Exception:
+        return []
+
+
 def match_icon_llm(
     track_title: str,
     icons: list[dict],
