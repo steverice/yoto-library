@@ -16,7 +16,7 @@ from yoto_lib.api import YotoAPI
 from yoto_lib.sync import sync_path
 from yoto_lib.pull import pull_playlist
 from yoto_lib.playlist import read_jsonl, write_jsonl, scan_audio_files, load_playlist, diff_playlists
-from yoto_lib.mka import wrap_in_mka, remove_attachment, set_attachment
+from yoto_lib.mka import wrap_in_mka, remove_attachment, set_attachment, read_source_tags, write_tags
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -312,6 +312,10 @@ def import_cmd(source, output):
         else:
             try:
                 wrap_in_mka(audio, mka_dest)
+                # Copy metadata from source file to MKA
+                source_tags = read_source_tags(audio)
+                if source_tags:
+                    write_tags(mka_dest, source_tags)
                 filenames.append(mka_name)
                 click.echo(f"  Wrapped {audio.name} -> {mka_name}")
                 if source_path == output_path:

@@ -156,6 +156,34 @@ class TestReadSourceTags:
         assert tags["genre"] == "Pop"
 
 
+class TestMetadataPreservation:
+    @needs_ffmpeg
+    @needs_mkvtoolnix
+    def test_source_tags_survive_mka_roundtrip(self, sample_wav, tmp_path):
+        """Tags read from source can be written to MKA and read back."""
+        from yoto_lib.mka import read_source_tags
+
+        # WAV has no tags, so write some to the MKA manually to simulate
+        mka = tmp_path / "output.mka"
+        wrap_in_mka(sample_wav, mka)
+
+        source_tags = {
+            "title": "Test Song",
+            "artist": "Test Artist",
+            "genre": "Children's Music",
+            "composer": "Test Composer",
+            "album": "Test Album",
+        }
+        write_tags(mka, source_tags)
+
+        result = read_tags(mka)
+        assert result["title"] == "Test Song"
+        assert result["artist"] == "Test Artist"
+        assert result["genre"] == "Children's Music"
+        assert result["composer"] == "Test Composer"
+        assert result["album"] == "Test Album"
+
+
 class TestAttachments:
     @needs_ffmpeg
     @needs_mkvtoolnix
