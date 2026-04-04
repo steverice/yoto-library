@@ -16,6 +16,7 @@ from yoto_lib.icons import (
     build_icon_prompt,
     extract_icon_hash,
     generate_icns_sizes,
+    generate_retrodiffusion_batch,
     generate_track_icon,
     match_public_icon,
     nearest_neighbor_upscale,
@@ -212,3 +213,42 @@ class TestGenerateTrackIcon:
         with patch("yoto_lib.image_providers.get_provider", return_value=mock_provider):
             result = generate_track_icon("Test Song")
         assert result is None
+
+
+class TestGenerateRetrodiffusionBatch:
+    def test_returns_three_raw_and_processed_pairs(self):
+        """Returns list of (raw_bytes, processed_Image) tuples."""
+        fake_pngs = []
+        for _ in range(3):
+            img = Image.new("RGB", (16, 16), "black")
+            img.putpixel((8, 8), (255, 0, 0))
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            fake_pngs.append(buf.getvalue())
+
+        mock_provider = MagicMock()
+        mock_provider.generate_batch.return_value = fake_pngs
+
+        with patch(
+            "yoto_lib.icons.RetroDiffusionProvider",
+            return_value=mock_provider,
+        ):
+            results = generate_retrodiffusion_batch("Test Song")
+
+        assert len(results) == 3
+        for raw_bytes, processed_img in results:
+            assert isinstance(raw_bytes, bytes)
+            assert processed_img.size == (16, 16)
+
+    def test_returns_empty_on_failure(self):
+        """Returns empty list when provider fails."""
+        mock_provider = MagicMock()
+        mock_provider.generate_batch.side_effect = RuntimeError("fail")
+
+        with patch(
+            "yoto_lib.icons.RetroDiffusionProvider",
+            return_value=mock_provider,
+        ):
+            results = generate_retrodiffusion_batch("Test Song")
+
+        assert results == []
