@@ -100,7 +100,7 @@ class TestRefreshCatalog:
         fake_png = b"\x89PNG_fake_data"
 
         with patch(
-            "yoto_lib.icon_catalog.download_icon", return_value=fake_png,
+            "yoto_lib.icons.download_icon", return_value=fake_png,
         ) as mock_dl:
             refresh_catalog(api, cache_dir)
             mock_dl.assert_called_once_with("abc", cache_dir)
@@ -116,7 +116,7 @@ class TestRefreshCatalog:
         ]
 
         with patch(
-            "yoto_lib.icon_catalog.download_icon",
+            "yoto_lib.icons.download_icon",
         ) as mock_dl:
             refresh_catalog(api, cache_dir)
             mock_dl.assert_not_called()
