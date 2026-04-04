@@ -424,10 +424,13 @@ def select_icon(track):
 @click.argument("tracks", nargs=-1, required=True, type=click.Path(exists=True))
 def reset_icon(tracks):
     """Remove the icon from one or more MKA tracks so sync regenerates them."""
+    from yoto_lib.icons import clear_macos_file_icon
+
     for track in tracks:
         path = Path(track)
         try:
             remove_attachment(path, "icon")
+            clear_macos_file_icon(path)
             click.echo(f"  Cleared icon: {path.name}")
         except Exception as exc:
             click.echo(f"  Error ({path.name}): {exc}", err=True)
