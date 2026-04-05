@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Maps our internal field names to Matroska tag names.
 # Standard Matroska tags are uppercase. Custom Yoto fields use YOTO_ prefix.
@@ -56,6 +59,65 @@ def wrap_in_mka(source: Path, output: Path) -> None:
     if not Path(source).exists():
         raise FileNotFoundError(f"Source file not found: {source}")
     _run(["ffmpeg", "-y", "-i", str(source), "-c", "copy", str(output)])
+
+
+# Codec → (file extension, ffmpeg muxer format)
+_CODEC_CONTAINERS: dict[str, tuple[str, str]] = {
+    "aac": (".m4a", "ipod"),
+    "mp3": (".mp3", "mp3"),
+    "opus": (".ogg", "ogg"),
+    "vorbis": (".ogg", "ogg"),
+    "flac": (".flac", "flac"),
+    "alac": (".m4a", "ipod"),
+    "pcm_s16le": (".wav", "wav"),
+    "pcm_s24le": (".wav", "wav"),
+}
+
+# Source format extension → (file extension, ffmpeg muxer format)
+_FORMAT_CONTAINERS: dict[str, tuple[str, str]] = {
+    "m4a": (".m4a", "ipod"),
+    "mp3": (".mp3", "mp3"),
+    "ogg": (".ogg", "ogg"),
+    "opus": (".ogg", "ogg"),
+    "flac": (".flac", "flac"),
+    "wav": (".wav", "wav"),
+    "aac": (".m4a", "ipod"),
+}
+
+
+def extract_audio(mka_path: Path, output_dir: Path) -> Path:
+    """Extract audio from MKA into its native container (lossless remux).
+
+    Uses YOTO_SOURCE_FORMAT tag if available, falls back to codec probe.
+    Returns the path to the extracted file.
+    """
+    # Try source format tag first
+    tags = read_tags(mka_path)
+    source_fmt = tags.get("source_format", "").lower()
+    if source_fmt and source_fmt in _FORMAT_CONTAINERS:
+        ext, fmt = _FORMAT_CONTAINERS[source_fmt]
+        logger.debug("extract_audio: %s -> %s (from YOTO_SOURCE_FORMAT=%s)", mka_path.name, ext, source_fmt)
+    else:
+        # Fall back to codec probe
+        info = probe_audio(mka_path)
+        audio_streams = [s for s in info["streams"] if s.get("codec_type") == "audio"]
+        codec = audio_streams[0]["codec_name"] if audio_streams else "unknown"
+        if codec in _CODEC_CONTAINERS:
+            ext, fmt = _CODEC_CONTAINERS[codec]
+            logger.debug("extract_audio: %s -> %s (from codec=%s)", mka_path.name, ext, codec)
+        else:
+            # Unknown codec — transcode to MP3 as safe fallback
+            logger.warning("extract_audio: unknown codec %s in %s, transcoding to MP3", codec, mka_path.name)
+            output = output_dir / (mka_path.stem + ".mp3")
+            _run(["ffmpeg", "-y", "-i", str(mka_path), "-map", "0:a",
+                  "-c:a", "libmp3lame", "-b:a", "192k",
+                  "-map_metadata", "-1", "-fflags", "+bitexact", str(output)])
+            return output
+
+    output = output_dir / (mka_path.stem + ext)
+    _run(["ffmpeg", "-y", "-i", str(mka_path), "-map", "0:a", "-c", "copy",
+          "-map_metadata", "-1", "-fflags", "+bitexact", "-f", fmt, str(output)])
+    return output
 
 
 def probe_audio(path: Path) -> dict:
@@ -244,3 +306,67 @@ def remove_attachment(mka_path: Path, name: str) -> None:
                 "--delete-attachment", f"name:{name}",
             ], check=False)
             return
+
+
+# ── Source patch (bsdiff/bspatch) ────────────────────────────────────────────
+
+import shutil
+
+PATCH_ATTACHMENT_NAME = "source.patch"
+
+
+def generate_source_patch(original_path: Path, mka_path: Path) -> bool:
+    """Generate a bsdiff patch between a deterministic reconstruction and the original.
+
+    Stores the patch as an MKA attachment. Returns True if patch was stored,
+    False if bsdiff is not available or generation failed.
+    """
+    if not shutil.which("bsdiff"):
+        logger.warning("bsdiff not found — skipping source patch generation (export will not be byte-perfect)")
+        return False
+
+    with tempfile.TemporaryDirectory(prefix="yoto-patch-") as tmpdir:
+        tmpdir_path = Path(tmpdir)
+        try:
+            # Deterministic reconstruction from MKA
+            reconstructed = extract_audio(mka_path, tmpdir_path)
+
+            # Generate patch: bsdiff <reconstructed> <original> <patch>
+            patch_path = tmpdir_path / "source.patch"
+            _run(["bsdiff", str(reconstructed), str(original_path), str(patch_path)])
+
+            patch_size = patch_path.stat().st_size
+            original_size = original_path.stat().st_size
+            logger.debug(
+                "generate_source_patch: %s -> %d bytes patch (%.1f%% of original)",
+                mka_path.name, patch_size, 100 * patch_size / original_size if original_size else 0,
+            )
+
+            # Store as attachment
+            set_attachment(mka_path, patch_path, name=PATCH_ATTACHMENT_NAME, mime_type="application/octet-stream")
+            return True
+        except Exception as exc:
+            logger.warning("generate_source_patch failed for %s: %s", mka_path.name, exc)
+            return False
+
+
+def apply_source_patch(extracted_path: Path, mka_path: Path, output_path: Path) -> bool:
+    """Apply a stored bsdiff patch to a reconstructed file to recover the original.
+
+    Returns True if patch was applied, False if no patch exists or bspatch failed.
+    """
+    patch_data = get_attachment(mka_path, PATCH_ATTACHMENT_NAME)
+    if patch_data is None:
+        return False
+
+    with tempfile.TemporaryDirectory(prefix="yoto-patch-") as tmpdir:
+        patch_file = Path(tmpdir) / "source.patch"
+        patch_file.write_bytes(patch_data)
+
+        try:
+            _run(["bspatch", str(extracted_path), str(output_path), str(patch_file)])
+            logger.debug("apply_source_patch: %s -> %s", mka_path.name, output_path.name)
+            return True
+        except Exception as exc:
+            logger.warning("apply_source_patch failed for %s: %s", mka_path.name, exc)
+            return False

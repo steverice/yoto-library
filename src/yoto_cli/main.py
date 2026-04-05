@@ -23,7 +23,7 @@ from yoto_lib.description import generate_description
 from yoto_lib.sync import sync_path
 from yoto_lib.pull import pull_playlist
 from yoto_lib.playlist import read_jsonl, write_jsonl, scan_audio_files, load_playlist, diff_playlists
-from yoto_lib.mka import wrap_in_mka, remove_attachment, set_attachment, read_source_tags, write_tags
+from yoto_lib.mka import wrap_in_mka, remove_attachment, set_attachment, read_source_tags, write_tags, generate_source_patch
 from yoto_lib.sources import resolve_weblocs
 
 
@@ -472,8 +472,10 @@ def import_cmd(source, output):
                 wrap_in_mka(audio, mka_dest)
                 # Copy metadata from source file to MKA
                 source_tags = read_source_tags(audio)
-                if source_tags:
-                    write_tags(mka_dest, source_tags)
+                source_tags["source_format"] = audio.suffix.lstrip(".").lower()
+                write_tags(mka_dest, source_tags)
+                # Generate bsdiff patch for byte-perfect export
+                generate_source_patch(audio, mka_dest)
                 filenames.append(mka_name)
                 click.echo(f"  Wrapped {audio.name} -> {mka_name}")
                 if source_path == output_path:
@@ -491,6 +493,60 @@ def import_cmd(source, output):
         log=lambda msg: click.echo(msg),
         ask_user=lambda q: click.prompt(q),
     )
+
+
+# ── export ───────────────────────────────────────────────────────────────
+
+
+@cli.command()
+@click.argument("playlist", type=click.Path(exists=True), shell_complete=_complete_dirs)
+@click.option(
+    "--output", "-o",
+    default=None,
+    type=click.Path(),
+    help="Output folder (defaults to <playlist>-exported/)",
+)
+def export(playlist, output):
+    """Export MKA tracks back to their original audio format."""
+    from yoto_lib.mka import extract_audio, apply_source_patch
+
+    logger.debug("command: export playlist=%s output=%s", playlist, output)
+    playlist_path = Path(playlist)
+    output_path = Path(output) if output else playlist_path.parent / f"{playlist_path.name}-exported"
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    mka_files = sorted(playlist_path.glob("*.mka"))
+    if not mka_files:
+        click.echo("No .mka files found.")
+        return
+
+    import tempfile
+    from yoto_lib.mka import get_attachment, PATCH_ATTACHMENT_NAME
+
+    for mka in mka_files:
+        try:
+            has_patch = get_attachment(mka, PATCH_ATTACHMENT_NAME) is not None
+
+            if has_patch:
+                # Extract to temp dir, then apply patch to final location
+                with tempfile.TemporaryDirectory(prefix="yoto-export-") as tmpdir:
+                    extracted = extract_audio(mka, Path(tmpdir))
+                    final_path = output_path / (mka.stem + extracted.suffix)
+                    if apply_source_patch(extracted, mka, final_path):
+                        click.echo(f"  {mka.name} -> {final_path.name} (byte-perfect)")
+                    else:
+                        # Patch failed — copy the extraction as fallback
+                        import shutil
+                        shutil.copy2(extracted, final_path)
+                        click.echo(f"  {mka.name} -> {final_path.name}")
+            else:
+                # No patch — extract directly to output
+                extracted = extract_audio(mka, output_path)
+                click.echo(f"  {mka.name} -> {extracted.name}")
+        except Exception as exc:
+            click.echo(f"  Error exporting {mka.name}: {exc}", err=True)
+
+    click.echo(f"Exported {len(mka_files)} tracks to {output_path}")
 
 
 # ── select-icon ──────────────────────────────────────────────────────────
