@@ -97,6 +97,17 @@ class TestBuildCoverPrompt:
         assert "portrait" in prompt.lower() or "illustration" in prompt.lower()
         assert "text" in prompt.lower() or "lettering" in prompt.lower()
 
+    def test_includes_playlist_title(self):
+        """Prompt must contain the playlist title when provided."""
+        prompt = build_cover_prompt(
+            description=None,
+            track_titles=[],
+            artists=[],
+            playlist_title="Daniel Tiger's Neighborhood",
+        )
+        assert "Daniel Tiger's Neighborhood" in prompt
+        assert "playlist name" in prompt.lower()
+
 
 # ── TestGenerateCoverIfMissing ────────────────────────────────────────────────
 

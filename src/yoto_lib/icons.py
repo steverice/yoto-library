@@ -227,12 +227,13 @@ def download_icon(icon_ref: str, cache_dir: Path = ICON_CACHE_DIR) -> bytes | No
 
 def apply_icon_to_mka(mka_path: Path, icon_data: bytes) -> None:
     """Attach icon PNG to MKA and set macOS Finder icon."""
-    icon_tmp = mka_path.parent / f".icon_tmp_{mka_path.stem}.png"
-    try:
-        icon_tmp.write_bytes(icon_data)
-        mka.set_attachment(mka_path, icon_tmp, name="icon", mime_type="image/png")
-    finally:
-        icon_tmp.unlink(missing_ok=True)
+    if mka_path.suffix.lower() == ".mka":
+        icon_tmp = mka_path.parent / f".icon_tmp_{mka_path.stem}.png"
+        try:
+            icon_tmp.write_bytes(icon_data)
+            mka.set_attachment(mka_path, icon_tmp, name="icon", mime_type="image/png")
+        finally:
+            icon_tmp.unlink(missing_ok=True)
 
     try:
         img = Image.open(io.BytesIO(icon_data))

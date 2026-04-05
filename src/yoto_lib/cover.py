@@ -50,9 +50,13 @@ def build_cover_prompt(
     description: str | None,
     track_titles: list[str],
     artists: list[str],
+    playlist_title: str | None = None,
 ) -> str:
     """Build a text prompt for image generation from playlist metadata."""
     parts: list[str] = []
+
+    if playlist_title:
+        parts.append(f'Playlist: "{playlist_title}".')
 
     if description:
         parts.append(description.strip())
@@ -67,8 +71,9 @@ def build_cover_prompt(
 
     parts.append(
         "Create a portrait illustration suitable for a children's audio card."
+        " Include the playlist name as text in the image."
     )
-    parts.append("Do not include any text, letters, or lettering in the image.")
+    parts.append("Do not include any other text, letters, or lettering beyond the playlist name.")
 
     return " ".join(parts)
 
@@ -97,7 +102,7 @@ def generate_cover_if_missing(playlist: "Playlist") -> None:
         if artist:
             artists.append(artist)
 
-    prompt = build_cover_prompt(playlist.description, track_titles, artists)
+    prompt = build_cover_prompt(playlist.description, track_titles, artists, playlist.title)
     logger.debug("generate_cover prompt: %s", prompt)
 
     provider = get_provider()

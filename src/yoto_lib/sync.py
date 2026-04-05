@@ -93,7 +93,11 @@ def _parse_remote_state(remote_content: dict) -> dict:
 
 
 def _infer_track_info(file_path: Path) -> dict:
-    """Infer format and channels from a local audio file via ffprobe."""
+    """Infer format and channels from a local audio file via ffprobe.
+
+    Fallback for reused tracks missing remote format info (legacy cards).
+    Reports the source codec, which may differ from the server's transcoded format.
+    """
     try:
         from yoto_lib.mka import probe_audio
         info = probe_audio(file_path)
@@ -244,11 +248,11 @@ def sync_playlist(
             transcode_result = api.upload_and_transcode(file_path)
             sha = transcode_result.get("transcodedSha256", "")
             track_hashes[filename] = sha
-            # Extract format and channels from upload info for content schema
-            upload_info = transcode_result.get("uploadInfo", {})
+            # Extract format and channels from transcoded output for content schema
+            transcoded_info = transcode_result.get("transcodedInfo", {})
             track_info[filename] = {
-                "format": upload_info.get("format", ""),
-                "channels": upload_info.get("channels", ""),
+                "format": transcoded_info.get("format", ""),
+                "channels": transcoded_info.get("channels", ""),
             }
             if on_track_done:
                 on_track_done(filename)
