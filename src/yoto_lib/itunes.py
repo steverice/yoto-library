@@ -30,8 +30,8 @@ def search_itunes_album(artist: str, album: str) -> list[dict]:
         )
         response.raise_for_status()
         return response.json().get("results", [])
-    except Exception:
-        logger.warning("iTunes Search API request failed for '%s - %s'", artist, album)
+    except Exception as exc:
+        logger.warning("iTunes Search API request failed for '%s - %s': %s", artist, album, exc)
         return []
 
 
@@ -126,7 +126,8 @@ def embed_album_art(mka_path: Path, image_bytes: bytes) -> bool:
         return False
     finally:
         img_path.unlink(missing_ok=True)
-        out_path.unlink(missing_ok=True)
+        if out_path.exists():
+            out_path.unlink()
 
 
 # Metadata fields to backfill from iTunes API results.
@@ -141,6 +142,24 @@ _BACKFILL_FIELDS = {
 _NO_MATCH = object()
 
 
+def _download_artwork(result: dict) -> bytes | None:
+    """Download high-res artwork for an iTunes album result.
+
+    Returns JPEG bytes, or None on failure.
+    """
+    artwork_api_url = result.get("artworkUrl100", "")
+    if not artwork_api_url:
+        return None
+    art_url = _artwork_url(artwork_api_url, 1200)
+    try:
+        response = httpx.get(art_url, follow_redirects=True, timeout=30.0)
+        response.raise_for_status()
+        return response.content
+    except Exception as exc:
+        logger.warning("Failed to download iTunes artwork: %s", exc)
+        return None
+
+
 def enrich_from_itunes(
     mka_path: Path,
     tags: dict[str, str],
@@ -152,7 +171,8 @@ def enrich_from_itunes(
         mka_path: Path to the MKA file to enrich.
         tags: Source tags already extracted from the file (internal field names).
         album_cache: Shared dict for caching results across tracks in a single import.
-            Keys are (artist, album) tuples; values are API result dicts or _NO_MATCH.
+            Keys are (artist, album) tuples; values are (result_dict, image_bytes)
+            tuples, or _NO_MATCH.
     """
     # Only proceed if artwork is missing
     if extract_album_art(mka_path) is not None:
@@ -165,33 +185,29 @@ def enrich_from_itunes(
 
     cache_key = (artist.lower(), album.lower())
 
-    # Check cache
+    # Check cache — stores (result_dict, image_bytes) or _NO_MATCH
     if cache_key not in album_cache:
         results = search_itunes_album(artist, album)
         matched = match_album(results, artist, album)
-        album_cache[cache_key] = matched if matched is not None else _NO_MATCH
+        if matched is None:
+            album_cache[cache_key] = _NO_MATCH
+        else:
+            image_bytes = _download_artwork(matched)
+            album_cache[cache_key] = (matched, image_bytes)
 
     cached = album_cache[cache_key]
     if cached is _NO_MATCH:
         return
 
-    result = cached
+    result, image_bytes = cached
 
-    # Download and embed artwork
-    artwork_api_url = result.get("artworkUrl100", "")
-    if artwork_api_url:
-        art_url = _artwork_url(artwork_api_url, 1200)
-        try:
-            response = httpx.get(art_url, follow_redirects=True, timeout=30.0)
-            response.raise_for_status()
-            image_bytes = response.content
-            if embed_album_art(mka_path, image_bytes):
-                logger.info(
-                    "Embedded iTunes artwork in %s (%s - %s)",
-                    mka_path.name, artist, album,
-                )
-        except Exception:
-            logger.warning("Failed to download iTunes artwork for %s", mka_path.name)
+    # Embed artwork
+    if image_bytes is not None:
+        if embed_album_art(mka_path, image_bytes):
+            logger.info(
+                "Embedded iTunes artwork in %s (%s - %s)",
+                mka_path.name, artist, album,
+            )
 
     # Backfill missing metadata
     backfill = {}
