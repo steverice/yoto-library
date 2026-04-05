@@ -169,7 +169,7 @@ class TestGenerateCoverIfMissing:
         # prompt builder was called
         mock_prompt.assert_called_once()
 
-        # provider.generate was called with the prompt
+        # provider.generate was called with the prompt at 3:4 aspect ratio
         mock_provider.generate.assert_called_once_with(
-            "test prompt", COVER_WIDTH, COVER_HEIGHT
+            "test prompt", 768, 1024
         )
