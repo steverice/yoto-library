@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -10,6 +11,8 @@ from PIL import Image
 
 from yoto_lib.image_providers import get_provider
 from yoto_lib import mka
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from yoto_lib.playlist import Playlist
@@ -73,7 +76,9 @@ def build_cover_prompt(
 def generate_cover_if_missing(playlist: "Playlist") -> None:
     """Generate a cover image for the playlist if one doesn't already exist."""
     if playlist.has_cover:
+        logger.debug("generate_cover: skipping, cover already exists for '%s'", playlist.title)
         return
+    logger.debug("generate_cover: generating for '%s'", playlist.title)
 
     track_titles: list[str] = []
     artists: list[str] = []
@@ -93,9 +98,12 @@ def generate_cover_if_missing(playlist: "Playlist") -> None:
             artists.append(artist)
 
     prompt = build_cover_prompt(playlist.description, track_titles, artists)
+    logger.debug("generate_cover prompt: %s", prompt)
 
     provider = get_provider()
+    logger.debug("generate_cover: using provider %s", type(provider).__name__)
     image_bytes = provider.generate(prompt, COVER_WIDTH, COVER_HEIGHT)
+    logger.debug("generate_cover: generated %d bytes", len(image_bytes))
 
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp.write(image_bytes)

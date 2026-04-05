@@ -1,8 +1,11 @@
 """Retro Diffusion image provider — purpose-built for pixel art, supports 16x16."""
 import base64
+import logging
 import os
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 class RetroDiffusionProvider:
@@ -22,6 +25,7 @@ class RetroDiffusionProvider:
         self, prompt: str, width: int, height: int, count: int = 1,
     ) -> list[bytes]:
         """Generate multiple pixel art images. Returns list of PNG bytes."""
+        logger.debug("retrodiffusion: generating %dx%d x%d, prompt=%.80s...", width, height, count, prompt)
         response = httpx.post(
             "https://api.retrodiffusion.ai/v1/inferences",
             headers={"X-RD-Token": self._api_key},
@@ -36,4 +40,6 @@ class RetroDiffusionProvider:
         )
         response.raise_for_status()
         data = response.json()
-        return [base64.b64decode(b64) for b64 in data["base64_images"]]
+        images = [base64.b64decode(b64) for b64 in data["base64_images"]]
+        logger.debug("retrodiffusion: generated %d images", len(images))
+        return images

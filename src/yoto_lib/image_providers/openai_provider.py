@@ -1,7 +1,10 @@
 """OpenAI image provider implementation."""
 import base64
+import logging
 
 from openai import OpenAI
+
+logger = logging.getLogger(__name__)
 
 
 # Supported sizes for gpt-image-1
@@ -31,6 +34,7 @@ class OpenAIProvider:
         """Generate an image from a text prompt. Returns PNG bytes."""
         nearest_w, nearest_h = _nearest_size(width, height)
         size_str = f"{nearest_w}x{nearest_h}"
+        logger.debug("openai: generating %s, prompt=%.80s...", size_str, prompt)
 
         response = self._client.images.generate(
             model="gpt-image-1",
@@ -40,4 +44,6 @@ class OpenAIProvider:
         )
 
         b64_data = response.data[0].b64_json
-        return base64.b64decode(b64_data)
+        result = base64.b64decode(b64_data)
+        logger.debug("openai: generated %d bytes", len(result))
+        return result

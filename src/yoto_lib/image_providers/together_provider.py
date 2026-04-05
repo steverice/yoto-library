@@ -1,8 +1,11 @@
 """Together AI image provider — supports multiple models with small size output."""
 import base64
+import logging
 import os
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 class TogetherProvider:
@@ -16,6 +19,7 @@ class TogetherProvider:
 
     def generate(self, prompt: str, width: int, height: int) -> bytes:
         """Generate an image. Returns PNG bytes."""
+        logger.debug("together (%s): generating %dx%d, prompt=%.80s...", self._model, width, height, prompt)
         response = httpx.post(
             "https://api.together.xyz/v1/images/generations",
             headers={"Authorization": f"Bearer {self._api_key}"},
@@ -31,4 +35,6 @@ class TogetherProvider:
         )
         response.raise_for_status()
         b64_data = response.json()["data"][0]["b64_json"]
-        return base64.b64decode(b64_data)
+        result = base64.b64decode(b64_data)
+        logger.debug("together: generated %d bytes", len(result))
+        return result

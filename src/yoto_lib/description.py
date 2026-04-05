@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from yoto_lib import mka
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -17,13 +20,19 @@ if TYPE_CHECKING:
 def generate_description(
     playlist: "Playlist",
     log: "Callable[[str], None] | None" = None,
+    ask_user: "Callable[[str], str] | None" = None,
 ) -> None:
     """Generate description.txt from track metadata via Claude CLI.
 
     Skips if description.txt already exists. On failure, logs a warning
     and continues (cover generation handles missing descriptions).
+
+    If ask_user is provided and the LLM asks a clarifying question,
+    the question is shown to the user and their answer is fed back
+    for a second attempt.
     """
     if playlist.description_path.exists():
+        logger.debug("generate_description: skipping, description.txt already exists")
         return
 
     _log = log or (lambda msg: None)
@@ -33,12 +42,28 @@ def generate_description(
 
     # Build prompt
     prompt = _build_prompt(playlist.title, metadata)
+    logger.debug("generate_description prompt:\n%s", prompt)
 
     # Call Claude CLI
     description = _call_claude(prompt)
     if description is None:
+        logger.debug("generate_description: claude returned None")
         _log("Warning: could not generate description (claude CLI unavailable or failed)")
         return
+
+    logger.debug("generate_description response: %s", description)
+
+    # If the LLM asked a question and we can interact, get user input and retry
+    if ask_user and "?" in description and len(description) > 200:
+        answer = ask_user(description)
+        logger.debug("generate_description: LLM asked question, user answered: %s", answer)
+        followup = f"{prompt}\n\nUser preference: {answer}\n\nNow write the description. Output ONLY the description, nothing else."
+        description = _call_claude(followup)
+        if description is None:
+            logger.debug("generate_description: follow-up call returned None")
+            _log("Warning: follow-up description generation failed")
+            return
+        logger.debug("generate_description follow-up response: %s", description)
 
     # Truncate to 500 chars as safety net
     description = description[:500]
@@ -117,10 +142,10 @@ def _build_prompt(playlist_title: str, metadata: dict[str, list[str]]) -> str:
 def _call_claude(prompt: str) -> str | None:
     """Call Claude CLI and return the response text, or None on failure."""
     try:
-        result = subprocess.run(
-            ["claude", "-p", prompt, "--output-format", "json", "--model", "haiku"],
-            capture_output=True, text=True, timeout=120,
-        )
+        cmd = ["claude", "-p", prompt, "--output-format", "json", "--model", "haiku", "--tools", ""]
+        logger.debug("description._call_claude: model=haiku prompt_length=%d", len(prompt))
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        logger.debug("description._call_claude: exit_code=%d response_length=%d", result.returncode, len(result.stdout))
         if result.returncode != 0:
             return None
 
@@ -131,5 +156,6 @@ def _call_claude(prompt: str) -> str | None:
             text = result.stdout
 
         return text.strip()
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        logger.debug("description._call_claude: failed with %s", type(exc).__name__)
         return None

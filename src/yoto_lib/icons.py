@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import struct
 import subprocess
 import tempfile
@@ -13,6 +14,8 @@ import httpx
 from PIL import Image
 
 from yoto_lib import mka
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from yoto_lib.api import YotoAPI
@@ -204,6 +207,7 @@ def download_icon(icon_ref: str, cache_dir: Path = ICON_CACHE_DIR) -> bytes | No
 
     cached = cache_dir / f"{icon_hash}.png"
     if cached.exists():
+        logger.debug("download_icon: cache hit for %s", icon_hash)
         return cached.read_bytes()
 
     if icon_ref.startswith("http"):
@@ -212,6 +216,7 @@ def download_icon(icon_ref: str, cache_dir: Path = ICON_CACHE_DIR) -> bytes | No
         url = f"{ICON_BASE_URL}/{icon_hash}"
 
     try:
+        logger.debug("download_icon: fetching %s", icon_hash)
         data = _download_bytes(url)
         cache_dir.mkdir(parents=True, exist_ok=True)
         cached.write_bytes(data)
@@ -420,6 +425,7 @@ def generate_track_icon(track_title: str) -> bytes | None:
     Tries Retro Diffusion (native 16x16) first, falls back to the grid technique.
     """
     # Primary: Retro Diffusion — generates true 16x16 pixel art
+    logger.debug("generate_track_icon: trying retrodiffusion for '%s'", track_title)
     try:
         _, icon_bytes = generate_retrodiffusion_icon(track_title)
         if icon_bytes:
@@ -428,6 +434,7 @@ def generate_track_icon(track_title: str) -> bytes | None:
         pass
 
     # Fallback: old grid technique (1024x1024 → crop → downscale)
+    logger.debug("generate_track_icon: retrodiffusion failed, trying grid technique for '%s'", track_title)
     image_bytes = generate_raw_grid(track_title)
     if image_bytes is None:
         return None
@@ -573,8 +580,10 @@ def generate_retrodiffusion_icon(track_title: str) -> tuple[bytes | None, bytes 
     cache_path = raw_dir / f"{_sanitize_title(track_title)}_retrodiffusion.png"
 
     if cache_path.exists():
+        logger.debug("generate_retrodiffusion_icon: cache hit for '%s'", track_title)
         image_bytes = cache_path.read_bytes()
     else:
+        logger.debug("generate_retrodiffusion_icon: generating for '%s'", track_title)
         from yoto_lib.image_providers.retrodiffusion_provider import RetroDiffusionProvider
         provider = RetroDiffusionProvider()
         prompt = _build_pixelart_prompt(track_title)
@@ -611,6 +620,7 @@ def generate_retrodiffusion_icons(
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
+    logger.debug("generate_retrodiffusion_icons: %d descriptions", len(descriptions))
     try:
         if RetroDiffusionProvider is None:
             return []
@@ -765,14 +775,18 @@ def _derive_track_title(track_path: Path, filename: str) -> str:
 
 def _upload_icon_bytes(api: "YotoAPI", icon_bytes: bytes) -> str | None:
     """Upload icon bytes to Yoto API, return mediaId or None on failure."""
+    logger.debug("_upload_icon_bytes: %d bytes", len(icon_bytes))
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp.write(icon_bytes)
         tmp_path = Path(tmp.name)
     try:
         upload_result = api.upload_icon(tmp_path, auto_convert=True)
         di = upload_result.get("displayIcon", upload_result)
-        return di.get("mediaId") or di.get("id")
-    except Exception:
+        media_id = di.get("mediaId") or di.get("id")
+        logger.debug("_upload_icon_bytes: -> mediaId=%s", media_id)
+        return media_id
+    except Exception as exc:
+        logger.debug("_upload_icon_bytes: upload failed: %s", exc)
         return None
     finally:
         tmp_path.unlink(missing_ok=True)
@@ -795,7 +809,7 @@ def _pick_ai_icon(
         return None, None, None
 
     raw_images = [raw for raw, _ in batch]
-    winner, _ = compare_icons_llm(
+    winner, scores = compare_icons_llm(
         track_title, raw_images, yoto_icon=yoto_icon_bytes,
         descriptions=descriptions, album_description=album_description,
     )
@@ -805,10 +819,12 @@ def _pick_ai_icon(
 
     if yoto_icon_bytes and winner == total:
         # Yoto icon won
+        logger.debug("_pick_ai_icon: Yoto icon won for '%s'", track_title)
         yoto_img = Image.open(io.BytesIO(yoto_icon_bytes))
         return yoto_icon_bytes, yoto_img, yoto_media_id
 
     # AI icon won
+    logger.debug("_pick_ai_icon: AI option %d won for '%s'", winner, track_title)
     idx = winner - 1
     raw_bytes, processed_img = batch[idx]
     buf = io.BytesIO()
@@ -845,6 +861,7 @@ def resolve_icons(
     result: dict[str, str] = {}
     catalog: "list[dict] | None" = None  # lazy-loaded
     total = len(playlist.track_files)
+    logger.debug("resolve_icons: %d tracks", total)
 
     for i, filename in enumerate(playlist.track_files, 1):
         track_path = playlist.path / filename
@@ -859,6 +876,7 @@ def resolve_icons(
             icon_bytes = None
 
         if icon_bytes is not None:
+            logger.debug("resolve_icons[%s]: found local MKA icon", filename)
             _log(f"Icon {i}/{total}: {title} (local)")
             media_id = _upload_icon_bytes(api, icon_bytes)
         else:
@@ -878,6 +896,7 @@ def resolve_icons(
                     break
 
             if exact_match_id:
+                logger.debug("resolve_icons[%s]: exact match -> mediaId=%s", filename, exact_match_id)
                 _log(f"Icon {i}/{total}: {title} (exact match)")
                 dl_bytes = download_icon(exact_match_id)
                 if dl_bytes:
@@ -896,9 +915,11 @@ def resolve_icons(
 
             # 2. LLM-based matching
             matched_id, confidence = match_icon_llm(track_title, catalog)
+            logger.debug("resolve_icons[%s]: LLM match mediaId=%s confidence=%.2f", filename, matched_id, confidence)
 
             if matched_id and confidence >= CONFIDENCE_HIGH:
                 # High confidence — use Yoto icon directly
+                logger.debug("resolve_icons[%s]: high confidence, using Yoto icon", filename)
                 _log(f"Icon {i}/{total}: {title} (matched, confidence: {confidence:.2f})")
                 dl_bytes = download_icon(matched_id)
                 if dl_bytes:
@@ -908,6 +929,7 @@ def resolve_icons(
 
             elif matched_id and confidence >= CONFIDENCE_LOW:
                 # Gray zone — generate 3 AI, compare with Yoto icon
+                logger.debug("resolve_icons[%s]: gray zone, generating AI candidates + Yoto", filename)
                 _log(f"Icon {i}/{total}: {title} (comparing, confidence: {confidence:.2f})")
                 yoto_bytes = download_icon(matched_id)
                 album_desc = _read_album_description(playlist.path)
@@ -939,6 +961,7 @@ def resolve_icons(
 
             else:
                 # Low confidence — generate 3 AI, pick best
+                logger.debug("resolve_icons[%s]: low confidence, generating AI candidates", filename)
                 _log(f"Icon {i}/{total}: {title} (generating...)")
                 album_desc = _read_album_description(playlist.path)
                 descriptions = describe_icons_llm(track_title, album_description=album_desc)
@@ -961,6 +984,7 @@ def resolve_icons(
 
                 if media_id is None:
                     # Fallback: old single-icon generation
+                    logger.debug("resolve_icons[%s]: fallback to single generation", filename)
                     icon_bytes = generate_track_icon(track_title)
                     if icon_bytes:
                         apply_icon_to_mka(track_path, icon_bytes)
@@ -969,6 +993,7 @@ def resolve_icons(
                             ICON_CACHE_DIR.mkdir(parents=True, exist_ok=True)
                             (ICON_CACHE_DIR / f"{media_id}.png").write_bytes(icon_bytes)
                     else:
+                        logger.debug("resolve_icons[%s]: no icon generated", filename)
                         _log(f"Icon {i}/{total}: {title} (no icon)")
 
         # Set macOS Finder icon

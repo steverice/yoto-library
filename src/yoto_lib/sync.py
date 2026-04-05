@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 from yoto_lib.api import YotoAPI
 from yoto_lib.cover import generate_cover_if_missing
@@ -111,6 +114,7 @@ def sync_playlist(
       12. Write cardId to .yoto-card-id if new
     """
     folder = Path(folder)
+    logger.debug("sync: starting for %s (dry_run=%s)", folder, dry_run)
 
     # 0. Resolve .webloc files into .mka tracks
     resolve_weblocs(folder, trim=trim)
@@ -120,6 +124,7 @@ def sync_playlist(
     # 1. Load local playlist
     playlist = load_playlist(folder)
     result.card_id = playlist.card_id
+    logger.debug("sync: loaded playlist '%s' (%d tracks, card_id=%s)", playlist.title, len(playlist.track_files), playlist.card_id)
 
     # 2. Create API client
     api = YotoAPI()
@@ -133,11 +138,17 @@ def sync_playlist(
             remote_content = api.get_content(playlist.card_id)
             remote_state = _parse_remote_state(remote_content)
             remote_track_hashes = remote_state.get("track_hashes", {})
+            logger.debug("sync: fetched remote state for %s (%d tracks)", playlist.card_id, len(remote_state.get("tracks", [])))
         except Exception as exc:
+            logger.error("sync: failed to fetch remote state: %s", exc)
             result.errors.append(f"Failed to fetch remote state: {exc}")
+    else:
+        logger.debug("sync: no card_id, will create new card")
 
     # 4. Diff
     diff = diff_playlists(playlist, remote_state)
+    logger.debug("sync: diff — new=%d removed=%d order_changed=%s cover_changed=%s",
+                  len(diff.new_tracks), len(diff.removed_tracks), diff.order_changed, diff.cover_changed)
 
     _log = log or (lambda msg: None)
 
@@ -156,8 +167,10 @@ def sync_playlist(
     playlist.has_cover = playlist.cover_path.exists()
 
     # 6. Resolve icons
+    logger.debug("sync: resolving icons for %d tracks", len(playlist.track_files))
     icon_ids: dict[str, str] = resolve_icons(playlist, api, log=_log)
     result.icons_uploaded = len(icon_ids)
+    logger.debug("sync: resolved %d icons", len(icon_ids))
 
     # Counts for dry_run reporting
     result.cover_uploaded = diff.cover_changed and playlist.has_cover
@@ -165,6 +178,7 @@ def sync_playlist(
     # 7. Return early if dry_run
     if dry_run:
         result.tracks_uploaded = len(diff.new_tracks)
+        logger.debug("sync: dry run complete, would upload %d tracks", len(diff.new_tracks))
         return result
 
     # 8. Build track_hashes: reuse remote hashes for existing, upload new
@@ -182,6 +196,8 @@ def sync_playlist(
                 tracks_to_upload.append(filename)
 
     result.tracks_uploaded = len(tracks_to_upload)
+    logger.debug("sync: uploading %d tracks (%d reused from remote)",
+                  len(tracks_to_upload), len(playlist.track_files) - len(tracks_to_upload))
 
     # 9. Upload new tracks (and existing tracks with missing hashes)
     total_new = len(tracks_to_upload)
@@ -198,6 +214,7 @@ def sync_playlist(
             if on_track_done:
                 on_track_done(filename)
         except Exception as exc:
+            logger.error("sync: upload failed for %s: %s", filename, exc)
             result.errors.append(f"Upload failed for {filename}: {exc}")
             if on_track_done:
                 on_track_done(filename)
@@ -205,6 +222,7 @@ def sync_playlist(
     # 10. Upload cover if changed
     cover_url: Optional[str] = None
     if diff.cover_changed and playlist.has_cover:
+        logger.debug("sync: uploading cover")
         _log("Uploading cover...")
         try:
             cover_result = api.upload_cover(playlist.cover_path)
@@ -216,6 +234,7 @@ def sync_playlist(
             result.cover_uploaded = False
 
     # 11. Build content schema and POST
+    logger.debug("sync: POSTing content schema")
     _log("Saving playlist to Yoto...")
     schema = build_content_schema(playlist, track_hashes, icon_ids, cover_url)
     try:
@@ -225,10 +244,12 @@ def sync_playlist(
         ).get("cardId")
         if new_card_id:
             result.card_id = new_card_id
+            logger.debug("sync: saved card_id=%s", new_card_id)
             # 12. Write cardId to .yoto-card-id if new
             if not playlist.card_id:
                 playlist.card_id_path.write_text(new_card_id, encoding="utf-8")
     except Exception as exc:
+        logger.error("sync: content POST failed: %s", exc)
         result.errors.append(f"Content POST failed: {exc}")
 
     return result
@@ -262,11 +283,13 @@ def sync_path(
     results: list[SyncResult] = []
 
     if _has_audio_files(path):
+        logger.debug("sync_path: %s is a playlist folder", path)
         results.append(sync_playlist(path, dry_run=dry_run, trim=trim, on_track_done=on_track_done, log=log))
     else:
         subdirs = sorted(p for p in path.iterdir() if p.is_dir())
-        for subdir in subdirs:
-            if _has_audio_files(subdir):
-                results.append(sync_playlist(subdir, dry_run=dry_run, trim=trim, on_track_done=on_track_done, log=log))
+        playlist_dirs = [s for s in subdirs if _has_audio_files(s)]
+        logger.debug("sync_path: %s contains %d playlist subdirs", path, len(playlist_dirs))
+        for subdir in playlist_dirs:
+            results.append(sync_playlist(subdir, dry_run=dry_run, trim=trim, on_track_done=on_track_done, log=log))
 
     return results

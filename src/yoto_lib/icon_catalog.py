@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from yoto_lib.api import YotoAPI
@@ -79,6 +82,7 @@ def refresh_catalog(
     from yoto_lib.icons import download_icon  # lazy to avoid circular import
 
     icons = _filter_catalog(api.get_public_icons())
+    logger.debug("refresh_catalog: fetched %d icons from API", len(icons))
     save_catalog(icons, cache_dir)
 
     # Download any icon PNGs not already cached
@@ -102,9 +106,12 @@ def get_catalog(
     If API is unavailable and a stale cache exists, uses the stale cache.
     Returns an empty list if no catalog is available at all.
     """
-    if not is_catalog_stale(cache_dir):
+    stale = is_catalog_stale(cache_dir)
+    logger.debug("get_catalog: stale=%s", stale)
+    if not stale:
         icons = load_catalog(cache_dir)
         if icons is not None:
+            logger.debug("get_catalog: loaded %d icons from cache", len(icons))
             return icons
 
     # Need to refresh
