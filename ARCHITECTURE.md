@@ -119,12 +119,8 @@ ffmpeg -y -i track.mka \
 
 This produces byte-identical output regardless of what tags, icons, or other attachments have been added to the MKA since the bsdiff patch was generated.
 
-## Why Yoto hardware can't play MKA
+## Upload pipeline
 
-Yoto's transcode API accepts audio uploads and converts them for playback on Yoto hardware players. When MKA files are uploaded directly:
+Yoto's transcode API accepts any audio format — including MKA — and transcodes to Opus/OGG for playback. MKA files are uploaded directly without extraction; the transcoder handles the Matroska container and finds the audio stream inside.
 
-- The file gets content type `audio/x-matroska` (inferred from the `.mka` extension)
-- Yoto's transcoder either doesn't recognize the Matroska container or produces output the hardware player can't decode
-- The Yoto iPhone app plays these files fine because AVPlayer is more forgiving about container formats
-
-The fix: `upload_and_transcode()` calls `extract_audio()` before uploading, so Yoto always receives a standard audio file (`.m4a` with `audio/mp4`, `.mp3` with `audio/mpeg`, etc.) that its transcoder knows how to handle. MKA never leaves the local machine.
+The content schema's `format` field must match the **transcoded output** format (`"opus"`), not the input format. Yoto hardware firmware v2.21.4+ supports Opus playback.
