@@ -199,7 +199,7 @@ YOTO_IMAGE_PROVIDER=openai    # default; also supports "gemini"
 
 **Icon pipeline** — if a track already has an icon attachment in its MKA, that icon is used. Otherwise, the track title is matched against Yoto's public icon catalog via LLM. High-confidence matches are used directly; lower-confidence matches are compared against 3 AI-generated alternatives (via RetroDiffusion pixel art). The LLM picks the winner.
 
-**Cover art** — if `cover.png` is missing, a description is auto-generated from track metadata via Claude CLI, then an image is generated via the configured provider and cropped to 638x1011. Delete `cover.png` to regenerate.
+**Cover art** — if `cover.png` is missing, the tool first checks whether all tracks share identical embedded album art (e.g., from a ripped CD or tagged album). If so, it resizes that artwork to 638x1011 and uses it directly. Otherwise, a description is auto-generated from track metadata via Claude CLI, then an image is generated via the configured provider and cropped to fit. Delete `cover.png` to regenerate.
 
 **YouTube downloads** — drop a `.webloc` file (Safari bookmark) into a playlist folder. On `yoto sync` or `yoto download`, the URL is resolved via yt-dlp, silence is trimmed from pre/post-roll, and the audio is wrapped in MKA. The `.webloc` is deleted after successful download.
 

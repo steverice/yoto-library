@@ -58,7 +58,7 @@ def wrap_in_mka(source: Path, output: Path) -> None:
     """Wrap any audio file in an MKA container without re-encoding."""
     if not Path(source).exists():
         raise FileNotFoundError(f"Source file not found: {source}")
-    _run(["ffmpeg", "-y", "-i", str(source), "-c", "copy", str(output)])
+    _run(["ffmpeg", "-y", "-i", str(source), "-map", "0", "-c", "copy", str(output)])
 
 
 # Codec → (file extension, ffmpeg muxer format)
@@ -140,6 +140,49 @@ def probe_audio(path: Path) -> dict:
         "size": int(fmt.get("size", 0)),
         "streams": data.get("streams", []),
     }
+
+
+_MIN_ALBUM_ART_SIZE = 100  # pixels; skip track icons (16x16) and tiny images
+
+
+def extract_album_art(mka_path: Path) -> bytes | None:
+    """Extract embedded album art (video stream) from an MKA file.
+
+    Returns PNG image bytes if a suitable video stream exists, None otherwise.
+    Skips small images (e.g. 16x16 track icons) that aren't album art.
+    """
+    info = probe_audio(mka_path)
+    # Find the first video stream large enough to be album art
+    video_idx = 0
+    art_stream = None
+    for s in info["streams"]:
+        if s.get("codec_type") != "video":
+            continue
+        w = int(s.get("width", 0))
+        h = int(s.get("height", 0))
+        if w >= _MIN_ALBUM_ART_SIZE and h >= _MIN_ALBUM_ART_SIZE:
+            art_stream = video_idx
+            break
+        video_idx += 1
+
+    if art_stream is None:
+        return None
+
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+        out_path = Path(f.name)
+
+    try:
+        result = _run(
+            ["ffmpeg", "-y", "-i", str(mka_path),
+             "-map", f"0:v:{art_stream}", "-frames:v", "1",
+             str(out_path)],
+            check=False,
+        )
+        if result.returncode != 0 or not out_path.exists() or out_path.stat().st_size == 0:
+            return None
+        return out_path.read_bytes()
+    finally:
+        out_path.unlink(missing_ok=True)
 
 
 def write_tags(mka_path: Path, tags: dict[str, str]) -> None:

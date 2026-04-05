@@ -861,7 +861,7 @@ def reset_icon(tracks):
 def cover(path, force):
     """Generate cover art for a playlist folder."""
     logger.debug("command: cover path=%s force=%s", path, force)
-    from yoto_lib.cover import generate_cover_if_missing, build_cover_prompt, resize_cover, COVER_WIDTH, COVER_HEIGHT
+    from yoto_lib.cover import generate_cover_if_missing, build_cover_prompt, resize_cover, try_shared_album_art, COVER_WIDTH, COVER_HEIGHT
     from yoto_lib.image_providers import get_provider
     from yoto_lib import mka
     import tempfile
@@ -882,6 +882,11 @@ def cover(path, force):
             log=lambda msg: click.echo(msg),
             ask_user=lambda q: click.prompt(q),
         )
+
+    # Try reusing shared album art first
+    if try_shared_album_art(playlist):
+        click.echo(f"Reused album art as cover: {cover_path}")
+        return
 
     # Build prompt from track metadata
     track_titles: list[str] = []

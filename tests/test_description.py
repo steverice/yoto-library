@@ -159,7 +159,7 @@ class TestSyncIntegration:
              patch("yoto_lib.sync.YotoAPI") as mock_api:
 
             mock_desc.side_effect = lambda p, log=None: call_order.append("description")
-            mock_cover.side_effect = lambda p: call_order.append("cover")
+            mock_cover.side_effect = lambda p, log=None: call_order.append("cover")
 
             playlist = MagicMock()
             playlist.card_id = None

@@ -192,7 +192,7 @@ def sync_playlist(
     # 5. Generate cover if missing
     if not playlist.has_cover:
         _log("Generating cover image...")
-    generate_cover_if_missing(playlist)
+    generate_cover_if_missing(playlist, log=_log)
 
     # Reload has_cover after potential generation
     playlist.has_cover = playlist.cover_path.exists()
