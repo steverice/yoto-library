@@ -78,15 +78,15 @@ def _parse_remote_state(remote_content: dict) -> dict:
             if fmt or channels:
                 track_info[title] = {"format": fmt, "channels": channels}
 
-    has_cover = bool(
-        remote_content.get("metadata", {}).get("cover", {}).get("imageL")
-    )
+    cover_url = remote_content.get("metadata", {}).get("cover", {}).get("imageL")
+    has_cover = bool(cover_url)
     description = remote_content.get("description", None)
 
     return {
         "tracks": tracks,
         "description": description,
         "has_cover": has_cover,
+        "cover_url": cover_url,
         "track_hashes": track_hashes,
         "track_info": track_info,
     }
@@ -262,7 +262,7 @@ def sync_playlist(
             if on_track_done:
                 on_track_done(filename)
 
-    # 10. Upload cover if changed
+    # 10. Upload cover if changed, or preserve existing remote cover URL
     cover_url: Optional[str] = None
     if diff.cover_changed and playlist.has_cover:
         logger.debug("sync: uploading cover")
@@ -275,6 +275,10 @@ def sync_playlist(
         except Exception as exc:
             result.errors.append(f"Cover upload failed: {exc}")
             result.cover_uploaded = False
+    elif remote_state and remote_state.get("cover_url"):
+        # Preserve existing remote cover URL so POST doesn't remove it
+        cover_url = remote_state["cover_url"]
+        logger.debug("sync: preserving existing cover URL")
 
     # 11. Build content schema and POST
     logger.debug("sync: POSTing content schema")
