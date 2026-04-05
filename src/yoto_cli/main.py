@@ -569,203 +569,211 @@ def _render_icons_side_by_side(
 
 
 @cli.command(name="select-icon")
-@click.argument("track", type=click.Path(exists=True), shell_complete=_complete_mka_without_icon)
-def select_icon(track):
-    """Generate 3 icon options for a track, show best Yoto match, and attach the chosen one."""
-    logger.debug("command: select-icon track=%s", track)
+@click.argument("tracks", nargs=-1, required=True, type=click.Path(exists=True), shell_complete=_complete_mka_without_icon)
+def select_icon(tracks):
+    """Generate 3 icon options per track, show best Yoto match, and attach the chosen one."""
+    logger.debug("command: select-icon tracks=%s", tracks)
     import io
     import tempfile
     from PIL import Image
-    from yoto_lib.icons import generate_retrodiffusion_icons, download_icon
+    from yoto_lib.icons import generate_retrodiffusion_icons, download_icon, set_macos_file_icon
     from yoto_lib.mka import get_attachment
     from yoto_lib.icon_catalog import get_catalog
-    from yoto_lib.icon_llm import match_icon_llm, compare_icons_llm, describe_icons_llm
+    from yoto_lib.icon_llm import match_icon_llm, compare_icons_llm, describe_icons_llm, log_icon_feedback
 
-    track_path = Path(track)
-    title = track_path.stem
-    album_desc = None
-    desc_path = track_path.resolve().parent / "description.txt"
-    if desc_path.exists():
-        album_desc = desc_path.read_text(encoding="utf-8")
     use_tqdm = sys.stderr.isatty()
-
-    # Check for existing icon
-    existing_img: "Image.Image | None" = None
-    try:
-        existing_bytes = get_attachment(track_path, "icon")
-        if existing_bytes:
-            existing_img = Image.open(io.BytesIO(existing_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)
-    except Exception:
-        pass
-
-    # Steps: match Yoto + describe + gen 1-3 + evaluate = 7
     bar_fmt = "{desc}: \033[48;5;236m{bar}\033[0m {n_fmt}/{total_fmt} {postfix}"
 
-    # Get best Yoto icon match
+    # Shared resources — loaded once
     api = YotoAPI()
     catalog = get_catalog(api)
 
-    if use_tqdm:
-        from tqdm import tqdm
-        pbar = tqdm(total=7, desc=title, bar_format=bar_fmt)
-        pbar.set_postfix_str("matching Yoto icon")
-    else:
-        pbar = None
+    for track in tracks:
+        track_path = Path(track)
+        title = track_path.stem
+        album_desc = None
+        desc_path = track_path.resolve().parent / "description.txt"
+        if desc_path.exists():
+            album_desc = desc_path.read_text(encoding="utf-8")
 
-    yoto_media_id, yoto_confidence = match_icon_llm(title, catalog)
-    yoto_img: "Image.Image | None" = None
-    yoto_title: str | None = None
-    yoto_bytes: bytes | None = None
+        if len(tracks) > 1:
+            click.echo(f"\n── {track_path.name} ──")
 
-    if yoto_media_id:
-        yoto_bytes = download_icon(yoto_media_id)
-        if yoto_bytes:
-            yoto_img = Image.open(io.BytesIO(yoto_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)
-            for icon in catalog:
-                if icon.get("mediaId") == yoto_media_id:
-                    yoto_title = icon.get("title", "") or icon.get("name", "")
-                    break
+        # Check for existing icon
+        existing_img: "Image.Image | None" = None
+        try:
+            existing_bytes = get_attachment(track_path, "icon")
+            if existing_bytes:
+                existing_img = Image.open(io.BytesIO(existing_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)
+        except Exception:
+            pass
 
-    if pbar:
-        pbar.update(1)
-        pbar.set_postfix_str("describing icons")
-
-    tmpdir = Path(tempfile.mkdtemp(prefix="yoto-icon-"))
-
-    while True:
-        descriptions = describe_icons_llm(title, album_description=album_desc)
-        if not descriptions:
-            descriptions = [title, title, title]  # fallback to raw title
-
-        if pbar:
-            pbar.update(1)
-            pbar.set_postfix_str("generating icon 1/3")
-
-        def on_gen_progress(i):
-            if pbar:
-                pbar.update(1)
-                if i < 3:
-                    pbar.set_postfix_str(f"generating icon {i + 1}/3")
-                else:
-                    pbar.set_postfix_str("evaluating icons")
-
-        batch = generate_retrodiffusion_icons(descriptions, on_progress=on_gen_progress)
-        if not batch:
-            if pbar:
-                pbar.close()
-            raise click.ClickException("Icon generation failed")
-
-        icons_16: list[Image.Image] = []
-        raw_bytes_list: list[bytes] = []
-        images_to_show: list[Image.Image] = []
-        labels_to_show: list[str] = []
-        for i, (raw_bytes, processed_img) in enumerate(batch):
-            icons_16.append(processed_img)
-            raw_bytes_list.append(raw_bytes)
-            images_to_show.append(processed_img)
-            desc_label = descriptions[i] if i < len(descriptions) else "AI"
-            labels_to_show.append(f"[{i + 1}] {desc_label}")
-
-        next_idx = len(images_to_show) + 1
-
-        if yoto_img is not None:
-            images_to_show.append(yoto_img)
-            labels_to_show.append(f"[{next_idx}] \"{yoto_title}\"")
-            yoto_choice = next_idx
-            next_idx += 1
+        if use_tqdm:
+            from tqdm import tqdm
+            pbar = tqdm(total=7, desc=title, bar_format=bar_fmt)
+            pbar.set_postfix_str("matching Yoto icon")
         else:
-            yoto_choice = None
-
-        if existing_img is not None:
-            images_to_show.append(existing_img)
-            labels_to_show.append(f"[{next_idx}] current")
-            existing_choice = next_idx
-            next_idx += 1
-        else:
-            existing_choice = None
-
-        max_choice = next_idx - 1
-        prompt_text = f"Pick an icon (1-{max_choice}, or 'r' to regenerate)"
-
-        # LLM comparison
-        winner, scores = compare_icons_llm(
-            title, raw_bytes_list,
-            yoto_icon=yoto_bytes if yoto_img is not None else None,
-            descriptions=descriptions,
-            album_description=album_desc,
-        )
-
-        if pbar:
-            pbar.update(1)
-            pbar.close()
             pbar = None
 
-        # Build score labels (existing icon gets no score)
-        score_labels = []
-        for i in range(len(images_to_show)):
-            if (i + 1) == existing_choice:
-                score_labels.append("")
+        yoto_media_id, yoto_confidence = match_icon_llm(title, catalog)
+        yoto_img: "Image.Image | None" = None
+        yoto_title: str | None = None
+        yoto_bytes: bytes | None = None
+
+        if yoto_media_id:
+            yoto_bytes = download_icon(yoto_media_id)
+            if yoto_bytes:
+                yoto_img = Image.open(io.BytesIO(yoto_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)
+                for icon in catalog:
+                    if icon.get("mediaId") == yoto_media_id:
+                        yoto_title = icon.get("title", "") or icon.get("name", "")
+                        break
+
+        if pbar:
+            pbar.update(1)
+            pbar.set_postfix_str("describing icons")
+
+        tmpdir = Path(tempfile.mkdtemp(prefix="yoto-icon-"))
+        skipped = False
+
+        while True:
+            descriptions = describe_icons_llm(title, album_description=album_desc)
+            if not descriptions:
+                descriptions = [title, title, title]  # fallback to raw title
+
+            if pbar:
+                pbar.update(1)
+                pbar.set_postfix_str("generating icon 1/3")
+
+            def on_gen_progress(i):
+                if pbar:
+                    pbar.update(1)
+                    if i < 3:
+                        pbar.set_postfix_str(f"generating icon {i + 1}/3")
+                    else:
+                        pbar.set_postfix_str("evaluating icons")
+
+            batch = generate_retrodiffusion_icons(descriptions, on_progress=on_gen_progress)
+            if not batch:
+                if pbar:
+                    pbar.close()
+                click.echo(f"Icon generation failed for {track_path.name}", err=True)
+                skipped = True
+                break
+
+            icons_16: list[Image.Image] = []
+            raw_bytes_list: list[bytes] = []
+            images_to_show: list[Image.Image] = []
+            labels_to_show: list[str] = []
+            for i, (raw_bytes, processed_img) in enumerate(batch):
+                icons_16.append(processed_img)
+                raw_bytes_list.append(raw_bytes)
+                images_to_show.append(processed_img)
+                desc_label = descriptions[i] if i < len(descriptions) else "AI"
+                labels_to_show.append(f"[{i + 1}] {desc_label}")
+
+            next_idx = len(images_to_show) + 1
+
+            if yoto_img is not None:
+                images_to_show.append(yoto_img)
+                labels_to_show.append(f"[{next_idx}] \"{yoto_title}\"")
+                yoto_choice = next_idx
+                next_idx += 1
             else:
-                score = f"{scores[i]:.1f}" if i < len(scores) else "?"
-                marker = " *" if (i + 1) == winner else ""
-                score_labels.append(f"score: {score}{marker}")
+                yoto_choice = None
 
-        click.echo(_render_icons_side_by_side(images_to_show, labels_to_show, score_labels))
-        click.echo()
+            if existing_img is not None:
+                images_to_show.append(existing_img)
+                labels_to_show.append(f"[{next_idx}] current")
+                existing_choice = next_idx
+                next_idx += 1
+            else:
+                existing_choice = None
 
-        default_choice = str(winner) if 1 <= winner <= max_choice else "1"
-        raw = click.prompt(prompt_text, default=default_choice)
-        if raw.lower() == "r":
-            if use_tqdm:
-                from tqdm import tqdm
-                pbar = tqdm(total=5, desc=title, bar_format=bar_fmt)
-                pbar.set_postfix_str("describing icons")
-            continue
+            max_choice = next_idx - 1
+            prompt_text = f"Pick an icon (1-{max_choice}, or 'r' to regenerate)"
 
-        try:
-            choice = int(raw)
-            if not 1 <= choice <= max_choice:
-                raise ValueError
-        except ValueError:
-            click.echo("Invalid choice.")
-            continue
+            # LLM comparison
+            winner, scores = compare_icons_llm(
+                title, raw_bytes_list,
+                yoto_icon=yoto_bytes if yoto_img is not None else None,
+                descriptions=descriptions,
+                album_description=album_desc,
+            )
 
-        if choice == existing_choice:
-            click.echo(f"Keeping current icon for {track_path.name}")
+            if pbar:
+                pbar.update(1)
+                pbar.close()
+                pbar = None
+
+            # Build score labels (existing icon gets no score)
+            score_labels = []
+            for i in range(len(images_to_show)):
+                if (i + 1) == existing_choice:
+                    score_labels.append("")
+                else:
+                    score = f"{scores[i]:.1f}" if i < len(scores) else "?"
+                    marker = " *" if (i + 1) == winner else ""
+                    score_labels.append(f"score: {score}{marker}")
+
+            click.echo(_render_icons_side_by_side(images_to_show, labels_to_show, score_labels))
+            click.echo()
+
+            default_choice = str(winner) if 1 <= winner <= max_choice else "1"
+            raw = click.prompt(prompt_text, default=default_choice)
+            if raw.lower() == "r":
+                if use_tqdm:
+                    from tqdm import tqdm
+                    pbar = tqdm(total=5, desc=title, bar_format=bar_fmt)
+                    pbar.set_postfix_str("describing icons")
+                continue
+
+            try:
+                choice = int(raw)
+                if not 1 <= choice <= max_choice:
+                    raise ValueError
+            except ValueError:
+                click.echo("Invalid choice.")
+                continue
+
+            if choice == existing_choice:
+                click.echo(f"Keeping current icon for {track_path.name}")
+                skipped = True
+                break
+            elif choice == yoto_choice:
+                chosen = yoto_img
+            else:
+                chosen = icons_16[choice - 1]
+
+            # Log feedback for tuning
+            log_icon_feedback(
+                track_title=title,
+                llm_winner=winner,
+                llm_scores=scores,
+                user_choice=choice,
+                descriptions=descriptions,
+                album=track_path.resolve().parent.name,
+                chose_yoto=(choice == yoto_choice),
+            )
+            break
+
+        if skipped:
             tmpdir.rmdir()
-            return
-        elif choice == yoto_choice:
-            chosen = yoto_img
-        else:
-            chosen = icons_16[choice - 1]
+            continue
 
-        # Log feedback for tuning
-        from yoto_lib.icon_llm import log_icon_feedback
-        log_icon_feedback(
-            track_title=title,
-            llm_winner=winner,
-            llm_scores=scores,
-            user_choice=choice,
-            descriptions=descriptions,
-            album=track_path.resolve().parent.name,
-            chose_yoto=(choice == yoto_choice),
-        )
-        break
+        buf = io.BytesIO()
+        chosen.save(buf, format="PNG")
+        icon_bytes = buf.getvalue()
 
-    buf = io.BytesIO()
-    chosen.save(buf, format="PNG")
-    icon_bytes = buf.getvalue()
+        icon_tmp = tmpdir / "chosen_icon.png"
+        icon_tmp.write_bytes(icon_bytes)
+        set_attachment(track_path, icon_tmp, name="icon", mime_type="image/png")
 
-    icon_tmp = tmpdir / "chosen_icon.png"
-    icon_tmp.write_bytes(icon_bytes)
-    set_attachment(track_path, icon_tmp, name="icon", mime_type="image/png")
+        set_macos_file_icon(track_path, chosen)
+        click.echo(f"Attached icon to {track_path.name}")
 
-    from yoto_lib.icons import set_macos_file_icon
-    set_macos_file_icon(track_path, chosen)
-    click.echo(f"Attached icon to {track_path.name}")
-
-    icon_tmp.unlink(missing_ok=True)
-    tmpdir.rmdir()
+        icon_tmp.unlink(missing_ok=True)
+        tmpdir.rmdir()
 
 
 # ── reset-icon ───────────────────────────────────────────────────────────
