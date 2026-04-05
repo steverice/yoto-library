@@ -240,15 +240,16 @@ class TestEnrichFromItunes:
             patch("yoto_lib.itunes.extract_album_art", return_value=None),
             patch("yoto_lib.itunes.search_itunes_album", return_value=[api_result]) as mock_search,
             patch("yoto_lib.itunes.match_album", return_value=api_result),
-            patch("yoto_lib.itunes.httpx.get", return_value=mock_response),
+            patch("yoto_lib.itunes.httpx.get", return_value=mock_response) as mock_get,
             patch("yoto_lib.itunes.embed_album_art", return_value=True),
             patch("yoto_lib.itunes.write_tags"),
         ):
             enrich_from_itunes(mka1, {"artist": "Artist", "album": "Album"}, cache)
             enrich_from_itunes(mka2, {"artist": "Artist", "album": "Album"}, cache)
 
-        # API should only be called once — second call uses cache
+        # API search and artwork download should each happen only once
         mock_search.assert_called_once()
+        mock_get.assert_called_once()
 
     def test_caches_no_match(self, tmp_path):
         mka1 = tmp_path / "track1.mka"
