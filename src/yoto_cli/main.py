@@ -899,7 +899,7 @@ def cover(path, force):
         if artist:
             artists.append(artist)
 
-    prompt = build_cover_prompt(playlist.description, track_titles, artists)
+    prompt = build_cover_prompt(playlist.description, track_titles, artists, playlist.title)
 
     click.echo("Generating cover art...")
     provider = get_provider()
