@@ -903,7 +903,9 @@ def cover(path, force):
 
     click.echo("Generating cover art...")
     provider = get_provider()
-    image_bytes = provider.generate(prompt, COVER_WIDTH, COVER_HEIGHT)
+    # 3:4 aspect — wider than 638:1011 target, so resize_cover crops sides
+    # and preserves full height including title text at top.
+    image_bytes = provider.generate(prompt, 768, 1024)
 
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp.write(image_bytes)

@@ -70,10 +70,11 @@ def build_cover_prompt(
         parts.append("Artists: " + ", ".join(unique_artists))
 
     parts.append(
-        "Create a portrait illustration suitable for a children's audio card."
-        " Include the playlist name as text in the image."
+        "Create a portrait-oriented children's book cover illustration."
+        " Display the playlist name as a title inside a decorative banner"
+        " in the upper portion of the image. The banner and all text must be"
+        " well within the image boundaries — nothing near the edges."
     )
-    parts.append("Do not include any other text, letters, or lettering beyond the playlist name.")
 
     return " ".join(parts)
 
@@ -107,7 +108,10 @@ def generate_cover_if_missing(playlist: "Playlist") -> None:
 
     provider = get_provider()
     logger.debug("generate_cover: using provider %s", type(provider).__name__)
-    image_bytes = provider.generate(prompt, COVER_WIDTH, COVER_HEIGHT)
+    # Request 3:4 aspect — wider than our 638:1011 target (~0.63), so
+    # resize_cover crops the sides and preserves the full height including
+    # title text at the top.
+    image_bytes = provider.generate(prompt, 768, 1024)
     logger.debug("generate_cover: generated %d bytes", len(image_bytes))
 
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
