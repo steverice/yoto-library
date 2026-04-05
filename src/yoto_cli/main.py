@@ -139,6 +139,20 @@ def _complete_dirs(ctx, param, incomplete):
     return _complete_path(incomplete, lambda _: False)
 
 
+def _complete_unimported_dirs(ctx, param, incomplete):
+    """Complete directories that lack a playlist.jsonl, falling back to all dirs."""
+    results = _complete_path(
+        incomplete,
+        lambda p: False,  # no files, dirs only
+    )
+    # Filter to dirs without playlist.jsonl
+    filtered = [
+        item for item in results
+        if not item.value.endswith("/") or not (Path(item.value) / "playlist.jsonl").exists()
+    ]
+    return filtered if any(item.value.endswith("/") for item in filtered) else results
+
+
 def _is_mka(p):
     return p.suffix.lower() == ".mka"
 
@@ -439,7 +453,7 @@ def _strip_track_number(stem: str) -> str:
 
 
 @cli.command(name="import")
-@click.argument("source", type=click.Path(exists=True), shell_complete=_complete_dirs)
+@click.argument("source", type=click.Path(exists=True), shell_complete=_complete_unimported_dirs)
 @click.option(
     "--output", "-o",
     default=None,
