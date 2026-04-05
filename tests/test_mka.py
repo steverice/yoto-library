@@ -1,5 +1,6 @@
 import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -10,6 +11,7 @@ from yoto_lib.mka import (
     get_attachment,
     set_attachment,
     remove_attachment,
+    extract_album_art,
     probe_audio,
     TAG_MAP,
 )
@@ -236,3 +238,33 @@ class TestAttachments:
 
         remove_attachment(mka, name="icon")
         assert get_attachment(mka, name="icon") is None
+
+
+# ── TestExtractAlbumArt ──────────────────────────────────────────────────────
+
+
+class TestExtractAlbumArt:
+    def test_returns_none_when_no_video_stream(self):
+        """extract_album_art returns None when there is no video stream."""
+        fake_probe = {
+            "format": "matroska",
+            "duration": 10.0,
+            "size": 1000,
+            "streams": [{"codec_type": "audio", "codec_name": "aac"}],
+        }
+        with patch("yoto_lib.mka.probe_audio", return_value=fake_probe):
+            assert extract_album_art(Path("dummy.mka")) is None
+
+    def test_returns_none_for_small_icons(self):
+        """extract_album_art ignores 16x16 track icons."""
+        fake_probe = {
+            "format": "matroska",
+            "duration": 10.0,
+            "size": 1000,
+            "streams": [
+                {"codec_type": "audio", "codec_name": "aac"},
+                {"codec_type": "video", "codec_name": "png", "width": 16, "height": 16},
+            ],
+        }
+        with patch("yoto_lib.mka.probe_audio", return_value=fake_probe):
+            assert extract_album_art(Path("dummy.mka")) is None

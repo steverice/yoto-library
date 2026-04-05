@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import tempfile
 from pathlib import Path
@@ -15,6 +16,7 @@ from yoto_lib import mka
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from yoto_lib.playlist import Playlist
 
 COVER_WIDTH = 638
@@ -79,12 +81,79 @@ def build_cover_prompt(
     return " ".join(parts)
 
 
-def generate_cover_if_missing(playlist: "Playlist") -> None:
+def try_shared_album_art(
+    playlist: "Playlist",
+    log: "Callable[[str], None] | None" = None,
+) -> bool:
+    """Check if all tracks share identical album art; if so, save it as the cover.
+
+    Extracts embedded album art from each track's video stream, hashes them,
+    and if all hashes match, resizes the shared art to cover dimensions.
+
+    Returns True if shared art was used, False otherwise.
+    """
+    _log = log or (lambda msg: None)
+    if not playlist.track_files:
+        return False
+
+    first_hash: str | None = None
+    first_art_bytes: bytes | None = None
+
+    for filename in playlist.track_files:
+        track_path = playlist.path / filename
+        if not track_path.exists():
+            logger.debug("try_shared_album_art: track not found: %s", filename)
+            return False
+
+        art_bytes = mka.extract_album_art(track_path)
+        if art_bytes is None:
+            logger.debug("try_shared_album_art: no album art in %s", filename)
+            return False
+
+        art_hash = hashlib.sha256(art_bytes).hexdigest()
+
+        if first_hash is None:
+            first_hash = art_hash
+            first_art_bytes = art_bytes
+            logger.debug("try_shared_album_art: first track art hash=%s (%s)", art_hash[:12], filename)
+        elif art_hash != first_hash:
+            logger.debug(
+                "try_shared_album_art: art mismatch at %s (hash=%s, expected=%s)",
+                filename, art_hash[:12], first_hash[:12],
+            )
+            return False
+
+    assert first_art_bytes is not None
+    logger.info(
+        "try_shared_album_art: all %d tracks share identical album art, reusing as cover",
+        len(playlist.track_files),
+    )
+    _log("Reusing shared album art as cover")
+
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+        tmp.write(first_art_bytes)
+        tmp_path = Path(tmp.name)
+
+    try:
+        resize_cover(tmp_path, playlist.cover_path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    return True
+
+
+def generate_cover_if_missing(
+    playlist: "Playlist",
+    log: "Callable[[str], None] | None" = None,
+) -> None:
     """Generate a cover image for the playlist if one doesn't already exist."""
     if playlist.has_cover:
         logger.debug("generate_cover: skipping, cover already exists for '%s'", playlist.title)
         return
     logger.debug("generate_cover: generating for '%s'", playlist.title)
+
+    if try_shared_album_art(playlist, log=log):
+        return
 
     track_titles: list[str] = []
     artists: list[str] = []

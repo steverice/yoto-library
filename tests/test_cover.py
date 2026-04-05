@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -14,6 +15,7 @@ from yoto_lib.cover import (
     build_cover_prompt,
     generate_cover_if_missing,
     resize_cover,
+    try_shared_album_art,
 )
 
 
@@ -173,3 +175,92 @@ class TestGenerateCoverIfMissing:
         mock_provider.generate.assert_called_once_with(
             "test prompt", 768, 1024
         )
+
+
+# ── TestTrySharedAlbumArt ────────────────────────────────────────────────────
+
+
+def _make_png_bytes(width: int, height: int, color: str = "green") -> bytes:
+    """Create a PNG image in memory and return its bytes."""
+    img = Image.new("RGB", (width, height), color=color)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+class TestTrySharedAlbumArt:
+    def test_returns_false_for_empty_playlist(self):
+        """No tracks means no shared art."""
+        playlist = MagicMock()
+        playlist.track_files = []
+        assert not try_shared_album_art(playlist)
+
+    def test_returns_false_when_no_art(self, tmp_path):
+        """Returns False when tracks have no embedded art."""
+        playlist = MagicMock()
+        playlist.track_files = ["track01.mka"]
+        playlist.path = tmp_path
+        (tmp_path / "track01.mka").touch()
+
+        with patch("yoto_lib.cover.mka.extract_album_art", return_value=None):
+            assert not try_shared_album_art(playlist)
+
+    def test_returns_false_when_art_differs(self, tmp_path):
+        """Returns False when tracks have different album art."""
+        playlist = MagicMock()
+        playlist.track_files = ["track01.mka", "track02.mka"]
+        playlist.path = tmp_path
+        (tmp_path / "track01.mka").touch()
+        (tmp_path / "track02.mka").touch()
+
+        art_a = _make_png_bytes(500, 500, "red")
+        art_b = _make_png_bytes(500, 500, "blue")
+
+        with patch("yoto_lib.cover.mka.extract_album_art", side_effect=[art_a, art_b]):
+            assert not try_shared_album_art(playlist)
+
+    def test_returns_false_when_some_tracks_missing_art(self, tmp_path):
+        """Returns False when only some tracks have art."""
+        playlist = MagicMock()
+        playlist.track_files = ["track01.mka", "track02.mka"]
+        playlist.path = tmp_path
+        (tmp_path / "track01.mka").touch()
+        (tmp_path / "track02.mka").touch()
+
+        art = _make_png_bytes(500, 500)
+
+        with patch("yoto_lib.cover.mka.extract_album_art", side_effect=[art, None]):
+            assert not try_shared_album_art(playlist)
+
+    def test_returns_true_and_saves_cover_when_all_match(self, tmp_path):
+        """Saves resized cover when all tracks share the same art."""
+        cover_path = tmp_path / "cover.png"
+        playlist = MagicMock()
+        playlist.track_files = ["track01.mka", "track02.mka", "track03.mka"]
+        playlist.path = tmp_path
+        playlist.cover_path = cover_path
+        (tmp_path / "track01.mka").touch()
+        (tmp_path / "track02.mka").touch()
+        (tmp_path / "track03.mka").touch()
+
+        shared_art = _make_png_bytes(500, 500)
+
+        with patch("yoto_lib.cover.mka.extract_album_art", return_value=shared_art):
+            result = try_shared_album_art(playlist)
+
+        assert result is True
+        assert cover_path.exists()
+        img = Image.open(cover_path)
+        assert img.size == (COVER_WIDTH, COVER_HEIGHT)
+
+    def test_generate_cover_tries_shared_art_first(self):
+        """generate_cover_if_missing tries shared art before AI generation."""
+        playlist = MagicMock()
+        playlist.has_cover = False
+
+        with patch("yoto_lib.cover.try_shared_album_art", return_value=True) as mock_shared, \
+             patch("yoto_lib.cover.get_provider") as mock_provider:
+            generate_cover_if_missing(playlist)
+
+        mock_shared.assert_called_once_with(playlist, log=None)
+        mock_provider.assert_not_called()
