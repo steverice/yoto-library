@@ -254,14 +254,18 @@ class TestBuildContentSchema:
         chapters = schema["content"]["chapters"]
         assert isinstance(chapters, list)
         assert len(chapters) == 2
-        assert chapters[0]["key"] == "ch000"
+        assert chapters[0]["key"] == "001"
         assert chapters[0]["title"] == "01 - Intro"
+        assert chapters[0]["overlayLabel"] == "1"
         assert chapters[0]["tracks"][0]["trackUrl"] == "yoto:#abc123"
         assert chapters[0]["tracks"][0]["type"] == "audio"
-        assert chapters[0]["tracks"][0]["key"] == "t000"
+        assert chapters[0]["tracks"][0]["key"] == "01"
+        assert chapters[0]["tracks"][0]["overlayLabel"] == "1"
         assert chapters[0]["tracks"][0]["title"] == "01 - Intro"
-        assert chapters[1]["key"] == "ch001"
+        assert chapters[1]["key"] == "002"
+        assert chapters[1]["overlayLabel"] == "2"
         assert chapters[1]["tracks"][0]["trackUrl"] == "yoto:#def456"
+        assert chapters[1]["tracks"][0]["key"] == "01"
         assert chapters[1]["tracks"][0]["title"] == "02 - Main"
 
     def test_includes_card_id(self, tmp_path):
@@ -307,3 +311,19 @@ class TestBuildContentSchema:
             cover_url="https://cdn.yoto.io/cover.png",
         )
         assert schema["metadata"]["cover"]["imageL"] == "https://cdn.yoto.io/cover.png"
+
+    def test_includes_format_and_channels(self, tmp_path):
+        pl = self._make_basic_playlist(tmp_path)
+        hashes = {"01 - Intro.mka": "abc", "02 - Main.mka": "def"}
+        track_info = {
+            "01 - Intro.mka": {"format": "aac", "channels": "stereo"},
+            "02 - Main.mka": {"format": "aac", "channels": "stereo"},
+        }
+        schema = build_content_schema(
+            pl, track_hashes=hashes, icon_ids={}, cover_url=None, track_info=track_info,
+        )
+        chapters = schema["content"]["chapters"]
+        assert chapters[0]["tracks"][0]["format"] == "aac"
+        assert chapters[0]["tracks"][0]["channels"] == "stereo"
+        assert chapters[1]["tracks"][0]["format"] == "aac"
+        assert chapters[1]["tracks"][0]["channels"] == "stereo"
