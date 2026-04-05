@@ -92,6 +92,7 @@ def resolve_weblocs(playlist_dir: Path, trim: bool = True) -> list[Path]:
         mka_path = _unique_path(playlist_dir, title, ".mka")
         try:
             wrap_in_mka(audio_path, mka_path)
+            metadata["source_format"] = audio_path.suffix.lstrip(".").lower()
             write_tags(mka_path, metadata)
             logger.debug("resolve_weblocs: wrapped %s -> %s", audio_path.name, mka_path.name)
         except Exception as exc:

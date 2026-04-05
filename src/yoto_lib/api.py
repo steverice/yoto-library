@@ -133,7 +133,7 @@ class YotoAPI:
             raw = response.json()
             data = raw.get("transcode", raw)
             if "transcodedSha256" in data:
-                logger.debug("poll_transcode: %s complete (attempt %d)", upload_id, attempt + 1)
+                logger.debug("poll_transcode: %s complete (attempt %d): %s", upload_id, attempt + 1, data)
                 return data
             time.sleep(interval)
         logger.error("poll_transcode: %s timed out after %d attempts", upload_id, max_attempts)
@@ -142,14 +142,28 @@ class YotoAPI:
         )
 
     def upload_and_transcode(self, file_path: Path) -> dict:
-        logger.debug("upload_and_transcode: %s", file_path.name)
+        """Upload and transcode an audio file. Extracts MKA to native format first."""
+        import tempfile
+
+        if file_path.suffix.lower() == ".mka":
+            from yoto_lib.mka import extract_audio
+
+            logger.debug("upload_and_transcode: extracting %s from MKA", file_path.name)
+            with tempfile.TemporaryDirectory(prefix="yoto-upload-") as tmpdir:
+                upload_path = extract_audio(file_path, Path(tmpdir))
+                return self._do_upload_and_transcode(upload_path)
+        else:
+            return self._do_upload_and_transcode(file_path)
+
+    def _do_upload_and_transcode(self, file_path: Path) -> dict:
+        logger.debug("_do_upload_and_transcode: %s", file_path.name)
         sha256_hex = hashlib.sha256(file_path.read_bytes()).hexdigest()
         upload_info = self.get_upload_url(sha256_hex, filename=file_path.name)
 
         if upload_info["uploadUrl"] is not None:
             self.upload_audio_file(upload_info["uploadUrl"], file_path)
         else:
-            logger.debug("upload_and_transcode: %s already uploaded, skipping", file_path.name)
+            logger.debug("_do_upload_and_transcode: %s already uploaded, skipping", file_path.name)
 
         return self.poll_transcode(upload_info["uploadId"])
 
