@@ -127,3 +127,78 @@ def embed_album_art(mka_path: Path, image_bytes: bytes) -> bool:
     finally:
         img_path.unlink(missing_ok=True)
         out_path.unlink(missing_ok=True)
+
+
+# Metadata fields to backfill from iTunes API results.
+# Maps API response key -> internal tag name.
+_BACKFILL_FIELDS = {
+    "primaryGenreName": "genre",
+    "releaseDate": "date",
+    "copyright": "copyright",
+}
+
+# Cache sentinel for "we looked and found nothing"
+_NO_MATCH = object()
+
+
+def enrich_from_itunes(
+    mka_path: Path,
+    tags: dict[str, str],
+    album_cache: dict[tuple[str, str], object],
+) -> None:
+    """Look up album art and metadata from iTunes Search API if the MKA lacks artwork.
+
+    Args:
+        mka_path: Path to the MKA file to enrich.
+        tags: Source tags already extracted from the file (internal field names).
+        album_cache: Shared dict for caching results across tracks in a single import.
+            Keys are (artist, album) tuples; values are API result dicts or _NO_MATCH.
+    """
+    # Only proceed if artwork is missing
+    if extract_album_art(mka_path) is not None:
+        return
+
+    artist = tags.get("artist", "").strip()
+    album = tags.get("album", "").strip()
+    if not artist or not album:
+        return
+
+    cache_key = (artist.lower(), album.lower())
+
+    # Check cache
+    if cache_key not in album_cache:
+        results = search_itunes_album(artist, album)
+        matched = match_album(results, artist, album)
+        album_cache[cache_key] = matched if matched is not None else _NO_MATCH
+
+    cached = album_cache[cache_key]
+    if cached is _NO_MATCH:
+        return
+
+    result = cached
+
+    # Download and embed artwork
+    artwork_api_url = result.get("artworkUrl100", "")
+    if artwork_api_url:
+        art_url = _artwork_url(artwork_api_url, 1200)
+        try:
+            response = httpx.get(art_url, follow_redirects=True, timeout=30.0)
+            response.raise_for_status()
+            image_bytes = response.content
+            if embed_album_art(mka_path, image_bytes):
+                logger.info(
+                    "Embedded iTunes artwork in %s (%s - %s)",
+                    mka_path.name, artist, album,
+                )
+        except Exception:
+            logger.warning("Failed to download iTunes artwork for %s", mka_path.name)
+
+    # Backfill missing metadata
+    backfill = {}
+    for api_key, tag_name in _BACKFILL_FIELDS.items():
+        if tag_name not in tags and api_key in result:
+            backfill[tag_name] = result[api_key]
+
+    if backfill:
+        write_tags(mka_path, backfill)
+        logger.debug("Backfilled metadata for %s: %s", mka_path.name, list(backfill.keys()))
