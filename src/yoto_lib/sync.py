@@ -58,6 +58,7 @@ def _parse_remote_state(remote_content: dict) -> dict:
 
     tracks: list[str] = []
     track_hashes: dict[str, str] = {}
+    track_info: dict[str, dict] = {}  # title -> {format, channels}
 
     # Chapters may be a list (from API) or dict (from our uploads)
     items = chapters.items() if isinstance(chapters, dict) else (
@@ -72,6 +73,10 @@ def _parse_remote_state(remote_content: dict) -> dict:
             m = re.match(r"yoto:#(.+)", url)
             if m:
                 track_hashes[title] = m.group(1)
+            fmt = track.get("format", "")
+            channels = track.get("channels", "")
+            if fmt or channels:
+                track_info[title] = {"format": fmt, "channels": channels}
 
     has_cover = bool(
         remote_content.get("metadata", {}).get("cover", {}).get("imageL")
@@ -83,7 +88,27 @@ def _parse_remote_state(remote_content: dict) -> dict:
         "description": description,
         "has_cover": has_cover,
         "track_hashes": track_hashes,
+        "track_info": track_info,
     }
+
+
+def _infer_track_info(file_path: Path) -> dict:
+    """Infer format and channels from a local audio file via ffprobe."""
+    try:
+        from yoto_lib.mka import probe_audio
+        info = probe_audio(file_path)
+        audio_streams = [s for s in info["streams"] if s.get("codec_type") == "audio"]
+        if audio_streams:
+            stream = audio_streams[0]
+            codec = stream.get("codec_name", "")
+            channels = stream.get("channels", 0)
+            return {
+                "format": codec,
+                "channels": "stereo" if channels >= 2 else "mono",
+            }
+    except Exception:
+        pass
+    return {}
 
 
 # ── sync_playlist ─────────────────────────────────────────────────────────────
@@ -132,12 +157,14 @@ def sync_playlist(
     # 3. Fetch remote state
     remote_state: Optional[dict] = None
     remote_track_hashes: dict[str, str] = {}
+    remote_track_info: dict[str, dict] = {}  # title -> {format, channels}
 
     if playlist.card_id:
         try:
             remote_content = api.get_content(playlist.card_id)
             remote_state = _parse_remote_state(remote_content)
             remote_track_hashes = remote_state.get("track_hashes", {})
+            remote_track_info = remote_state.get("track_info", {})
             logger.debug("sync: fetched remote state for %s (%d tracks)", playlist.card_id, len(remote_state.get("tracks", [])))
         except Exception as exc:
             logger.error("sync: failed to fetch remote state: %s", exc)
@@ -181,17 +208,23 @@ def sync_playlist(
         logger.debug("sync: dry run complete, would upload %d tracks", len(diff.new_tracks))
         return result
 
-    # 8. Build track_hashes: reuse remote hashes for existing, upload new
+    # 8. Build track_hashes and track_info: reuse remote for existing, upload new
     track_hashes: dict[str, str] = {}
+    track_info: dict[str, dict] = {}  # filename -> {format, channels}
     tracks_to_upload: list[str] = list(diff.new_tracks)
 
-    # Reuse hashes for existing tracks (remote keys are titles, local keys are filenames)
+    # Reuse hashes and track info for existing tracks (remote keys are titles, local keys are filenames)
     for filename in playlist.track_files:
         if filename not in diff.new_tracks:
             title = _title_from_filename(filename)
             sha = remote_track_hashes.get(title, "")
             if sha:
                 track_hashes[filename] = sha
+                if title in remote_track_info:
+                    track_info[filename] = remote_track_info[title]
+                else:
+                    # Infer format from local file for tracks missing remote info
+                    track_info[filename] = _infer_track_info(folder / filename)
             else:
                 tracks_to_upload.append(filename)
 
@@ -211,6 +244,12 @@ def sync_playlist(
             transcode_result = api.upload_and_transcode(file_path)
             sha = transcode_result.get("transcodedSha256", "")
             track_hashes[filename] = sha
+            # Extract format and channels from upload info for content schema
+            upload_info = transcode_result.get("uploadInfo", {})
+            track_info[filename] = {
+                "format": upload_info.get("format", ""),
+                "channels": upload_info.get("channels", ""),
+            }
             if on_track_done:
                 on_track_done(filename)
         except Exception as exc:
@@ -236,7 +275,7 @@ def sync_playlist(
     # 11. Build content schema and POST
     logger.debug("sync: POSTing content schema")
     _log("Saving playlist to Yoto...")
-    schema = build_content_schema(playlist, track_hashes, icon_ids, cover_url)
+    schema = build_content_schema(playlist, track_hashes, icon_ids, cover_url, track_info)
     try:
         response = api.create_or_update_content(schema)
         new_card_id: Optional[str] = response.get("cardId") or response.get(

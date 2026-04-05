@@ -91,7 +91,7 @@ def load_playlist(folder: Path) -> Playlist:
     - Read description.txt if exists.
     - Check if cover.png exists.
     """
-    folder = Path(folder)
+    folder = Path(folder).resolve()
     jsonl_path = folder / "playlist.jsonl"
     audio_on_disk = {p.name for p in scan_audio_files(folder)}
 
@@ -150,27 +150,45 @@ def build_content_schema(
     track_hashes: dict[str, str],
     icon_ids: dict[str, str],
     cover_url: Optional[str],
+    track_info: Optional[dict[str, dict]] = None,
 ) -> dict:
     """
     Build Yoto API content JSON from a Playlist.
 
     - One chapter per track (key=filename, title derived from filename).
     - trackUrl = yoto:#<sha256>
+    - Include format/channels from track_info if available.
     - Include icon display if icon_id present.
     - Include cardId if playlist has one.
     - Include cover URL in metadata.
     """
+    if track_info is None:
+        track_info = {}
+
     chapters: list = []
     for idx, filename in enumerate(playlist.track_files):
         sha256 = track_hashes.get(filename, "")
-        chapter_key = f"ch{idx:03d}"
-        track_key = f"t{idx:03d}"
+        chapter_num = idx + 1
+        chapter_key = f"{chapter_num:03d}"
+        overlay = str(chapter_num)
+        track: dict = {
+            "key": "01",
+            "title": _title_from_filename(filename),
+            "overlayLabel": overlay,
+            "type": "audio",
+            "trackUrl": f"yoto:#{sha256}",
+        }
+        info = track_info.get(filename, {})
+        if info.get("format"):
+            track["format"] = info["format"]
+        if info.get("channels"):
+            track["channels"] = info["channels"]
+
         chapter: dict = {
             "key": chapter_key,
             "title": _title_from_filename(filename),
-            "tracks": [
-                {"key": track_key, "title": _title_from_filename(filename), "type": "audio", "trackUrl": f"yoto:#{sha256}"}
-            ],
+            "overlayLabel": overlay,
+            "tracks": [track],
         }
         if filename in icon_ids:
             media_id = icon_ids[filename]
@@ -178,7 +196,7 @@ def build_content_schema(
                 media_id = f"yoto:#{media_id}"
             display = {"icon16x16": media_id}
             chapter["display"] = display
-            chapter["tracks"][0]["display"] = display
+            track["display"] = display
         chapters.append(chapter)
 
     content: dict = {"chapters": chapters}
