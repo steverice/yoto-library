@@ -1,8 +1,10 @@
+import os
 import subprocess
 import struct
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
+from click.testing import CliRunner
 
 from yoto_lib.itunes import search_itunes_album, match_album, _artwork_url, embed_album_art, enrich_from_itunes
 from yoto_lib.mka import wrap_in_mka, extract_album_art
@@ -302,3 +304,74 @@ class TestEnrichFromItunes:
         assert "genre" not in written_tags  # already present, not overwritten
         assert written_tags["date"] == "2020-01-01T00:00:00Z"
         assert written_tags["copyright"] == "2020 Label"
+
+
+class TestImportIntegration:
+    @needs_ffmpeg
+    def test_import_calls_enrich(self, tmp_path):
+        """Verify import_cmd calls enrich_from_itunes for each wrapped track."""
+        from yoto_cli.main import cli
+
+        # Create a minimal WAV
+        wav = tmp_path / "source" / "track.wav"
+        wav.parent.mkdir()
+        sample_rate = 44100
+        data_size = 2
+        header = struct.pack(
+            "<4sI4s4sIHHIIHH4sI",
+            b"RIFF", 36 + data_size, b"WAVE", b"fmt ", 16, 1,
+            1, sample_rate, sample_rate * 2, 2, 16,
+            b"data", data_size,
+        )
+        wav.write_bytes(header + b"\x00\x00")
+
+        output = tmp_path / "output"
+
+        with (
+            patch("yoto_cli.main.enrich_from_itunes") as mock_enrich,
+            patch("yoto_cli.main.generate_description"),
+        ):
+            runner = CliRunner()
+            result = runner.invoke(cli, ["import", str(wav.parent), "-o", str(output)])
+
+        assert result.exit_code == 0, result.output
+        mock_enrich.assert_called_once()
+        # First arg is the MKA path, second is the tags dict, third is the cache dict
+        call_args = mock_enrich.call_args[0]
+        assert call_args[0].suffix == ".mka"
+        assert isinstance(call_args[1], dict)
+        assert isinstance(call_args[2], dict)
+
+
+import httpx as httpx_client
+
+needs_network = pytest.mark.skipif(
+    os.environ.get("SKIP_NETWORK_TESTS", "0") == "1",
+    reason="Network tests disabled",
+)
+
+
+@needs_network
+class TestItunesE2E:
+    def test_search_and_match_daniel_tiger(self):
+        """Hit the real iTunes API and verify we can match a known album."""
+        results = search_itunes_album(
+            "Daniel Tiger",
+            "Daniel Tiger's Neighborhood: Life's Little Lessons",
+        )
+        assert len(results) > 0
+
+        matched = match_album(
+            results,
+            "Daniel Tiger",
+            "Daniel Tiger's Neighborhood: Life's Little Lessons",
+        )
+        assert matched is not None
+        assert "Daniel Tiger" in matched["artistName"]
+        assert "artworkUrl100" in matched
+
+        art_url = _artwork_url(matched["artworkUrl100"], 600)
+        response = httpx_client.get(art_url, follow_redirects=True, timeout=10.0)
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "image/jpeg"
+        assert len(response.content) > 1000

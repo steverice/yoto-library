@@ -24,6 +24,7 @@ from yoto_lib.sync import sync_path
 from yoto_lib.pull import pull_playlist
 from yoto_lib.playlist import read_jsonl, write_jsonl, scan_audio_files, load_playlist, diff_playlists
 from yoto_lib.mka import wrap_in_mka, remove_attachment, set_attachment, read_source_tags, write_tags, generate_source_patch
+from yoto_lib.itunes import enrich_from_itunes
 from yoto_lib.sources import resolve_weblocs
 
 
@@ -473,6 +474,7 @@ def import_cmd(source, output):
         click.echo("No audio files found.")
         return
 
+    album_cache: dict = {}
     filenames = []
     for audio in audio_files:
         clean_stem = _strip_track_number(audio.stem)
@@ -488,6 +490,8 @@ def import_cmd(source, output):
                 source_tags = read_source_tags(audio)
                 source_tags["source_format"] = audio.suffix.lstrip(".").lower()
                 write_tags(mka_dest, source_tags)
+                # Fetch album art from iTunes if missing
+                enrich_from_itunes(mka_dest, source_tags, album_cache)
                 # Generate bsdiff patch for byte-perfect export
                 generate_source_patch(audio, mka_dest)
                 filenames.append(mka_name)
