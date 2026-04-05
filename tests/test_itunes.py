@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
 
-from yoto_lib.itunes import search_itunes_album, match_album, _artwork_url, embed_album_art
+from yoto_lib.itunes import search_itunes_album, match_album, _artwork_url, embed_album_art, enrich_from_itunes
 from yoto_lib.mka import wrap_in_mka, extract_album_art
 
 
@@ -160,3 +160,145 @@ class TestEmbedAlbumArt:
 
         result = embed_album_art(mka, b"not an image")
         assert result is False
+
+
+class TestEnrichFromItunes:
+    def test_skips_when_art_already_exists(self, tmp_path):
+        mka = tmp_path / "track.mka"
+        mka.touch()
+        cache = {}
+
+        with patch("yoto_lib.itunes.extract_album_art", return_value=b"existing art"):
+            enrich_from_itunes(mka, {"artist": "A", "album": "B"}, cache)
+
+        # Should not have queried the API
+        assert cache == {}
+
+    def test_skips_when_missing_artist_or_album(self, tmp_path):
+        mka = tmp_path / "track.mka"
+        mka.touch()
+        cache = {}
+
+        with patch("yoto_lib.itunes.extract_album_art", return_value=None):
+            enrich_from_itunes(mka, {"artist": "A"}, cache)  # no album
+            enrich_from_itunes(mka, {"album": "B"}, cache)   # no artist
+            enrich_from_itunes(mka, {}, cache)                # neither
+
+        assert cache == {}
+
+    def test_queries_api_and_embeds_art(self, tmp_path):
+        mka = tmp_path / "track.mka"
+        mka.touch()
+        cache = {}
+
+        api_result = {
+            "collectionName": "Album",
+            "artistName": "Artist",
+            "artworkUrl100": "https://example.com/100x100bb.jpg",
+            "primaryGenreName": "Rock",
+            "releaseDate": "2020-01-01T00:00:00Z",
+            "copyright": "2020 Label",
+        }
+
+        with (
+            patch("yoto_lib.itunes.extract_album_art", return_value=None),
+            patch("yoto_lib.itunes.search_itunes_album", return_value=[api_result]),
+            patch("yoto_lib.itunes.match_album", return_value=api_result),
+            patch("yoto_lib.itunes.httpx.get") as mock_get,
+            patch("yoto_lib.itunes.embed_album_art", return_value=True) as mock_embed,
+            patch("yoto_lib.itunes.write_tags") as mock_write_tags,
+        ):
+            mock_response = MagicMock()
+            mock_response.content = b"fake jpeg bytes"
+            mock_response.raise_for_status = MagicMock()
+            mock_get.return_value = mock_response
+
+            enrich_from_itunes(mka, {"artist": "Artist", "album": "Album"}, cache)
+
+        mock_embed.assert_called_once_with(mka, b"fake jpeg bytes")
+
+    def test_uses_cache_on_second_call(self, tmp_path):
+        mka1 = tmp_path / "track1.mka"
+        mka2 = tmp_path / "track2.mka"
+        mka1.touch()
+        mka2.touch()
+        cache = {}
+
+        api_result = {
+            "collectionName": "Album",
+            "artistName": "Artist",
+            "artworkUrl100": "https://example.com/100x100bb.jpg",
+        }
+
+        mock_response = MagicMock()
+        mock_response.content = b"jpeg"
+        mock_response.raise_for_status = MagicMock()
+
+        with (
+            patch("yoto_lib.itunes.extract_album_art", return_value=None),
+            patch("yoto_lib.itunes.search_itunes_album", return_value=[api_result]) as mock_search,
+            patch("yoto_lib.itunes.match_album", return_value=api_result),
+            patch("yoto_lib.itunes.httpx.get", return_value=mock_response),
+            patch("yoto_lib.itunes.embed_album_art", return_value=True),
+            patch("yoto_lib.itunes.write_tags"),
+        ):
+            enrich_from_itunes(mka1, {"artist": "Artist", "album": "Album"}, cache)
+            enrich_from_itunes(mka2, {"artist": "Artist", "album": "Album"}, cache)
+
+        # API should only be called once — second call uses cache
+        mock_search.assert_called_once()
+
+    def test_caches_no_match(self, tmp_path):
+        mka1 = tmp_path / "track1.mka"
+        mka2 = tmp_path / "track2.mka"
+        mka1.touch()
+        mka2.touch()
+        cache = {}
+
+        with (
+            patch("yoto_lib.itunes.extract_album_art", return_value=None),
+            patch("yoto_lib.itunes.search_itunes_album", return_value=[]) as mock_search,
+        ):
+            enrich_from_itunes(mka1, {"artist": "Artist", "album": "Album"}, cache)
+            enrich_from_itunes(mka2, {"artist": "Artist", "album": "Album"}, cache)
+
+        mock_search.assert_called_once()
+
+    def test_backfills_missing_metadata(self, tmp_path):
+        mka = tmp_path / "track.mka"
+        mka.touch()
+        cache = {}
+
+        api_result = {
+            "collectionName": "Album",
+            "artistName": "Artist",
+            "artworkUrl100": "https://example.com/100x100bb.jpg",
+            "primaryGenreName": "Rock",
+            "releaseDate": "2020-01-01T00:00:00Z",
+            "copyright": "2020 Label",
+        }
+
+        mock_response = MagicMock()
+        mock_response.content = b"jpeg"
+        mock_response.raise_for_status = MagicMock()
+
+        with (
+            patch("yoto_lib.itunes.extract_album_art", return_value=None),
+            patch("yoto_lib.itunes.search_itunes_album", return_value=[api_result]),
+            patch("yoto_lib.itunes.match_album", return_value=api_result),
+            patch("yoto_lib.itunes.httpx.get", return_value=mock_response),
+            patch("yoto_lib.itunes.embed_album_art", return_value=True),
+            patch("yoto_lib.itunes.write_tags") as mock_write_tags,
+        ):
+            # tags already have genre but not date or copyright
+            enrich_from_itunes(
+                mka,
+                {"artist": "Artist", "album": "Album", "genre": "Pop"},
+                cache,
+            )
+
+        mock_write_tags.assert_called_once()
+        written_tags = mock_write_tags.call_args[0][1]
+        assert "genre" not in written_tags  # already present, not overwritten
+        assert written_tags["date"] == "2020-01-01T00:00:00Z"
+        assert written_tags["copyright"] == "2020 Label"
