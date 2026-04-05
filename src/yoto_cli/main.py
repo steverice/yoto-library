@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import sys
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import click
@@ -12,6 +14,8 @@ from click.shell_completion import CompletionItem
 from dotenv import find_dotenv, load_dotenv
 
 load_dotenv(find_dotenv(usecwd=True))
+
+logger = logging.getLogger(__name__)
 
 from yoto_lib.auth import AuthError, run_device_code_flow
 from yoto_lib.api import YotoAPI
@@ -21,6 +25,45 @@ from yoto_lib.pull import pull_playlist
 from yoto_lib.playlist import read_jsonl, write_jsonl, scan_audio_files, load_playlist, diff_playlists
 from yoto_lib.mka import wrap_in_mka, remove_attachment, set_attachment, read_source_tags, write_tags
 from yoto_lib.sources import resolve_weblocs
+
+
+# ── Logging setup ────────────────────────────────────────────────────────────
+
+LOG_DIR = Path.home() / ".yoto"
+LOG_FILE = LOG_DIR / "yoto.log"
+
+
+def _setup_logging(verbose: bool = False) -> None:
+    """Configure logging: rotating file at DEBUG, console at WARNING (or DEBUG if verbose)."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Configure both yoto_lib and yoto_cli loggers
+    for name in ("yoto_lib", "yoto_cli"):
+        log = logging.getLogger(name)
+        if log.handlers:
+            return  # already configured (e.g. tests calling cli multiple times)
+        log.setLevel(logging.DEBUG)
+
+        file_handler = RotatingFileHandler(
+            LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8",
+        )
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)-5s %(name)s %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        ))
+        log.addHandler(file_handler)
+
+        console_handler = logging.StreamHandler()
+        env_level = os.environ.get("YOTO_LOG_LEVEL", "").upper()
+        if verbose:
+            console_handler.setLevel(logging.DEBUG)
+        elif env_level in ("DEBUG", "INFO", "WARNING", "ERROR"):
+            console_handler.setLevel(getattr(logging, env_level))
+        else:
+            console_handler.setLevel(logging.WARNING)
+        console_handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+        log.addHandler(console_handler)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -120,9 +163,10 @@ def _complete_mka_without_icon(ctx, param, incomplete):
 
 
 @click.group()
-def cli():
+@click.option("-v", "--verbose", is_flag=True, help="Enable verbose (DEBUG) console output")
+def cli(verbose):
     """Manage Yoto CYO playlists as folders on disk."""
-    pass
+    _setup_logging(verbose)
 
 
 # ── auth ──────────────────────────────────────────────────────────────────────
@@ -131,6 +175,7 @@ def cli():
 @cli.command()
 def auth():
     """Authenticate with Yoto (OAuth device code flow)."""
+    logger.debug("command: auth")
     try:
         run_device_code_flow()
     except AuthError as exc:
@@ -146,6 +191,7 @@ def auth():
 @click.option("--no-trim", is_flag=True, help="Skip silence trimming on YouTube downloads")
 def sync(path, dry_run, no_trim):
     """Push local playlist state to Yoto."""
+    logger.debug("command: sync path=%s dry_run=%s no_trim=%s", path, dry_run, no_trim)
     trim = not no_trim
     if dry_run:
         results = sync_path(Path(path), dry_run=True, trim=trim)
@@ -198,6 +244,7 @@ def sync(path, dry_run, no_trim):
 @click.option("--no-trim", is_flag=True, help="Skip silence trimming on YouTube downloads")
 def download(path, no_trim):
     """Download audio from .webloc URLs in a playlist folder."""
+    logger.debug("command: download path=%s no_trim=%s", path, no_trim)
     trim = not no_trim
     folder = Path(path)
     created = resolve_weblocs(folder, trim=trim)
@@ -220,6 +267,7 @@ def download(path, no_trim):
 @click.option("--all", "pull_all", is_flag=True, help="Pull all playlists into subdirectories of cwd")
 def pull(path_or_card_id, dry_run, pull_all):
     """Pull remote playlist state to local."""
+    logger.debug("command: pull path_or_card_id=%s dry_run=%s all=%s", path_or_card_id, dry_run, pull_all)
     if pull_all:
         _pull_all(dry_run=dry_run)
         return
@@ -284,6 +332,7 @@ def _pull_all(dry_run: bool = False) -> None:
 @click.argument("path", default=".", type=click.Path(exists=True))
 def status(path):
     """Show diff between local and remote state."""
+    logger.debug("command: status path=%s", path)
     folder = Path(path)
     if not (folder / "playlist.jsonl").exists() and not scan_audio_files(folder):
         raise click.ClickException("Not a playlist folder (no playlist.jsonl or audio files)")
@@ -327,6 +376,7 @@ def status(path):
 @click.argument("playlist", default="playlist.jsonl", type=click.Path(exists=True))
 def reorder(playlist):
     """Open playlist.jsonl in $EDITOR to reorder tracks."""
+    logger.debug("command: reorder playlist=%s", playlist)
     playlist_path = Path(playlist)
     original = playlist_path.read_text(encoding="utf-8")
 
@@ -364,6 +414,7 @@ def reorder(playlist):
 @click.argument("path", default=".", type=click.Path())
 def init(path):
     """Scaffold a new playlist folder."""
+    logger.debug("command: init path=%s", path)
     folder = Path(path)
     folder.mkdir(parents=True, exist_ok=True)
     jsonl_path = folder / "playlist.jsonl"
@@ -397,6 +448,7 @@ def _strip_track_number(stem: str) -> str:
 )
 def import_cmd(source, output):
     """Bulk import: convert a folder of audio files into a playlist."""
+    logger.debug("command: import source=%s output=%s", source, output)
     source_path = Path(source)
     output_path = Path(output) if output else source_path
 
@@ -434,7 +486,11 @@ def import_cmd(source, output):
 
     # Generate description from track metadata
     playlist = load_playlist(output_path)
-    generate_description(playlist, log=lambda msg: click.echo(msg))
+    generate_description(
+        playlist,
+        log=lambda msg: click.echo(msg),
+        ask_user=lambda q: click.prompt(q),
+    )
 
 
 # ── select-icon ──────────────────────────────────────────────────────────
@@ -516,6 +572,7 @@ def _render_icons_side_by_side(
 @click.argument("track", type=click.Path(exists=True), shell_complete=_complete_mka_without_icon)
 def select_icon(track):
     """Generate 3 icon options for a track, show best Yoto match, and attach the chosen one."""
+    logger.debug("command: select-icon track=%s", track)
     import io
     import tempfile
     from PIL import Image
@@ -718,6 +775,7 @@ def select_icon(track):
 @click.argument("tracks", nargs=-1, required=True, type=click.Path(exists=True), shell_complete=_complete_mka_with_icon)
 def reset_icon(tracks):
     """Remove the icon from one or more MKA tracks so sync regenerates them."""
+    logger.debug("command: reset-icon tracks=%s", tracks)
     from yoto_lib.icons import clear_macos_file_icon
 
     for track in tracks:
@@ -738,6 +796,7 @@ def reset_icon(tracks):
 @click.option("--force", is_flag=True, help="Regenerate even if cover.png exists")
 def cover(path, force):
     """Generate cover art for a playlist folder."""
+    logger.debug("command: cover path=%s force=%s", path, force)
     from yoto_lib.cover import generate_cover_if_missing, build_cover_prompt, resize_cover, COVER_WIDTH, COVER_HEIGHT
     from yoto_lib.image_providers import get_provider
     from yoto_lib import mka
@@ -751,6 +810,14 @@ def cover(path, force):
         click.echo(f"Cover already exists: {cover_path}")
         click.echo("Use --force to regenerate.")
         return
+
+    # Generate description if missing (interactive)
+    if not playlist.description_path.exists():
+        generate_description(
+            playlist,
+            log=lambda msg: click.echo(msg),
+            ask_user=lambda q: click.prompt(q),
+        )
 
     # Build prompt from track metadata
     track_titles: list[str] = []
@@ -793,6 +860,7 @@ def cover(path, force):
 @click.argument("shell", required=False, default=None, type=click.Choice(["zsh", "bash", "fish"]))
 def completions(shell):
     """Install context-aware shell completions."""
+    logger.debug("command: completions shell=%s", shell)
     if shell is None:
         parent_shell = Path(os.environ.get("SHELL", "")).name
         shell = parent_shell if parent_shell in ("zsh", "bash", "fish") else None
@@ -832,6 +900,7 @@ def completions(shell):
 @cli.command(name="list")
 def list_cmd():
     """Show all MYO cards on your Yoto account."""
+    logger.debug("command: list")
     api = YotoAPI()
     cards = api.get_my_content()
 

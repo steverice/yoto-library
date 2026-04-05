@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import subprocess
 import tempfile
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Zone thresholds
 CONFIDENCE_HIGH = 0.8
@@ -34,15 +37,20 @@ def _call_claude(prompt: str, *, allowed_tools: str = "", timeout: int = 120, mo
         cmd += ["--tools", ""]
 
     try:
+        logger.debug("icon_llm._call_claude: model=%s prompt_length=%d", model, len(prompt))
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        logger.debug("icon_llm._call_claude: exit_code=%d response_length=%d", result.returncode, len(result.stdout))
         if result.returncode != 0:
             return None
         wrapper = json.loads(result.stdout)
         if wrapper.get("is_error"):
             return None
         text = wrapper.get("result", result.stdout).strip()
-        return _extract_json(text)
-    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError):
+        parsed = _extract_json(text)
+        logger.debug("icon_llm._call_claude response: %s", parsed)
+        return parsed
+    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+        logger.debug("icon_llm._call_claude: failed with %s", type(exc).__name__)
         return None
 
 
@@ -75,12 +83,15 @@ def describe_icons_llm(
     )
 
     try:
+        logger.debug("describe_icons_llm: title='%s'", track_title)
         text = _call_claude(prompt)
         if text is None:
             return []
         descriptions = json.loads(text)
         if isinstance(descriptions, list) and len(descriptions) >= 3:
-            return [str(d) for d in descriptions[:3]]
+            result = [str(d) for d in descriptions[:3]]
+            logger.debug("describe_icons_llm: result=%s", result)
+            return result
         return []
     except Exception:
         return []
@@ -97,6 +108,7 @@ def match_icon_llm(
     if not icons or not track_title:
         return None, 0.0
 
+    logger.debug("match_icon_llm: title='%s' %d icons", track_title, len(icons))
     icon_lines = []
     for icon in icons:
         media_id = icon.get("mediaId", "")
@@ -123,6 +135,7 @@ def match_icon_llm(
         data = json.loads(text)
         media_id = data.get("mediaId", "none")
         confidence = float(data.get("confidence", 0.0))
+        logger.debug("match_icon_llm: result mediaId=%s confidence=%.2f", media_id, confidence)
         if media_id == "none" or not media_id:
             return None, 0.0
         return media_id, confidence
@@ -151,6 +164,8 @@ def compare_icons_llm(
     Returns:
         (winner, scores) where winner is 1-indexed. On failure, returns (1, []).
     """
+    logger.debug("compare_icons_llm: title='%s' %d candidates (yoto=%s)",
+                  track_title, len(candidates), yoto_icon is not None)
     all_images = list(candidates)
     if yoto_icon is not None:
         all_images.append(yoto_icon)
@@ -199,6 +214,7 @@ def compare_icons_llm(
             data = json.loads(text)
             winner = int(data["winner"])
             scores = [float(s) for s in data["scores"]]
+            logger.debug("compare_icons_llm: winner=%d scores=%s", winner, scores)
             return winner, scores
         except Exception:
             return 1, []

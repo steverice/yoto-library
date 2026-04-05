@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import dataclass
 
 import httpx
 import keyring
+
+logger = logging.getLogger(__name__)
 
 AUTH_BASE = "https://login.yotoplay.com"
 API_AUDIENCE = "https://api.yotoplay.com"
@@ -74,6 +77,7 @@ class AuthError(Exception):
 
 
 def request_device_code() -> dict:
+    logger.debug("requesting device code")
     response = httpx.post(
         f"{AUTH_BASE}/oauth/device/code",
         json={
@@ -89,7 +93,8 @@ def request_device_code() -> dict:
 def poll_for_token(
     device_code: str, interval: int = 5, max_attempts: int = 60
 ) -> TokenSet:
-    for _ in range(max_attempts):
+    logger.debug("polling for device code authorization")
+    for attempt in range(max_attempts):
         response = httpx.post(
             f"{AUTH_BASE}/oauth/token",
             json={
@@ -99,6 +104,7 @@ def poll_for_token(
             },
         )
         if response.status_code == 200:
+            logger.debug("device code authorized (attempt %d)", attempt + 1)
             return TokenSet.from_auth_response(response.json())
 
         error = response.json().get("error")
@@ -116,6 +122,7 @@ def poll_for_token(
 
 
 def refresh_tokens(tokens: TokenSet) -> TokenSet:
+    logger.debug("refreshing access token")
     response = httpx.post(
         f"{AUTH_BASE}/oauth/token",
         json={
@@ -125,11 +132,15 @@ def refresh_tokens(tokens: TokenSet) -> TokenSet:
         },
     )
     response.raise_for_status()
-    return TokenSet.from_auth_response(response.json())
+    new_tokens = TokenSet.from_auth_response(response.json())
+    logger.debug("token refresh successful")
+    return new_tokens
 
 
 def get_valid_token(interactive: bool = True) -> TokenSet:
     tokens = load_tokens()
+    logger.debug("get_valid_token: cached=%s needs_refresh=%s",
+                  tokens is not None, tokens.needs_refresh() if tokens else "n/a")
 
     if tokens is not None and not tokens.needs_refresh():
         return tokens
@@ -140,6 +151,7 @@ def get_valid_token(interactive: bool = True) -> TokenSet:
             save_tokens(new_tokens)
             return new_tokens
         except httpx.HTTPStatusError:
+            logger.debug("token refresh failed, will re-authenticate")
             pass  # refresh failed, fall through to re-auth
 
     if not interactive:
@@ -151,6 +163,7 @@ def get_valid_token(interactive: bool = True) -> TokenSet:
 
 
 def run_device_code_flow() -> TokenSet:
+    logger.debug("starting device code flow")
     device = request_device_code()
     print(f"\nOpen this URL in your browser: {device['verification_uri']}")
     print(f"Enter code: {device['user_code']}\n")

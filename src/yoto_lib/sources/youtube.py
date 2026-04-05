@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import subprocess
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 _SILENCE_START_RE = re.compile(r"silence_start:\s*([\d.]+)")
 _SILENCE_END_RE = re.compile(r"silence_end:\s*([\d.]+)")
@@ -55,8 +58,10 @@ def _trim_silence(audio_path: Path) -> Path:
         capture_output=True, text=True,
     )
     ranges = _parse_silence_ranges(result.stderr)
+    logger.debug("_trim_silence: %d silence gaps in %s", len(ranges), audio_path.name)
 
     if len(ranges) < 2:
+        logger.debug("_trim_silence: no trimming needed (<2 gaps)")
         return audio_path
 
     start = ranges[0][1]   # end of first silence gap
@@ -75,8 +80,10 @@ def _trim_silence(audio_path: Path) -> Path:
         capture_output=True, text=True,
     )
     if trim_result.returncode != 0:
+        logger.debug("_trim_silence: ffmpeg trim failed (exit %d)", trim_result.returncode)
         return audio_path
 
+    logger.debug("_trim_silence: trimmed %s (start=%.1f end=%.1f)", audio_path.name, start, end)
     audio_path.unlink()
     trimmed_path.rename(audio_path)
     return audio_path
@@ -93,6 +100,7 @@ class YouTubeProvider:
         Returns (audio_path, metadata_dict).
         Raises RuntimeError if yt-dlp is not installed or download fails.
         """
+        logger.debug("youtube: downloading %s", url)
         # Fetch video metadata
         try:
             meta_result = subprocess.run(
@@ -111,13 +119,14 @@ class YouTubeProvider:
         info = json.loads(meta_result.stdout)
         title = info.get("title", "untitled")
         safe_title = _sanitize_filename(title)
+        logger.debug("youtube: title='%s'", title)
 
         # Download best audio
         output_template = str(output_dir / f"{safe_title}.%(ext)s")
-        result = subprocess.run(
-            ["yt-dlp", "-x", "--audio-quality", "0", "-o", output_template, url],
-            capture_output=True, text=True,
-        )
+        dl_cmd = ["yt-dlp", "-x", "--audio-quality", "0", "-o", output_template, url]
+        logger.debug("youtube: %s", " ".join(dl_cmd))
+        result = subprocess.run(dl_cmd, capture_output=True, text=True)
+        logger.debug("youtube: yt-dlp exit_code=%d", result.returncode)
         if result.returncode != 0:
             raise RuntimeError(f"yt-dlp download failed: {result.stderr}")
 
@@ -129,6 +138,7 @@ class YouTubeProvider:
         if not downloaded:
             raise RuntimeError(f"yt-dlp produced no output file for: {url}")
         audio_path = downloaded[0]
+        logger.debug("youtube: downloaded to %s", audio_path.name)
 
         # Trim silence if requested
         if trim:

@@ -56,6 +56,7 @@ def resolve_weblocs(playlist_dir: Path, trim: bool = True) -> list[Path]:
     if not weblocs:
         return []
 
+    logger.debug("resolve_weblocs: %d .webloc files in %s", len(weblocs), playlist_dir)
     providers = _get_providers()
     created: list[Path] = []
 
@@ -76,9 +77,12 @@ def resolve_weblocs(playlist_dir: Path, trim: bool = True) -> list[Path]:
             logger.warning("No provider for URL %s in %s, skipping", url, webloc.name)
             continue
 
+        logger.debug("resolve_weblocs: %s -> %s (provider: %s)", webloc.name, url, type(provider).__name__)
+
         # Download
         try:
             audio_path, metadata = provider.download(url, playlist_dir, trim=trim)
+            logger.debug("resolve_weblocs: downloaded %s -> %s", webloc.name, audio_path.name)
         except Exception as exc:
             logger.warning("Download failed for %s: %s", webloc.name, exc)
             continue
@@ -89,6 +93,7 @@ def resolve_weblocs(playlist_dir: Path, trim: bool = True) -> list[Path]:
         try:
             wrap_in_mka(audio_path, mka_path)
             write_tags(mka_path, metadata)
+            logger.debug("resolve_weblocs: wrapped %s -> %s", audio_path.name, mka_path.name)
         except Exception as exc:
             logger.warning("MKA wrapping failed for %s: %s", webloc.name, exc)
             mka_path.unlink(missing_ok=True)

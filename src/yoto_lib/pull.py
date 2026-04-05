@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 from yoto_lib.api import YotoAPI
 from yoto_lib.icons import ICON_CACHE_DIR, apply_icon_to_mka, download_icon
@@ -58,7 +61,9 @@ def _process_track(job: _TrackJob, folder: Path, cache_dir: Path) -> tuple[bool,
     icon_ok = False
 
     try:
+        logger.debug("pull: downloading track '%s'", job.title)
         audio_data = _download_file(job.track_url)
+        logger.debug("pull: downloaded '%s' (%d bytes)", job.title, len(audio_data))
         raw_path.write_bytes(audio_data)
         wrap_in_mka(raw_path, mka_path)
         raw_path.unlink(missing_ok=True)
@@ -69,6 +74,7 @@ def _process_track(job: _TrackJob, folder: Path, cache_dir: Path) -> tuple[bool,
 
     if job.icon_ref:
         try:
+            logger.debug("pull: applying icon for '%s' (ref=%s)", job.title, job.icon_ref)
             icon_data = download_icon(job.icon_ref, cache_dir)
             if icon_data:
                 apply_icon_to_mka(mka_path, icon_data)
@@ -88,11 +94,13 @@ def pull_playlist(
     """Download a remote Yoto playlist into a local folder."""
     folder = Path(folder)
     result = PullResult(dry_run=dry_run)
+    logger.debug("pull: folder=%s card_id=%s dry_run=%s", folder, card_id, dry_run)
 
     # Determine card ID
     card_id_path = folder / ".yoto-card-id"
     if card_id is None and card_id_path.exists():
         card_id = card_id_path.read_text(encoding="utf-8").strip()
+        logger.debug("pull: resolved card_id=%s from .yoto-card-id", card_id)
 
     if card_id is None:
         result.errors.append("No card ID provided and no .yoto-card-id file found.")
@@ -104,6 +112,7 @@ def pull_playlist(
     remote = api.get_content(card_id, playable=True)
 
     if dry_run:
+        logger.debug("pull: dry run, returning early")
         return result
 
     folder.mkdir(parents=True, exist_ok=True)
@@ -118,6 +127,7 @@ def pull_playlist(
     cover_url = remote.get("metadata", {}).get("cover", {}).get("imageL")
     if cover_url:
         try:
+            logger.debug("pull: downloading cover")
             (folder / "cover.png").write_bytes(_download_file(cover_url))
             result.cover_downloaded = True
         except Exception as exc:
@@ -125,6 +135,7 @@ def pull_playlist(
 
     # Build track jobs (preserving chapter order)
     chapters = remote.get("content", {}).get("chapters", [])
+    logger.debug("pull: %d chapters in remote content", len(chapters))
     jobs: list[_TrackJob] = []
     for chapter in chapters:
         icon_ref = chapter.get("display", {}).get("icon16x16", "")
@@ -142,6 +153,7 @@ def pull_playlist(
             ))
 
     # Process tracks in parallel
+    logger.debug("pull: %d tracks to download", len(jobs))
     cache_dir = ICON_CACHE_DIR
     future_to_job = {}
     with ThreadPoolExecutor(max_workers=4) as executor:
