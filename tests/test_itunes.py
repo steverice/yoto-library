@@ -1,7 +1,11 @@
+import subprocess
+import struct
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
 
-from yoto_lib.itunes import search_itunes_album, match_album, _artwork_url
+from yoto_lib.itunes import search_itunes_album, match_album, _artwork_url, embed_album_art
+from yoto_lib.mka import wrap_in_mka, extract_album_art
 
 
 class TestSearchItunesAlbum:
@@ -92,3 +96,67 @@ class TestArtworkUrl:
         url = "https://example.com/art.jpg"
         result = _artwork_url(url, 1200)
         assert result == url  # unchanged
+
+
+def ffmpeg_available():
+    try:
+        subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
+        return True
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return False
+
+
+needs_ffmpeg = pytest.mark.skipif(not ffmpeg_available(), reason="ffmpeg not installed")
+
+
+@needs_ffmpeg
+class TestEmbedAlbumArt:
+    def _make_wav(self, tmp_path: Path) -> Path:
+        wav_path = tmp_path / "silence.wav"
+        sample_rate = 44100
+        num_channels = 1
+        bits_per_sample = 16
+        data_size = 2
+        header = struct.pack(
+            "<4sI4s4sIHHIIHH4sI",
+            b"RIFF", 36 + data_size, b"WAVE", b"fmt ", 16, 1,
+            num_channels, sample_rate,
+            sample_rate * num_channels * bits_per_sample // 8,
+            num_channels * bits_per_sample // 8, bits_per_sample,
+            b"data", data_size,
+        )
+        wav_path.write_bytes(header + b"\x00\x00")
+        return wav_path
+
+    def _make_test_jpeg(self) -> bytes:
+        """Create a minimal 200x200 JPEG via ffmpeg."""
+        import subprocess
+        result = subprocess.run(
+            ["ffmpeg", "-y", "-f", "lavfi", "-i",
+             "color=c=red:s=200x200:d=1", "-frames:v", "1",
+             "-f", "image2pipe", "-vcodec", "mjpeg", "-"],
+            capture_output=True, check=True,
+        )
+        return result.stdout
+
+    def test_embeds_art_readable_by_extract(self, tmp_path):
+        wav = self._make_wav(tmp_path)
+        mka = tmp_path / "track.mka"
+        wrap_in_mka(wav, mka)
+
+        assert extract_album_art(mka) is None
+
+        jpeg_bytes = self._make_test_jpeg()
+        embed_album_art(mka, jpeg_bytes)
+
+        art = extract_album_art(mka)
+        assert art is not None
+        assert len(art) > 100
+
+    def test_returns_false_on_invalid_image(self, tmp_path):
+        wav = self._make_wav(tmp_path)
+        mka = tmp_path / "track.mka"
+        wrap_in_mka(wav, mka)
+
+        result = embed_album_art(mka, b"not an image")
+        assert result is False

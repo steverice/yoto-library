@@ -94,3 +94,36 @@ def _artwork_url(api_url: str, size: int = 1200) -> str:
     """
     replaced = re.sub(r"/\d+x\d+bb\.jpg$", f"/{size}x{size}bb.jpg", api_url)
     return replaced
+
+
+def embed_album_art(mka_path: Path, image_bytes: bytes) -> bool:
+    """Embed album art as a video stream in an MKA file.
+
+    Re-muxes the MKA with the image as an attached picture video stream.
+    Returns True on success, False on failure.
+    """
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as img_tmp:
+        img_tmp.write(image_bytes)
+        img_path = Path(img_tmp.name)
+
+    out_path = mka_path.with_suffix(".tmp.mka")
+    try:
+        result = _run(
+            ["ffmpeg", "-y", "-i", str(mka_path), "-i", str(img_path),
+             "-map", "0", "-map", "1", "-c", "copy",
+             "-disposition:v:0", "attached_pic",
+             str(out_path)],
+            check=False,
+        )
+        if result.returncode != 0 or not out_path.exists() or out_path.stat().st_size == 0:
+            logger.warning("embed_album_art: ffmpeg failed for %s", mka_path.name)
+            return False
+
+        out_path.replace(mka_path)
+        return True
+    except Exception as exc:
+        logger.warning("embed_album_art: failed for %s: %s", mka_path.name, exc)
+        return False
+    finally:
+        img_path.unlink(missing_ok=True)
+        out_path.unlink(missing_ok=True)
