@@ -178,7 +178,22 @@ def _complete_mka_without_icon(ctx: click.Context, param: click.Parameter, incom
 # ── CLI group ─────────────────────────────────────────────────────────────────
 
 
-@click.group()
+class _VerboseGroup(click.Group):
+    """Allow -v/--verbose anywhere in the command line."""
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        # Pull -v/--verbose from anywhere in args so it works both
+        # before and after the subcommand name (e.g. `yoto cover -v`)
+        cleaned = []
+        for arg in args:
+            if arg in ("-v", "--verbose"):
+                ctx.params["verbose"] = True
+            else:
+                cleaned.append(arg)
+        return super().parse_args(ctx, cleaned)
+
+
+@click.group(cls=_VerboseGroup)
 @click.option("-v", "--verbose", is_flag=True, help="Enable verbose (DEBUG) console output")
 def cli(verbose: bool) -> None:
     """Manage Yoto CYO playlists as folders on disk."""
