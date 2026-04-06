@@ -1,35 +1,12 @@
 """FLUX image provider via Together AI."""
 import base64
+import io
 import logging
-import tempfile
-from pathlib import Path
 
-import requests
+from PIL import Image as PILImage
 from together import Together
 
 logger = logging.getLogger(__name__)
-
-# Temporary file hosting for image upload (Together AI requires HTTP URLs)
-_TMPFILES_UPLOAD = "https://tmpfiles.org/api/v1/upload"
-
-
-def _upload_temp(image_bytes: bytes) -> str:
-    """Upload image bytes to tmpfiles.org, return a direct-download URL."""
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-        f.write(image_bytes)
-        tmp_path = Path(f.name)
-    try:
-        resp = requests.post(
-            _TMPFILES_UPLOAD,
-            files={"file": ("image.png", open(tmp_path, "rb"), "image/png")},
-            timeout=30,
-        )
-        resp.raise_for_status()
-        url = resp.json()["data"]["url"]
-        # Convert page URL to direct download URL
-        return url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
-    finally:
-        tmp_path.unlink(missing_ok=True)
 
 
 class FluxProvider:
@@ -59,15 +36,11 @@ class FluxProvider:
         return result
 
     def recompose(self, image: bytes, prompt: str, width: int, height: int) -> bytes:
-        """Recompose an image using FLUX Kontext targeted fill.
+        """Recompose an image using FLUX Kontext.
 
-        Pads the source image to the target dimensions with black bars, then
-        asks FLUX Kontext to fill the black areas with contextually appropriate
-        content. Kontext preserves the original art and fills the new regions.
+        Pads the source image to portrait dimensions with black bars, then
+        asks FLUX Kontext to recompose the scene for the taller frame.
         """
-        import io
-        from PIL import Image as PILImage
-
         # Round to multiples of 16 (FLUX requirement)
         w = round(width / 16) * 16
         h = round(height / 16) * 16
@@ -79,21 +52,20 @@ class FluxProvider:
         new_h = int(art.height * scale)
         scaled = art.resize((new_w, new_h), PILImage.LANCZOS)
         canvas = PILImage.new("RGB", (w, h), (0, 0, 0))
-        x_off = (width - new_w) // 2
-        y_off = (height - new_h) // 2
+        x_off = (w - new_w) // 2
+        y_off = (h - new_h) // 2
         canvas.paste(scaled, (x_off, y_off))
         buf = io.BytesIO()
         canvas.save(buf, format="PNG")
-        padded_bytes = buf.getvalue()
+        padded_b64 = base64.b64encode(buf.getvalue()).decode()
+        data_uri = f"data:image/png;base64,{padded_b64}"
 
-        logger.debug("flux: recomposing with kontext fill, canvas=%dx%d", w, h)
-        image_url = _upload_temp(padded_bytes)
-        logger.debug("flux: uploaded padded canvas to %s", image_url)
+        logger.debug("flux: recomposing with kontext, canvas=%dx%d", w, h)
 
         response = self._client.images.generate(
             model="black-forest-labs/FLUX.1-kontext-pro",
             prompt=prompt,
-            image_url=image_url,
+            image_url=data_uri,
             steps=28,
             response_format="base64",
         )

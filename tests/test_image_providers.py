@@ -57,10 +57,7 @@ class TestFluxProvider:
         mock_client = MagicMock()
         mock_client.images.generate.return_value = mock_response
 
-        with (
-            patch("yoto_lib.image_providers.flux_provider.Together", return_value=mock_client),
-            patch("yoto_lib.image_providers.flux_provider._upload_temp", return_value="http://example.com/img.png"),
-        ):
+        with patch("yoto_lib.image_providers.flux_provider.Together", return_value=mock_client):
             from yoto_lib.image_providers.flux_provider import FluxProvider
             provider = FluxProvider()
             from PIL import Image as PILImage
