@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import logging
+import os
 import re
 import tempfile
 from pathlib import Path
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
 
 COVER_WIDTH = 638
 COVER_HEIGHT = 1011
+RECOMPOSE_MAX_ATTEMPTS = int(os.environ.get("YOTO_RECOMPOSE_ATTEMPTS", "3"))
 
 
 def resize_cover(source: Path, output: Path) -> None:
@@ -121,9 +123,9 @@ def reframe_album_art(
         output_path.write_bytes(padded)
         return
 
-    # Candidate B: AI recomposition via FLUX Kontext (retry up to 3 times for good text)
+    # Candidate B: AI recomposition via FLUX Kontext
     recomposed = None
-    max_attempts = 3
+    max_attempts = RECOMPOSE_MAX_ATTEMPTS
     debug_dir = Path(tempfile.mkdtemp(prefix="yoto-reframe-"))
     try:
         from yoto_lib.image_providers.flux_provider import FluxProvider
