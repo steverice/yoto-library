@@ -14,6 +14,7 @@ from yoto_lib.cover import (
     COVER_WIDTH,
     build_cover_prompt,
     generate_cover_if_missing,
+    pad_to_cover,
     resize_cover,
     try_shared_album_art,
 )
@@ -264,3 +265,41 @@ class TestTrySharedAlbumArt:
 
         mock_shared.assert_called_once_with(playlist, log=None)
         mock_provider.assert_not_called()
+
+
+# ── TestPadToCover ────────────────────────────────────────────────────────────
+
+
+class TestPadToCover:
+    def test_pads_square_image_to_portrait(self):
+        """A 500x500 square image should be padded top/bottom to 638x1011."""
+        art_bytes = _make_png_bytes(500, 500, "green")
+        result = pad_to_cover(art_bytes)
+        img = Image.open(io.BytesIO(result))
+        assert img.size == (COVER_WIDTH, COVER_HEIGHT)
+
+    def test_preserves_original_art_in_center(self):
+        """The original art should be centered vertically in the output."""
+        art_bytes = _make_png_bytes(500, 500, "red")
+        result = pad_to_cover(art_bytes)
+        img = Image.open(io.BytesIO(result))
+        # The center pixel should be red (from the original art)
+        center_pixel = img.getpixel((COVER_WIDTH // 2, COVER_HEIGHT // 2))
+        assert center_pixel[0] > 200  # red channel high
+        assert center_pixel[1] < 50   # green channel low
+
+    def test_padding_uses_edge_color(self):
+        """The padding area should match the edge color of the source image."""
+        art_bytes = _make_png_bytes(500, 500, "#2baf45")
+        result = pad_to_cover(art_bytes)
+        img = Image.open(io.BytesIO(result))
+        # Top-left corner is in the padding area
+        top_pixel = img.getpixel((10, 5))
+        assert top_pixel[1] > 150  # green channel dominant
+
+    def test_already_portrait_image(self):
+        """An image already taller than wide should still produce correct dimensions."""
+        art_bytes = _make_png_bytes(400, 700, "blue")
+        result = pad_to_cover(art_bytes)
+        img = Image.open(io.BytesIO(result))
+        assert img.size == (COVER_WIDTH, COVER_HEIGHT)

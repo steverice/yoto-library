@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import logging
 import tempfile
 from pathlib import Path
@@ -46,6 +47,42 @@ def resize_cover(source: Path, output: Path) -> None:
     img = img.crop(crop_box)
     img = img.resize((COVER_WIDTH, COVER_HEIGHT), Image.LANCZOS)
     img.save(output, format="PNG")
+
+
+def pad_to_cover(art_bytes: bytes) -> bytes:
+    """Scale album art to fit within cover dimensions and pad with edge color.
+
+    Returns PNG bytes of the padded image at COVER_WIDTH x COVER_HEIGHT.
+    """
+    art = Image.open(io.BytesIO(art_bytes))
+
+    # Scale to fit within cover dimensions (constrained by width or height)
+    scale = min(COVER_WIDTH / art.width, COVER_HEIGHT / art.height)
+    new_w = int(art.width * scale)
+    new_h = int(art.height * scale)
+    scaled = art.resize((new_w, new_h), Image.LANCZOS)
+
+    # Sample average edge color from the original image
+    edge_pixels = []
+    for x in range(art.width):
+        edge_pixels.append(art.getpixel((x, 0)))
+        edge_pixels.append(art.getpixel((x, art.height - 1)))
+    for y in range(art.height):
+        edge_pixels.append(art.getpixel((0, y)))
+        edge_pixels.append(art.getpixel((art.width - 1, y)))
+
+    avg_r = sum(p[0] for p in edge_pixels) // len(edge_pixels)
+    avg_g = sum(p[1] for p in edge_pixels) // len(edge_pixels)
+    avg_b = sum(p[2] for p in edge_pixels) // len(edge_pixels)
+
+    cover = Image.new("RGB", (COVER_WIDTH, COVER_HEIGHT), (avg_r, avg_g, avg_b))
+    x_offset = (COVER_WIDTH - new_w) // 2
+    y_offset = (COVER_HEIGHT - new_h) // 2
+    cover.paste(scaled, (x_offset, y_offset))
+
+    buf = io.BytesIO()
+    cover.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def build_cover_prompt(
