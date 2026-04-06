@@ -90,7 +90,7 @@ _RECOMPOSE_PROMPT = (
     "Reimagine this as a portrait composition. Rearrange the characters, "
     "objects, and background to fill the full frame naturally. Use the same "
     "art style, colors, characters, and mood — but create a new layout that "
-    "works as a tall portrait image. Any text must be fully within the frame."
+    "works as a tall portrait image. Remove all text and logos entirely."
 )
 
 
