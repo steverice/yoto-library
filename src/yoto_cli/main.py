@@ -995,25 +995,29 @@ def cover(path, force, backup):
     prompt = build_cover_prompt(playlist.description, track_titles, artists, playlist.title)
 
     provider = get_provider()
-    from yoto_cli.progress import spinner_status
-    # Request 1024×1536 — maps exactly to that OpenAI size (~0.667),
-    # only ~28px cropped per side to reach 638:1011 (~0.631) target.
-    with spinner_status("Generating cover art..."):
+    from yoto_cli.progress import make_progress
+    total_steps = 3 if playlist.title else 2
+    with make_progress() as progress:
+        task = progress.add_task(playlist.title or folder.name, total=total_steps, status="generating cover art")
+        # Request 1024×1536 — maps exactly to that OpenAI size (~0.667),
+        # only ~28px cropped per side to reach 638:1011 (~0.631) target.
         image_bytes = provider.generate(prompt, 1024, 1536)
+        progress.update(task, advance=1, status="adding title" if playlist.title else "saving")
 
-    # Add title via AI inpainting before resize (edit API needs supported dimensions).
-    if playlist.title:
-        with spinner_status("Adding title..."):
+        # Add title via AI inpainting before resize (edit API needs supported dimensions).
+        if playlist.title:
             image_bytes = add_title_to_illustration(image_bytes, playlist.title, 1024, 1536)
+            progress.update(task, advance=1, status="saving")
 
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-        tmp.write(image_bytes)
-        tmp_path = Path(tmp.name)
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            tmp.write(image_bytes)
+            tmp_path = Path(tmp.name)
 
-    try:
-        resize_cover(tmp_path, cover_path)
-    finally:
-        tmp_path.unlink(missing_ok=True)
+        try:
+            resize_cover(tmp_path, cover_path)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+        progress.update(task, advance=1)
 
     click.echo(f"Saved cover to {cover_path}")
     _print_cost_summary()
