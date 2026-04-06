@@ -204,10 +204,7 @@ Each service handles a specific part of the pipeline — see [AI providers](#ai-
 
 **Cover art** — if `cover.png` is missing, the tool first checks whether all tracks share identical embedded album art (e.g., from a ripped CD or tagged album). If so, FLUX Kontext recomposes the square art into a 638x1011 portrait layout. Claude checks the result for text quality — if text is mangled after 3 attempts, a repair pipeline kicks in: Claude OCRs the original text, Gemini renders a styled text layer, Claude picks placement coordinates, and PIL composites the text onto the artwork. If no shared album art exists, OpenAI generates a cover from scratch using track metadata. Delete `cover.png` to regenerate.
 
-The `yoto cover` command supports `--style` to control reframing behavior:
-- `compare` (default) — generates padded and AI versions, Claude picks the better one
-- `ai` — always use the AI recomposition
-- `pad` — simple edge-color padding, no AI
+Use `--force` to regenerate an existing cover. Set `YOTO_RECOMPOSE_ATTEMPTS` (default 3) to control how many FLUX attempts before falling back to the text repair pipeline.
 
 **YouTube downloads** — drop a `.webloc` file (Safari bookmark) into a playlist folder. On `yoto sync` or `yoto download`, the URL is resolved via yt-dlp, silence is trimmed from pre/post-roll, and the audio is wrapped in MKA. The `.webloc` is deleted after successful download.
 
