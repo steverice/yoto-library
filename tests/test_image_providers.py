@@ -92,12 +92,12 @@ class TestGeminiProvider:
         assert isinstance(result, bytes)
 
 
-class TestOpenAIProviderEdit:
-    def test_edit_calls_api_with_image(self, monkeypatch):
-        """edit() sends the source image to the OpenAI API and returns bytes."""
+class TestOpenAIProviderRecompose:
+    def test_recompose_calls_api_with_image(self, monkeypatch):
+        """recompose() sends the source image to the OpenAI API and returns bytes."""
         import base64
 
-        fake_result = base64.b64encode(b"fake edited png").decode()
+        fake_result = base64.b64encode(b"fake recomposed png").decode()
 
         mock_response = MagicMock()
         mock_response.data = [MagicMock(b64_json=fake_result)]
@@ -108,38 +108,32 @@ class TestOpenAIProviderEdit:
         with patch("yoto_lib.image_providers.openai_provider.OpenAI", return_value=mock_client):
             from yoto_lib.image_providers.openai_provider import OpenAIProvider
             provider = OpenAIProvider()
-            result = provider.edit(b"source image bytes", "extend the background", 638, 1011)
+            result = provider.recompose(b"source image bytes", "recompose as portrait", 638, 1011)
 
-        assert result == b"fake edited png"
+        assert result == b"fake recomposed png"
         mock_client.images.edit.assert_called_once()
-        call_kwargs = mock_client.images.edit.call_args
-        assert "extend the background" in str(call_kwargs)
 
 
-class TestGeminiProviderEdit:
-    def test_edit_calls_api_with_image(self, monkeypatch):
-        """edit() sends source image to Gemini editing API and returns bytes."""
+class TestGeminiProviderRecompose:
+    def test_recompose_calls_generate_content(self, monkeypatch):
+        """recompose() uses generate_content with image input."""
         fake_image_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
 
+        mock_part = MagicMock()
+        mock_part.inline_data = MagicMock()
+        mock_part.inline_data.data = fake_image_bytes
+
         mock_response = MagicMock()
-        mock_response.generated_images = [MagicMock()]
-        mock_response.generated_images[0].image.image_bytes = fake_image_bytes
+        mock_response.candidates = [MagicMock()]
+        mock_response.candidates[0].content.parts = [mock_part]
 
         mock_client = MagicMock()
-        mock_client.models.edit_image.return_value = mock_response
-
-        # edit() now opens the image with PIL, so pass valid PNG bytes
-        from PIL import Image as PILImage
-        import io
-        test_img = PILImage.new("RGB", (100, 100), color="green")
-        buf = io.BytesIO()
-        test_img.save(buf, format="PNG")
-        test_png = buf.getvalue()
+        mock_client.models.generate_content.return_value = mock_response
 
         with patch("yoto_lib.image_providers.gemini_provider.genai.Client", return_value=mock_client):
             from yoto_lib.image_providers.gemini_provider import GeminiProvider
             provider = GeminiProvider()
-            result = provider.edit(test_png, "extend the background", 638, 1011)
+            result = provider.recompose(b"source image bytes", "recompose as portrait", 638, 1011)
 
         assert result == fake_image_bytes
-        mock_client.models.edit_image.assert_called_once()
+        mock_client.models.generate_content.assert_called_once()
