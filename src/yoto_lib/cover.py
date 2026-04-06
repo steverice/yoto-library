@@ -54,7 +54,7 @@ def pad_to_cover(art_bytes: bytes) -> bytes:
 
     Returns PNG bytes of the padded image at COVER_WIDTH x COVER_HEIGHT.
     """
-    art = Image.open(io.BytesIO(art_bytes))
+    art = Image.open(io.BytesIO(art_bytes)).convert("RGB")
 
     # Scale to fit within cover dimensions (constrained by width or height)
     scale = min(COVER_WIDTH / art.width, COVER_HEIGHT / art.height)
