@@ -494,9 +494,9 @@ def composite_text(
     cy = placement["y"] + ph // 2 - th // 2
     # Clamp to image bounds
     cx = max(0, min(cx, flux_img.width - tw))
-    cy = max(0, min(cy, flux_img.height - target_h))
+    cy = max(0, min(cy, flux_img.height - th))
 
-    logger.debug("composite_text: placing %dx%d at (%d, %d)", tw, target_h, cx, cy)
+    logger.debug("composite_text: placing %dx%d at (%d, %d)", tw, th, cx, cy)
     flux_img.paste(text_final, (cx, cy), text_final)
 
     buf = io.BytesIO()
@@ -567,11 +567,9 @@ def compare_covers(padded: bytes, outpainted: bytes) -> str:
             f"Reply with ONLY the letter: A or B"
         )
 
-        response = _call_claude(prompt, allowed_tools="Read", model="haiku")
+        response = _call_claude(prompt, allowed_tools="Read", model="sonnet")
 
         if response:
-            # Look for a standalone A or B (not embedded in words like "BETTER")
-            import re
             match = re.search(r"\b([AB])\b", response.upper())
             if match:
                 choice = match.group(1).lower()
