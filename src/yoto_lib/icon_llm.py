@@ -72,13 +72,14 @@ def describe_icons_llm(
     prompt = (
         f'I need 3 different visual concepts for a 16x16 pixel art icon '
         f'representing a children\'s audio track called "{track_title}".{context}\n'
-        f'Each concept should be a concrete visual subject — an object, animal, '
-        f'scene, or symbol that captures the track\'s meaning. '
-        f'Do NOT describe characters from the show. '
-        f'Focus on the emotion or concept the title conveys.\n\n'
-        f'Return ONLY a JSON array of 3 short image prompts (under 15 words each). '
-        f'Example: ["a smiling sun with rainbow", "two hands holding a heart", '
-        f'"a bright yellow star with sparkles"]\n'
+        f'Each concept should be a concrete subject — an object, animal, or symbol '
+        f'that captures the track\'s meaning. Think emoji: would you recognize '
+        f'this at a glance if it were tiny? The silhouette alone should be readable.\n'
+        f'Pairs are fine (fishing rod + fish, baseball + bat) but avoid hands, '
+        f'faces, fine detail, or anything needing more than a few bold shapes.\n'
+        f'Do NOT describe characters from the show.\n\n'
+        f'Return ONLY a JSON array of 3 short image prompts (under 8 words each). '
+        f'Example: ["red heart", "fishing rod and fish", "bright yellow star"]\n'
         f'No explanation, no markdown, just the JSON array.'
     )
 
