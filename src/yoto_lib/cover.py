@@ -428,6 +428,10 @@ def render_text_layer(original: bytes, ocr_text: str) -> bytes | None:
             ),
         )
 
+        if not response.candidates:
+            logger.warning("render_text_layer: no candidates in response")
+            return None
+
         for part in response.candidates[0].content.parts:
             if part.inline_data is not None:
                 logger.debug("render_text_layer: %d bytes", len(part.inline_data.data))
