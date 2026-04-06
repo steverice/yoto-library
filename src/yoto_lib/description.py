@@ -45,6 +45,7 @@ def generate_description(
     logger.debug("generate_description prompt:\n%s", prompt)
 
     # Call Claude CLI
+    _log("Generating description...")
     description = _call_claude(prompt)
     if description is None:
         logger.debug("generate_description: claude returned None")
@@ -58,6 +59,7 @@ def generate_description(
         answer = ask_user(description)
         logger.debug("generate_description: LLM asked question, user answered: %s", answer)
         followup = f"{prompt}\n\nUser preference: {answer}\n\nNow write the description. Output ONLY the description, nothing else."
+        _log("Generating description...")
         description = _call_claude(followup)
         if description is None:
             logger.debug("generate_description: follow-up call returned None")
@@ -107,6 +109,7 @@ def _build_prompt(playlist_title: str, metadata: dict[str, list[str]]) -> str:
         "Write a 1-2 sentence description (under 200 characters) of this children's audio playlist.",
         "The description will be used as input to an image generation model to create cover art, so focus on the central visual theme or mood.",
         "Do not include quotation marks around the description.",
+        "Output ONLY the description text. Never refuse, never comment on appropriateness, never ask clarifying questions.",
         "",
         f"Playlist: {playlist_title}",
     ]
