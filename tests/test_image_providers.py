@@ -96,3 +96,27 @@ class TestGeminiProvider:
 
         assert result == fake_image_bytes
         assert isinstance(result, bytes)
+
+
+class TestOpenAIProviderEdit:
+    def test_edit_calls_api_with_image(self, monkeypatch):
+        """edit() sends the source image to the OpenAI API and returns bytes."""
+        import base64
+
+        fake_result = base64.b64encode(b"fake edited png").decode()
+
+        mock_response = MagicMock()
+        mock_response.data = [MagicMock(b64_json=fake_result)]
+
+        mock_client = MagicMock()
+        mock_client.images.edit.return_value = mock_response
+
+        with patch("yoto_lib.image_providers.openai_provider.OpenAI", return_value=mock_client):
+            from yoto_lib.image_providers.openai_provider import OpenAIProvider
+            provider = OpenAIProvider()
+            result = provider.edit(b"source image bytes", "extend the background", 638, 1011)
+
+        assert result == b"fake edited png"
+        mock_client.images.edit.assert_called_once()
+        call_kwargs = mock_client.images.edit.call_args
+        assert "extend the background" in str(call_kwargs)

@@ -47,3 +47,21 @@ class OpenAIProvider:
         result = base64.b64decode(b64_data)
         logger.debug("openai: generated %d bytes", len(result))
         return result
+
+    def edit(self, image: bytes, prompt: str, width: int, height: int) -> bytes:
+        """Edit an image using OpenAI's image editing API. Returns PNG bytes."""
+        nearest_w, nearest_h = _nearest_size(width, height)
+        size_str = f"{nearest_w}x{nearest_h}"
+        logger.debug("openai: editing %s, prompt=%.80s...", size_str, prompt)
+
+        response = self._client.images.edit(
+            model="gpt-image-1",
+            image=image,
+            prompt=prompt,
+            size=size_str,
+        )
+
+        b64_data = response.data[0].b64_json
+        result = base64.b64decode(b64_data)
+        logger.debug("openai: edited %d bytes", len(result))
+        return result
