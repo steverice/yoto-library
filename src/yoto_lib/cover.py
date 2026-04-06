@@ -149,7 +149,7 @@ def reframe_album_art(
             debug_path.write_bytes(recomposed)
             logger.debug("reframe_album_art: attempt %d -> %s", attempt, debug_path)
 
-            if check_text_quality(art_bytes, recomposed):
+            if check_recompose_quality(art_bytes, recomposed):
                 _log("Text check passed")
                 break
             _log("Text check failed")
@@ -315,10 +315,11 @@ def generate_cover_if_missing(
         tmp_path.unlink(missing_ok=True)
 
 
-def check_text_quality(original: bytes, recomposed: bytes) -> bool:
-    """Ask Claude to check if text from the original survives in the recomposed image.
+def check_recompose_quality(original: bytes, recomposed: bytes) -> bool:
+    """Ask Claude to check text and visual quality of a recomposed cover.
 
-    Returns True if text is intact, False if mangled/missing.
+    Checks for: mangled/missing text, unnaturally stretched elements,
+    distorted faces or objects. Returns True if acceptable, False if not.
     Falls back to True (accept) on failure.
     """
     with tempfile.TemporaryDirectory(prefix="yoto-text-check-") as tmpdir:
@@ -329,13 +330,15 @@ def check_text_quality(original: bytes, recomposed: bytes) -> bool:
         recomp_path.write_bytes(recomposed)
 
         prompt = (
-            f"Compare the text in these two album cover images.\n\n"
+            f"Compare these two album cover images.\n\n"
             f"Original: {orig_path}\n"
             f"Recomposed: {recomp_path}\n\n"
-            f"Is all visible text from the original image present and correctly "
-            f"spelled in the recomposed image? Minor repositioning is fine — "
-            f"only flag missing, garbled, or misspelled text.\n"
-            f"If the original has no text, answer YES.\n\n"
+            f"Answer NO if ANY of these problems exist:\n"
+            f"- Text is missing, garbled, misspelled, or cut off at edges\n"
+            f"- Characters or objects are unnaturally stretched or distorted\n"
+            f"- Faces look wrong or deformed\n\n"
+            f"Minor repositioning or style differences are fine.\n"
+            f"If the original has no text, only check for distortion.\n\n"
             f"Reply with ONLY: YES or NO"
         )
 
@@ -345,10 +348,10 @@ def check_text_quality(original: bytes, recomposed: bytes) -> bool:
             match = re.search(r"\b(YES|NO)\b", response.upper())
             if match:
                 result = match.group(1) == "YES"
-                logger.info("check_text_quality: %s", "pass" if result else "fail")
+                logger.info("check_recompose_quality: %s", "pass" if result else "fail")
                 return result
 
-        logger.info("check_text_quality: defaulting to pass")
+        logger.info("check_recompose_quality: defaulting to pass")
         return True
 
 
