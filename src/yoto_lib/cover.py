@@ -121,6 +121,7 @@ def reframe_album_art(
     # Candidate B: AI recomposition via FLUX Kontext (retry up to 3 times for good text)
     recomposed = None
     max_attempts = 3
+    debug_dir = Path(tempfile.mkdtemp(prefix="yoto-reframe-"))
     try:
         from yoto_lib.image_providers.flux_provider import FluxProvider
         provider = FluxProvider()
@@ -128,7 +129,10 @@ def reframe_album_art(
             _log(f"Recomposing album art for cover (attempt {attempt}/{max_attempts})...")
             recomposed_raw = provider.recompose(art_bytes, _RECOMPOSE_PROMPT, COVER_WIDTH, COVER_HEIGHT)
             recomposed = pad_to_cover(recomposed_raw)
-            logger.debug("reframe_album_art: recomposition produced %d bytes", len(recomposed))
+
+            debug_path = debug_dir / f"attempt_{attempt}.png"
+            debug_path.write_bytes(recomposed)
+            logger.debug("reframe_album_art: attempt %d -> %s", attempt, debug_path)
 
             if check_text_quality(art_bytes, recomposed):
                 _log("Text check passed")
