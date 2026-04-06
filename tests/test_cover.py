@@ -350,13 +350,14 @@ class TestReframeAlbumArt:
         art_bytes = _make_png_bytes(500, 500, "green")
         output = tmp_path / "cover.png"
 
+        mock_provider = MagicMock()
+        mock_provider.recompose.return_value = _make_png_bytes(638, 1011, "blue")
+
         with (
-            patch("yoto_lib.cover.get_provider") as mock_get_provider,
+            patch("yoto_lib.image_providers.flux_provider.FluxProvider", return_value=mock_provider),
+            patch("yoto_lib.cover.check_text_quality", return_value=True),
             patch("yoto_lib.cover.compare_covers", return_value="a"),
         ):
-            mock_provider = MagicMock()
-            mock_provider.recompose.return_value = _make_png_bytes(638, 1011, "blue")
-            mock_get_provider.return_value = mock_provider
             reframe_album_art(art_bytes, output)
 
         assert output.exists()
@@ -368,15 +369,14 @@ class TestReframeAlbumArt:
         art_bytes = _make_png_bytes(500, 500, "green")
         output = tmp_path / "cover.png"
 
-        recomposed_bytes = _make_png_bytes(638, 1011, "blue")
+        mock_provider = MagicMock()
+        mock_provider.recompose.return_value = _make_png_bytes(638, 1011, "blue")
 
         with (
-            patch("yoto_lib.cover.get_provider") as mock_get_provider,
+            patch("yoto_lib.image_providers.flux_provider.FluxProvider", return_value=mock_provider),
+            patch("yoto_lib.cover.check_text_quality", return_value=True),
             patch("yoto_lib.cover.compare_covers", return_value="b"),
         ):
-            mock_provider = MagicMock()
-            mock_provider.recompose.return_value = recomposed_bytes
-            mock_get_provider.return_value = mock_provider
             reframe_album_art(art_bytes, output)
 
         # The saved cover should be blue (recomposed), not green (padded)
@@ -385,38 +385,38 @@ class TestReframeAlbumArt:
         assert center[2] > 200  # blue channel dominant
 
     def test_falls_back_to_padded_when_recompose_fails(self, tmp_path):
-        """When the provider's recompose() fails, use the padded version."""
+        """When FluxProvider raises, use the padded version."""
         art_bytes = _make_png_bytes(500, 500, "green")
         output = tmp_path / "cover.png"
 
         with (
-            patch("yoto_lib.cover.get_provider") as mock_get_provider,
+            patch("yoto_lib.image_providers.flux_provider.FluxProvider", side_effect=Exception("API error")),
             patch("yoto_lib.cover.compare_covers") as mock_compare,
         ):
-            mock_provider = MagicMock()
-            mock_provider.recompose.side_effect = Exception("API error")
-            mock_get_provider.return_value = mock_provider
             reframe_album_art(art_bytes, output)
 
-        # Should not have called compare (only one candidate)
         mock_compare.assert_not_called()
         assert output.exists()
         img = Image.open(output)
         assert img.size == (COVER_WIDTH, COVER_HEIGHT)
 
-    def test_falls_back_to_padded_when_no_provider(self, tmp_path):
-        """When get_provider raises, use the padded version."""
+    def test_text_repair_triggered_after_max_attempts(self, tmp_path):
+        """When all FLUX attempts fail text check, repair pipeline runs."""
         art_bytes = _make_png_bytes(500, 500, "green")
         output = tmp_path / "cover.png"
 
-        with (
-            patch("yoto_lib.cover.get_provider", side_effect=ValueError("no provider")),
-            patch("yoto_lib.cover.compare_covers") as mock_compare,
-        ):
-            reframe_album_art(art_bytes, output)
+        mock_provider = MagicMock()
+        mock_provider.recompose.return_value = _make_png_bytes(638, 1011, "blue")
 
-        mock_compare.assert_not_called()
-        assert output.exists()
+        with (
+            patch("yoto_lib.image_providers.flux_provider.FluxProvider", return_value=mock_provider),
+            patch("yoto_lib.cover.check_text_quality", return_value=False),
+            patch("yoto_lib.cover.repair_text", return_value=_make_png_bytes(638, 1011, "red")) as mock_repair,
+        ):
+            reframe_album_art(art_bytes, output, style="ai")
+
+        assert mock_provider.recompose.call_count == 3
+        mock_repair.assert_called_once()
 
 
 class TestTrySharedAlbumArtReframe:
