@@ -971,7 +971,13 @@ def cover(path, force, backup):
         )
 
     # Try reusing shared album art first
-    if try_shared_album_art(playlist):
+    def _cover_log(msg: str) -> None:
+        if msg.startswith("WARNING:"):
+            click.echo(click.style(msg, fg="yellow"))
+        else:
+            click.echo(msg)
+
+    if try_shared_album_art(playlist, log=_cover_log):
         click.echo(f"Reused album art as cover: {cover_path}")
         _print_cost_summary()
         return
