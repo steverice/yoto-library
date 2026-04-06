@@ -87,10 +87,9 @@ def pad_to_cover(art_bytes: bytes) -> bytes:
 
 
 _RECOMPOSE_PROMPT = (
-    "This is a square album cover. Create a new portrait-oriented (2:3) version "
-    "of it, reusing the same characters, art style, colors, and mood. Rearrange "
-    "the elements to fill the taller frame naturally. Any text or title must be "
-    "well within the image boundaries — not near the edges."
+    "The black areas above and below the artwork are empty. Fill them with "
+    "background that naturally extends the scene — matching the art style, "
+    "colors, and mood of the original. Do not alter the artwork in the center."
 )
 
 

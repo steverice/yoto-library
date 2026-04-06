@@ -59,24 +59,42 @@ class FluxProvider:
         return result
 
     def recompose(self, image: bytes, prompt: str, width: int, height: int) -> bytes:
-        """Recompose an image using FLUX Kontext. Returns image bytes."""
-        w = round(width / 16) * 16
-        h = round(height / 16) * 16
-        logger.debug("flux: recomposing %dx%d, prompt=%.80s...", w, h, prompt)
+        """Recompose an image using FLUX Kontext targeted fill.
 
-        image_url = _upload_temp(image)
-        logger.debug("flux: uploaded source image to %s", image_url)
+        Pads the source image to the target dimensions with black bars, then
+        asks FLUX Kontext to fill the black areas with contextually appropriate
+        content. Kontext preserves the original art and fills the new regions.
+        """
+        import io
+        from PIL import Image as PILImage
+
+        # Build a padded canvas: original art centered, black bars fill the rest
+        art = PILImage.open(io.BytesIO(image)).convert("RGB")
+        scale = min(width / art.width, height / art.height)
+        new_w = int(art.width * scale)
+        new_h = int(art.height * scale)
+        scaled = art.resize((new_w, new_h), PILImage.LANCZOS)
+        canvas = PILImage.new("RGB", (width, height), (0, 0, 0))
+        x_off = (width - new_w) // 2
+        y_off = (height - new_h) // 2
+        canvas.paste(scaled, (x_off, y_off))
+        buf = io.BytesIO()
+        canvas.save(buf, format="PNG")
+        padded_bytes = buf.getvalue()
+
+        logger.debug("flux: recomposing with kontext fill, canvas=%dx%d", width, height)
+        image_url = _upload_temp(padded_bytes)
+        logger.debug("flux: uploaded padded canvas to %s", image_url)
 
         response = self._client.images.generate(
             model="black-forest-labs/FLUX.1-kontext-pro",
             prompt=prompt,
             image_url=image_url,
-            width=w,
-            height=h,
             steps=28,
             response_format="base64",
         )
 
         result = base64.b64decode(response.data[0].b64_json)
-        logger.debug("flux: recomposed %d bytes", len(result))
+        with PILImage.open(io.BytesIO(result)) as img:
+            logger.debug("flux: recomposed %d bytes, size=%dx%d", len(result), img.width, img.height)
         return result
