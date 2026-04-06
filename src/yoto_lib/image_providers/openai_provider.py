@@ -48,25 +48,3 @@ class OpenAIProvider:
         logger.debug("openai: generated %d bytes", len(result))
         return result
 
-    def recompose(self, image: bytes, prompt: str, width: int, height: int) -> bytes:
-        """Recompose an image into new dimensions using OpenAI image editing."""
-        import io
-
-        nearest_w, nearest_h = _nearest_size(width, height)
-        size_str = f"{nearest_w}x{nearest_h}"
-        logger.debug("openai: recomposing %s, prompt=%.80s...", size_str, prompt)
-
-        buf = io.BytesIO(image)
-        buf.name = "image.png"
-
-        response = self._client.images.edit(
-            model="gpt-image-1",
-            image=buf,
-            prompt=prompt,
-            size=size_str,
-        )
-
-        b64_data = response.data[0].b64_json
-        result = base64.b64decode(b64_data)
-        logger.debug("openai: recomposed %d bytes", len(result))
-        return result

@@ -1,55 +1,22 @@
 """Tests for image provider interface and implementations."""
 import base64
-import os
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from yoto_lib.image_providers import ImageProvider, get_provider
+from yoto_lib.image_providers import get_provider
 
 
-class TestImageProviderInterface:
-    def test_provider_has_generate_method(self):
-        """ImageProvider protocol requires a generate method."""
-        assert hasattr(ImageProvider, "generate")
-
-    def test_get_provider_openai(self, monkeypatch):
-        """get_provider returns OpenAIProvider when env var is 'openai'."""
-        monkeypatch.setenv("YOTO_IMAGE_PROVIDER", "openai")
+class TestGetProvider:
+    def test_returns_openai_provider(self):
+        """get_provider returns an OpenAIProvider."""
         with patch("yoto_lib.image_providers.openai_provider.OpenAI"):
             provider = get_provider()
         from yoto_lib.image_providers.openai_provider import OpenAIProvider
         assert isinstance(provider, OpenAIProvider)
-
-    def test_get_provider_gemini(self, monkeypatch):
-        """get_provider returns GeminiProvider when env var is 'gemini'."""
-        monkeypatch.setenv("YOTO_IMAGE_PROVIDER", "gemini")
-        with patch("yoto_lib.image_providers.gemini_provider.genai.Client"):
-            provider = get_provider()
-        from yoto_lib.image_providers.gemini_provider import GeminiProvider
-        assert isinstance(provider, GeminiProvider)
-
-    def test_get_provider_defaults_to_openai(self, monkeypatch):
-        """get_provider defaults to OpenAIProvider when env var is not set."""
-        monkeypatch.delenv("YOTO_IMAGE_PROVIDER", raising=False)
-        with patch("yoto_lib.image_providers.openai_provider.OpenAI"):
-            provider = get_provider()
-        from yoto_lib.image_providers.openai_provider import OpenAIProvider
-        assert isinstance(provider, OpenAIProvider)
-
-    def test_get_provider_raises_for_unknown(self, monkeypatch):
-        """get_provider raises ValueError for unknown provider names."""
-        monkeypatch.setenv("YOTO_IMAGE_PROVIDER", "unknown_provider")
-        with pytest.raises(ValueError, match="unknown_provider"):
-            get_provider()
 
 
 class TestOpenAIProvider:
-    def test_generate_returns_bytes(self, monkeypatch):
+    def test_generate_returns_bytes(self):
         """generate() returns PNG bytes decoded from b64_json response."""
-        monkeypatch.setenv("YOTO_IMAGE_PROVIDER", "openai")
-
-        # Build a fake PNG bytes payload (just any bytes for the test)
         fake_png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
         fake_b64 = base64.b64encode(fake_png).decode()
 
@@ -71,69 +38,40 @@ class TestOpenAIProvider:
         assert isinstance(result, bytes)
 
 
-class TestGeminiProvider:
-    def test_generate_returns_bytes(self, monkeypatch):
-        """generate() returns image bytes from generate_images response."""
-        fake_image_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
+class TestFluxProvider:
+    def test_recompose_uploads_and_returns_bytes(self):
+        """recompose() uploads padded image and returns FLUX result."""
+        from PIL import Image as PILImage
+        import io
 
-        mock_response = MagicMock()
-        mock_response.generated_images = [MagicMock()]
-        mock_response.generated_images[0].image.image_bytes = fake_image_bytes
-
-        mock_client = MagicMock()
-        mock_client.models.generate_images.return_value = mock_response
-
-        with patch("yoto_lib.image_providers.gemini_provider.genai.Client", return_value=mock_client):
-            from yoto_lib.image_providers.gemini_provider import GeminiProvider
-            provider = GeminiProvider()
-            result = provider.generate("a cute cat", 512, 512)
-
-        assert result == fake_image_bytes
-        assert isinstance(result, bytes)
-
-
-class TestOpenAIProviderRecompose:
-    def test_recompose_calls_api_with_image(self, monkeypatch):
-        """recompose() sends the source image to the OpenAI API and returns bytes."""
-        import base64
-
-        fake_result = base64.b64encode(b"fake recomposed png").decode()
+        # Create a valid PNG for the fake FLUX response
+        fake_img = PILImage.new("RGB", (800, 1328), color="blue")
+        fake_buf = io.BytesIO()
+        fake_img.save(fake_buf, format="PNG")
+        fake_png = fake_buf.getvalue()
+        fake_result = base64.b64encode(fake_png).decode()
 
         mock_response = MagicMock()
         mock_response.data = [MagicMock(b64_json=fake_result)]
 
         mock_client = MagicMock()
-        mock_client.images.edit.return_value = mock_response
+        mock_client.images.generate.return_value = mock_response
 
-        with patch("yoto_lib.image_providers.openai_provider.OpenAI", return_value=mock_client):
-            from yoto_lib.image_providers.openai_provider import OpenAIProvider
-            provider = OpenAIProvider()
-            result = provider.recompose(b"source image bytes", "recompose as portrait", 638, 1011)
+        with (
+            patch("yoto_lib.image_providers.flux_provider.Together", return_value=mock_client),
+            patch("yoto_lib.image_providers.flux_provider._upload_temp", return_value="http://example.com/img.png"),
+        ):
+            from yoto_lib.image_providers.flux_provider import FluxProvider
+            provider = FluxProvider()
+            from PIL import Image as PILImage
+            import io
+            test_img = PILImage.new("RGB", (100, 100), color="green")
+            buf = io.BytesIO()
+            test_img.save(buf, format="PNG")
 
-        assert result == b"fake recomposed png"
-        mock_client.images.edit.assert_called_once()
+            result = provider.recompose(buf.getvalue(), "test prompt", 638, 1011)
 
-
-class TestGeminiProviderRecompose:
-    def test_recompose_calls_generate_content(self, monkeypatch):
-        """recompose() uses generate_content with image input."""
-        fake_image_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
-
-        mock_part = MagicMock()
-        mock_part.inline_data = MagicMock()
-        mock_part.inline_data.data = fake_image_bytes
-
-        mock_response = MagicMock()
-        mock_response.candidates = [MagicMock()]
-        mock_response.candidates[0].content.parts = [mock_part]
-
-        mock_client = MagicMock()
-        mock_client.models.generate_content.return_value = mock_response
-
-        with patch("yoto_lib.image_providers.gemini_provider.genai.Client", return_value=mock_client):
-            from yoto_lib.image_providers.gemini_provider import GeminiProvider
-            provider = GeminiProvider()
-            result = provider.recompose(b"source image bytes", "recompose as portrait", 638, 1011)
-
-        assert result == fake_image_bytes
-        mock_client.models.generate_content.assert_called_once()
+        assert result == fake_png
+        mock_client.images.generate.assert_called_once()
+        call_kwargs = mock_client.images.generate.call_args
+        assert "FLUX.1-kontext-pro" in str(call_kwargs)
