@@ -355,7 +355,7 @@ class TestReframeAlbumArt:
 
         with (
             patch("yoto_lib.image_providers.flux_provider.FluxProvider", return_value=mock_provider),
-            patch("yoto_lib.cover.check_text_quality", return_value=True),
+            patch("yoto_lib.cover.check_recompose_quality", return_value=True),
             patch("yoto_lib.cover.compare_covers", return_value="a"),
         ):
             reframe_album_art(art_bytes, output)
@@ -374,7 +374,7 @@ class TestReframeAlbumArt:
 
         with (
             patch("yoto_lib.image_providers.flux_provider.FluxProvider", return_value=mock_provider),
-            patch("yoto_lib.cover.check_text_quality", return_value=True),
+            patch("yoto_lib.cover.check_recompose_quality", return_value=True),
             patch("yoto_lib.cover.compare_covers", return_value="b"),
         ):
             reframe_album_art(art_bytes, output)
@@ -410,7 +410,7 @@ class TestReframeAlbumArt:
 
         with (
             patch("yoto_lib.image_providers.flux_provider.FluxProvider", return_value=mock_provider),
-            patch("yoto_lib.cover.check_text_quality", return_value=False),
+            patch("yoto_lib.cover.check_recompose_quality", return_value=False),
             patch("yoto_lib.cover.repair_text", return_value=_make_png_bytes(638, 1011, "red")) as mock_repair,
         ):
             reframe_album_art(art_bytes, output, style="ai")
