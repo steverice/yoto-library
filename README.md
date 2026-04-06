@@ -221,7 +221,7 @@ Each AI task uses a specific provider chosen for best results at that task:
 | Album art recomposition | [FLUX Kontext Pro](https://www.together.ai/) via Together AI | `TOGETHER_API_KEY` | ~$0.04/image |
 | Text layer rendering (cover repair) | [Gemini 2.5 Flash](https://aistudio.google.com/) | `GEMINI_API_KEY` | ~$0.07/image |
 | Text-to-image cover generation | [OpenAI gpt-image-1](https://platform.openai.com/) | `OPENAI_API_KEY` | ~$0.05/image |
-| Descriptions, icon matching, text checks | [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) | Subscription | Included with Claude subscription |
+| Descriptions, icon matching, cover evaluation (Sonnet) | [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) | Subscription | Included with Claude subscription |
 
 **Getting API keys:**
 

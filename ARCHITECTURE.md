@@ -127,13 +127,16 @@ Each AI-powered feature uses a hardcoded provider chosen for best results at tha
 
 **Cover recomposition pipeline** (when shared album art exists):
 
-1. **FLUX Kontext Pro** (Together AI) — recomposes square album art into portrait layout. Retried up to 3 times.
-2. **Claude CLI** (Haiku) — checks if text survived the recomposition.
-3. If text is mangled after 3 attempts, the repair pipeline runs:
+1. **FLUX Kontext Pro** (Together AI) — recomposes square album art into portrait layout. Retried up to 3 times (configurable via `YOTO_RECOMPOSE_ATTEMPTS`).
+2. **Claude CLI** (Sonnet) — checks if text survived the recomposition.
+3. **Claude CLI** (Sonnet) — compares padded vs recomposed versions, picks the better one.
+4. If text is mangled after all attempts, the repair pipeline runs:
    - **Claude CLI** (Sonnet) — OCRs original album text
    - **Gemini 2.5 Flash Image** (AI Studio) — renders styled text on black background
    - **Claude CLI** (Sonnet) — picks placement coordinates on the portrait image
    - **PIL** — chroma keys black background and composites text at coordinates
+
+All Claude CLI calls in the cover pipeline use Sonnet for better visual judgment and OCR accuracy.
 
 **Text-to-image cover generation** (when no shared album art exists): OpenAI `gpt-image-1` generates a cover from track metadata.
 
