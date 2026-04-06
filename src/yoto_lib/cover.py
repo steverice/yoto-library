@@ -133,7 +133,12 @@ def reframe_album_art(
         for attempt in range(1, max_attempts + 1):
             _log(f"Recomposing album art for cover (attempt {attempt}/{max_attempts})...")
             recomposed_raw = provider.recompose(art_bytes, _RECOMPOSE_PROMPT, COVER_WIDTH, COVER_HEIGHT)
-            recomposed = pad_to_cover(recomposed_raw)
+            # Resize to exact cover dimensions (aspect ratio difference is <5%)
+            img = Image.open(io.BytesIO(recomposed_raw))
+            img = img.resize((COVER_WIDTH, COVER_HEIGHT), Image.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            recomposed = buf.getvalue()
 
             debug_path = debug_dir / f"attempt_{attempt}.png"
             debug_path.write_bytes(recomposed)
