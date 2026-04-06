@@ -14,7 +14,6 @@ from yoto_lib.cover import (
     COVER_HEIGHT,
     COVER_WIDTH,
     build_cover_prompt,
-    compare_covers,
     generate_cover_if_missing,
     pad_to_cover,
     reframe_album_art,
@@ -256,7 +255,7 @@ class TestTrySharedAlbumArt:
             result = try_shared_album_art(playlist)
 
         assert result is True
-        mock_reframe.assert_called_once_with(shared_art, cover_path, log=None, style="compare")
+        mock_reframe.assert_called_once_with(shared_art, cover_path, log=None)
 
     def test_generate_cover_tries_shared_art_first(self):
         """generate_cover_if_missing tries shared art before AI generation."""
@@ -309,44 +308,12 @@ class TestPadToCover:
         assert img.size == (COVER_WIDTH, COVER_HEIGHT)
 
 
-# ── TestCompareCovers ─────────────────────────────────────────────────────────
-
-
-class TestCompareCovers:
-    def test_returns_winner_a(self):
-        """Returns 'a' when Claude picks the padded version."""
-        padded = _make_png_bytes(638, 1011, "green")
-        outpainted = _make_png_bytes(638, 1011, "blue")
-
-        with patch("yoto_lib.cover._call_claude", return_value='"A"'):
-            winner = compare_covers(padded, outpainted)
-        assert winner == "a"
-
-    def test_returns_winner_b(self):
-        """Returns 'b' when Claude picks the outpainted version."""
-        padded = _make_png_bytes(638, 1011, "green")
-        outpainted = _make_png_bytes(638, 1011, "blue")
-
-        with patch("yoto_lib.cover._call_claude", return_value='"B"'):
-            winner = compare_covers(padded, outpainted)
-        assert winner == "b"
-
-    def test_returns_b_on_failure(self):
-        """Falls back to 'b' (outpainted) when Claude call fails."""
-        padded = _make_png_bytes(638, 1011, "green")
-        outpainted = _make_png_bytes(638, 1011, "blue")
-
-        with patch("yoto_lib.cover._call_claude", return_value=None):
-            winner = compare_covers(padded, outpainted)
-        assert winner == "b"
-
-
 # ── TestReframeAlbumArt ───────────────────────────────────────────────────────
 
 
 class TestReframeAlbumArt:
-    def test_saves_cover_with_correct_dimensions(self, tmp_path):
-        """Output file must be COVER_WIDTH x COVER_HEIGHT."""
+    def test_saves_cover_when_quality_passes(self, tmp_path):
+        """First passing attempt is saved immediately."""
         art_bytes = _make_png_bytes(500, 500, "green")
         output = tmp_path / "cover.png"
 
@@ -356,16 +323,14 @@ class TestReframeAlbumArt:
         with (
             patch("yoto_lib.image_providers.flux_provider.FluxProvider", return_value=mock_provider),
             patch("yoto_lib.cover.check_recompose_quality", return_value=True),
-            patch("yoto_lib.cover.compare_covers", return_value="a"),
         ):
             reframe_album_art(art_bytes, output)
 
         assert output.exists()
-        img = Image.open(output)
-        assert img.size == (COVER_WIDTH, COVER_HEIGHT)
+        mock_provider.recompose.assert_called_once()
 
-    def test_uses_recomposed_when_claude_picks_b(self, tmp_path):
-        """When Claude picks B, the recomposed version is saved."""
+    def test_retries_on_quality_failure(self, tmp_path):
+        """Retries FLUX when quality check fails, stops on first pass."""
         art_bytes = _make_png_bytes(500, 500, "green")
         output = tmp_path / "cover.png"
 
@@ -374,34 +339,15 @@ class TestReframeAlbumArt:
 
         with (
             patch("yoto_lib.image_providers.flux_provider.FluxProvider", return_value=mock_provider),
-            patch("yoto_lib.cover.check_recompose_quality", return_value=True),
-            patch("yoto_lib.cover.compare_covers", return_value="b"),
+            patch("yoto_lib.cover.check_recompose_quality", side_effect=[False, True]),
         ):
             reframe_album_art(art_bytes, output)
 
-        # The saved cover should be blue (recomposed), not green (padded)
-        img = Image.open(output)
-        center = img.getpixel((COVER_WIDTH // 2, COVER_HEIGHT // 2))
-        assert center[2] > 200  # blue channel dominant
-
-    def test_falls_back_to_padded_when_recompose_fails(self, tmp_path):
-        """When FluxProvider raises, use the padded version."""
-        art_bytes = _make_png_bytes(500, 500, "green")
-        output = tmp_path / "cover.png"
-
-        with (
-            patch("yoto_lib.image_providers.flux_provider.FluxProvider", side_effect=Exception("API error")),
-            patch("yoto_lib.cover.compare_covers") as mock_compare,
-        ):
-            reframe_album_art(art_bytes, output)
-
-        mock_compare.assert_not_called()
         assert output.exists()
-        img = Image.open(output)
-        assert img.size == (COVER_WIDTH, COVER_HEIGHT)
+        assert mock_provider.recompose.call_count == 2
 
-    def test_text_repair_triggered_after_max_attempts(self, tmp_path):
-        """When all FLUX attempts fail text check, repair pipeline runs."""
+    def test_repair_triggered_after_max_attempts(self, tmp_path):
+        """When all FLUX attempts fail, repair pipeline runs."""
         art_bytes = _make_png_bytes(500, 500, "green")
         output = tmp_path / "cover.png"
 
@@ -412,11 +358,32 @@ class TestReframeAlbumArt:
             patch("yoto_lib.image_providers.flux_provider.FluxProvider", return_value=mock_provider),
             patch("yoto_lib.cover.check_recompose_quality", return_value=False),
             patch("yoto_lib.cover.repair_text", return_value=_make_png_bytes(638, 1011, "red")) as mock_repair,
+            patch("yoto_lib.cover.pick_best_candidate", return_value=_make_png_bytes(638, 1011, "red")),
         ):
-            reframe_album_art(art_bytes, output, style="ai")
+            reframe_album_art(art_bytes, output)
 
         assert mock_provider.recompose.call_count == 3
         mock_repair.assert_called_once()
+
+    def test_pick_best_when_all_fail(self, tmp_path):
+        """When everything fails quality, pick_best_candidate chooses."""
+        art_bytes = _make_png_bytes(500, 500, "green")
+        output = tmp_path / "cover.png"
+
+        mock_provider = MagicMock()
+        mock_provider.recompose.return_value = _make_png_bytes(638, 1011, "blue")
+        best = _make_png_bytes(638, 1011, "red")
+
+        with (
+            patch("yoto_lib.image_providers.flux_provider.FluxProvider", return_value=mock_provider),
+            patch("yoto_lib.cover.check_recompose_quality", return_value=False),
+            patch("yoto_lib.cover.repair_text", return_value=_make_png_bytes(638, 1011, "blue")),
+            patch("yoto_lib.cover.pick_best_candidate", return_value=best) as mock_pick,
+        ):
+            reframe_album_art(art_bytes, output)
+
+        mock_pick.assert_called_once()
+        assert output.exists()
 
 
 class TestTrySharedAlbumArtReframe:
@@ -440,7 +407,7 @@ class TestTrySharedAlbumArtReframe:
             result = try_shared_album_art(playlist)
 
         assert result is True
-        mock_reframe.assert_called_once_with(shared_art, cover_path, log=None, style="compare")
+        mock_reframe.assert_called_once_with(shared_art, cover_path, log=None)
         mock_resize.assert_not_called()
 
 

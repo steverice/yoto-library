@@ -102,79 +102,87 @@ _RECOMPOSE_PROMPT = (
 )
 
 
+def _crop_flux_result(recomposed_raw: bytes) -> bytes:
+    """Center-crop FLUX output to exact cover dimensions."""
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+        tmp.write(recomposed_raw)
+        cropped = Path(tmp.name)
+    try:
+        resize_cover(cropped, cropped)
+        return cropped.read_bytes()
+    finally:
+        cropped.unlink(missing_ok=True)
+
+
 def reframe_album_art(
     art_bytes: bytes,
     output_path: Path,
     log: "Callable[[str], None] | None" = None,
-    style: str = "compare",
 ) -> None:
-    """Reframe square album art into a portrait cover.
+    """Reframe square album art into a portrait cover via AI recomposition.
 
-    style controls which candidate is used:
-      - "compare": generate both, let Claude pick (default)
-      - "ai": always use AI recomposition (fall back to padded on failure)
-      - "pad": always use padded, skip AI
+    Generates FLUX candidates, evaluates each with Claude, runs text repair
+    if needed. If nothing passes quality checks, Claude picks the best
+    candidate and warns the user.
     """
     _log = log or (lambda msg: None)
 
-    # Candidate A: simple padding
-    padded = pad_to_cover(art_bytes)
-
-    if style == "pad":
-        _log("Using padded album art as cover")
-        output_path.write_bytes(padded)
-        return
-
-    # Candidate B: AI recomposition via FLUX Kontext
-    recomposed = None
+    candidates: list[bytes] = []
     max_attempts = RECOMPOSE_MAX_ATTEMPTS
     debug_dir = Path(tempfile.mkdtemp(prefix="yoto-reframe-"))
+
     try:
         from yoto_lib.image_providers.flux_provider import FluxProvider
         provider = FluxProvider()
+
         for attempt in range(1, max_attempts + 1):
             _log(f"Recomposing album art for cover (attempt {attempt}/{max_attempts})...")
             recomposed_raw = provider.recompose(art_bytes, _RECOMPOSE_PROMPT, COVER_WIDTH, COVER_HEIGHT)
-            # Center-crop to exact cover dimensions (no stretching)
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                tmp.write(recomposed_raw)
-                cropped = Path(tmp.name)
-            try:
-                resize_cover(cropped, cropped)
-                recomposed = cropped.read_bytes()
-            finally:
-                cropped.unlink(missing_ok=True)
+            candidate = _crop_flux_result(recomposed_raw)
 
             debug_path = debug_dir / f"attempt_{attempt}.png"
-            debug_path.write_bytes(recomposed)
+            debug_path.write_bytes(candidate)
             logger.debug("reframe_album_art: attempt %d -> %s", attempt, debug_path)
 
-            if check_recompose_quality(art_bytes, recomposed):
-                _log("Text check passed")
-                break
-            _log("Text check failed")
+            if check_recompose_quality(art_bytes, candidate):
+                _log("Quality check passed")
+                output_path.write_bytes(candidate)
+                return
 
-            if attempt == max_attempts:
-                _log("All attempts had text issues — repairing...")
-                recomposed = repair_text(art_bytes, recomposed, log=log)
-                repaired_path = debug_dir / "repaired.png"
-                repaired_path.write_bytes(recomposed)
-                logger.debug("reframe_album_art: repaired -> %s", repaired_path)
+            _log("Quality check failed")
+            candidates.append(candidate)
+
+        # All FLUX attempts failed — try text repair on last attempt
+        _log("All attempts had issues — repairing text...")
+        repaired = repair_text(art_bytes, candidates[-1], log=log)
+        repaired_path = debug_dir / "repaired.png"
+        repaired_path.write_bytes(repaired)
+        logger.debug("reframe_album_art: repaired -> %s", repaired_path)
+
+        if check_recompose_quality(art_bytes, repaired):
+            _log("Repaired version passed quality check")
+            output_path.write_bytes(repaired)
+            return
+
+        candidates.append(repaired)
+
     except Exception as exc:
         logger.warning("reframe_album_art: recomposition failed: %s", exc)
 
-    if style == "ai":
-        result = recomposed if recomposed is not None else padded
-        _log(f"Using {'recomposed' if recomposed is not None else 'padded (fallback)'} cover")
-    elif recomposed is not None:
-        winner = compare_covers(padded, recomposed)
-        result = padded if winner == "a" else recomposed
-        _log(f"Cover comparison: using {'padded' if winner == 'a' else 'recomposed'} version")
+    # Nothing passed — pick the best of what we have
+    if candidates:
+        _log("No candidate passed quality checks — picking best available...")
+        best = pick_best_candidate(art_bytes, candidates, debug_dir)
+        output_path.write_bytes(best)
+        _log(
+            "WARNING: Could not generate a high-quality cover. "
+            "The result may have text or visual issues. "
+            "Run 'yoto cover --force' to try again."
+        )
     else:
-        result = padded
-        _log("Using padded album art as cover")
-
-    output_path.write_bytes(result)
+        # Total failure (e.g. API down) — use padded as last resort
+        _log("WARNING: AI recomposition failed entirely. Using padded fallback.")
+        output_path.write_bytes(pad_to_cover(art_bytes))
 
 
 def build_cover_prompt(
@@ -213,7 +221,6 @@ def build_cover_prompt(
 def try_shared_album_art(
     playlist: "Playlist",
     log: "Callable[[str], None] | None" = None,
-    style: str = "compare",
 ) -> bool:
     """Check if all tracks share identical album art; if so, save it as the cover.
 
@@ -260,7 +267,7 @@ def try_shared_album_art(
     )
     _log("Reusing shared album art as cover")
 
-    reframe_album_art(first_art_bytes, playlist.cover_path, log=log, style=style)
+    reframe_album_art(first_art_bytes, playlist.cover_path, log=log)
     return True
 
 
@@ -581,38 +588,49 @@ def repair_text(
     return result
 
 
-def compare_covers(padded: bytes, outpainted: bytes) -> str:
-    """Ask Claude to compare two cover candidates and pick the better one.
+def pick_best_candidate(
+    original: bytes, candidates: list[bytes], debug_dir: Path,
+) -> bytes:
+    """Ask Claude to pick the best candidate from a set of imperfect options.
 
-    Returns 'a' (padded) or 'b' (outpainted). Falls back to 'b' on failure.
+    Returns the chosen candidate's bytes. Falls back to the last candidate.
     """
-    with tempfile.TemporaryDirectory(prefix="yoto-cover-compare-") as tmpdir:
+    with tempfile.TemporaryDirectory(prefix="yoto-pick-best-") as tmpdir:
         tmp = Path(tmpdir)
-        a_path = tmp / "option_a_padded.png"
-        b_path = tmp / "option_b_outpainted.png"
-        a_path.write_bytes(padded)
-        b_path.write_bytes(outpainted)
+        orig_path = tmp / "original.png"
+        orig_path.write_bytes(original)
+
+        file_list = [f"Original album art: {orig_path}"]
+        for i, cand in enumerate(candidates, 1):
+            p = tmp / f"candidate_{i}.png"
+            p.write_bytes(cand)
+            file_list.append(f"Candidate {i}: {p}")
 
         prompt = (
-            f"You are comparing two versions of an album cover reformatted for a "
-            f"portrait frame.\n\n"
-            f"Image A (padded): {a_path}\n"
-            f"Image B (outpainted): {b_path}\n\n"
-            f"Which looks better as an album cover? Consider:\n"
-            f"- Does the original artwork look intact and unaltered?\n"
-            f"- Does the background extension look natural?\n"
-            f"- Is the overall result visually appealing?\n\n"
-            f"Reply with ONLY the letter: A or B"
+            f"Compare these album cover candidates.\n\n"
+            + "\n".join(file_list)
+            + f"\n\nWhich candidate looks best as an album cover? Consider:\n"
+            f"- Is the text readable and correctly spelled?\n"
+            f"- Are characters/objects undistorted?\n"
+            f"- Is it visually appealing as a portrait cover?\n\n"
+            f"Reply with ONLY the candidate number (1-{len(candidates)})"
         )
 
         response = _call_claude(prompt, allowed_tools="Read", model="sonnet")
 
         if response:
-            match = re.search(r"\b([AB])\b", response.upper())
+            match = re.search(r"\b(\d+)\b", response)
             if match:
-                choice = match.group(1).lower()
-                logger.info("compare_covers: Claude chose %s version", "padded" if choice == "a" else "outpainted")
-                return choice
+                idx = int(match.group(1)) - 1
+                if 0 <= idx < len(candidates):
+                    logger.info("pick_best_candidate: chose candidate %d", idx + 1)
+                    # Save the chosen one to debug dir
+                    chosen_path = debug_dir / f"chosen_{idx + 1}.png"
+                    chosen_path.write_bytes(candidates[idx])
+                    logger.debug("pick_best_candidate: -> %s", chosen_path)
+                    return candidates[idx]
 
-        logger.info("compare_covers: defaulting to outpainted version (B)")
-        return "b"
+    logger.warning("pick_best_candidate: falling back to last candidate")
+    return candidates[-1]
+
+
