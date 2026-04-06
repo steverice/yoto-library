@@ -9,6 +9,10 @@ class ImageProvider(Protocol):
         """Generate an image from a text prompt. Returns PNG bytes."""
         ...
 
+    def edit(self, image: bytes, prompt: str, width: int, height: int) -> bytes:
+        """Edit/outpaint an image. Returns image bytes."""
+        ...
+
 
 def get_provider() -> ImageProvider:
     """Return the configured ImageProvider based on YOTO_IMAGE_PROVIDER env var."""
