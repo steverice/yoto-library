@@ -220,15 +220,7 @@ def try_shared_album_art(
     )
     _log("Reusing shared album art as cover")
 
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-        tmp.write(first_art_bytes)
-        tmp_path = Path(tmp.name)
-
-    try:
-        resize_cover(tmp_path, playlist.cover_path)
-    finally:
-        tmp_path.unlink(missing_ok=True)
-
+    reframe_album_art(first_art_bytes, playlist.cover_path, log=log)
     return True
 
 

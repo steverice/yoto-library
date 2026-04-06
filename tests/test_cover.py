@@ -236,7 +236,7 @@ class TestTrySharedAlbumArt:
             assert not try_shared_album_art(playlist)
 
     def test_returns_true_and_saves_cover_when_all_match(self, tmp_path):
-        """Saves resized cover when all tracks share the same art."""
+        """Saves reframed cover when all tracks share the same art."""
         cover_path = tmp_path / "cover.png"
         playlist = MagicMock()
         playlist.track_files = ["track01.mka", "track02.mka", "track03.mka"]
@@ -248,13 +248,14 @@ class TestTrySharedAlbumArt:
 
         shared_art = _make_png_bytes(500, 500)
 
-        with patch("yoto_lib.cover.mka.extract_album_art", return_value=shared_art):
+        with (
+            patch("yoto_lib.cover.mka.extract_album_art", return_value=shared_art),
+            patch("yoto_lib.cover.reframe_album_art") as mock_reframe,
+        ):
             result = try_shared_album_art(playlist)
 
         assert result is True
-        assert cover_path.exists()
-        img = Image.open(cover_path)
-        assert img.size == (COVER_WIDTH, COVER_HEIGHT)
+        mock_reframe.assert_called_once_with(shared_art, cover_path, log=None)
 
     def test_generate_cover_tries_shared_art_first(self):
         """generate_cover_if_missing tries shared art before AI generation."""
@@ -415,3 +416,28 @@ class TestReframeAlbumArt:
 
         mock_compare.assert_not_called()
         assert output.exists()
+
+
+class TestTrySharedAlbumArtReframe:
+    def test_calls_reframe_instead_of_resize(self, tmp_path):
+        """try_shared_album_art should call reframe_album_art, not resize_cover."""
+        cover_path = tmp_path / "cover.png"
+        playlist = MagicMock()
+        playlist.track_files = ["track01.mka", "track02.mka"]
+        playlist.path = tmp_path
+        playlist.cover_path = cover_path
+        (tmp_path / "track01.mka").touch()
+        (tmp_path / "track02.mka").touch()
+
+        shared_art = _make_png_bytes(500, 500)
+
+        with (
+            patch("yoto_lib.cover.mka.extract_album_art", return_value=shared_art),
+            patch("yoto_lib.cover.reframe_album_art") as mock_reframe,
+            patch("yoto_lib.cover.resize_cover") as mock_resize,
+        ):
+            result = try_shared_album_art(playlist)
+
+        assert result is True
+        mock_reframe.assert_called_once_with(shared_art, cover_path, log=None)
+        mock_resize.assert_not_called()
