@@ -879,6 +879,8 @@ def reset_icon(tracks):
 @click.option("--backup", is_flag=True, help="Like --force, but rename existing cover.png first")
 def cover(path, force, backup):
     """Generate cover art for a playlist folder."""
+    if force and backup:
+        raise click.UsageError("Cannot use both --force and --backup")
     logger.debug("command: cover path=%s force=%s backup=%s", path, force, backup)
     from yoto_lib.cover import generate_cover_if_missing, build_cover_prompt, resize_cover, try_shared_album_art, COVER_WIDTH, COVER_HEIGHT
     from yoto_lib.image_providers import get_provider
