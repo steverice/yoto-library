@@ -1,4 +1,6 @@
 """Retro Diffusion image provider — purpose-built for pixel art, supports 16x16."""
+from __future__ import annotations
+
 import base64
 import logging
 import os

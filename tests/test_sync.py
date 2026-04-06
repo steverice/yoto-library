@@ -337,7 +337,7 @@ class TestSyncErrorPaths:
         mock_api.get_content.return_value = {}
         # First upload fails, second succeeds
         mock_api.upload_and_transcode.side_effect = [
-            Exception("timeout"),
+            OSError("timeout"),
             {"transcodedSha256": "abc"},
         ]
         mock_api.create_or_update_content.return_value = {"cardId": "NEW-ERR"}
@@ -359,7 +359,7 @@ class TestSyncErrorPaths:
         mock_api = MagicMock()
         mock_api.get_content.return_value = {}
         mock_api.upload_and_transcode.return_value = {"transcodedSha256": "abc"}
-        mock_api.create_or_update_content.side_effect = Exception("API 500")
+        mock_api.create_or_update_content.side_effect = OSError("API 500")
 
         with (
             patch("yoto_lib.sync.YotoAPI", return_value=mock_api),

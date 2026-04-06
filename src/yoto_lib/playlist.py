@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -55,8 +55,8 @@ class Playlist:
     path: Path
     title: str
     track_files: list[str]
-    card_id: Optional[str]
-    description: Optional[str]
+    card_id: str | None
+    description: str | None
     has_cover: bool
     missing_files: list[str]
 
@@ -113,13 +113,13 @@ def load_playlist(folder: Path) -> Playlist:
 
     # .yoto-card-id
     card_id_path = folder / ".yoto-card-id"
-    card_id: Optional[str] = None
+    card_id: str | None = None
     if card_id_path.exists():
         card_id = card_id_path.read_text(encoding="utf-8").strip()
 
     # description.txt
     description_path = folder / "description.txt"
-    description: Optional[str] = None
+    description: str | None = None
     if description_path.exists():
         description = description_path.read_text(encoding="utf-8")
 
@@ -149,9 +149,9 @@ def build_content_schema(
     playlist: Playlist,
     track_hashes: dict[str, str],
     icon_ids: dict[str, str],
-    cover_url: Optional[str],
-    track_info: Optional[dict[str, dict]] = None,
-) -> dict:
+    cover_url: str | None,
+    track_info: dict[str, dict] | None = None,
+) -> dict[str, Any]:
     """
     Build Yoto API content JSON from a Playlist.
 
@@ -233,7 +233,7 @@ class PlaylistDiff:
 # ── diff_playlists ────────────────────────────────────────────────────────────
 
 
-def diff_playlists(playlist: Playlist, remote: Optional[dict]) -> PlaylistDiff:
+def diff_playlists(playlist: Playlist, remote: dict[str, Any] | None) -> PlaylistDiff:
     """
     Compare local playlist against remote state dict.
 

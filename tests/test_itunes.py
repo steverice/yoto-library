@@ -3,6 +3,7 @@ import subprocess
 import struct
 from pathlib import Path
 from unittest.mock import patch, MagicMock
+import httpx
 import pytest
 from click.testing import CliRunner
 
@@ -39,7 +40,7 @@ class TestSearchItunesAlbum:
         assert results[0]["collectionName"] == "Life's Little Lessons"
 
     def test_returns_empty_on_network_error(self):
-        with patch("yoto_lib.itunes.httpx.get", side_effect=Exception("network")):
+        with patch("yoto_lib.itunes.httpx.get", side_effect=httpx.HTTPError("network")):
             results = search_itunes_album("Artist", "Album")
         assert results == []
 

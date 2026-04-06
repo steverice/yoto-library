@@ -1,4 +1,6 @@
 """Gemini image provider implementation."""
+from __future__ import annotations
+
 import io
 import logging
 

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 import plistlib
+import subprocess
 from pathlib import Path
+from typing import Any
 
 from yoto_lib.mka import wrap_in_mka, write_tags
 
@@ -16,11 +18,11 @@ def parse_webloc(path: Path) -> str | None:
     try:
         data = plistlib.loads(path.read_bytes())
         return data.get("URL")
-    except Exception:
+    except (OSError, plistlib.InvalidFileException, ValueError):
         return None
 
 
-def _get_providers() -> list:
+def _get_providers() -> list[Any]:
     """Return all registered source providers."""
     from yoto_lib.sources.youtube import YouTubeProvider
     return [YouTubeProvider()]
@@ -83,7 +85,7 @@ def resolve_weblocs(playlist_dir: Path, trim: bool = True) -> list[Path]:
         try:
             audio_path, metadata = provider.download(url, playlist_dir, trim=trim)
             logger.debug("resolve_weblocs: downloaded %s -> %s", webloc.name, audio_path.name)
-        except Exception as exc:
+        except (RuntimeError, subprocess.CalledProcessError, OSError) as exc:
             logger.warning("Download failed for %s: %s", webloc.name, exc)
             continue
 
@@ -95,7 +97,7 @@ def resolve_weblocs(playlist_dir: Path, trim: bool = True) -> list[Path]:
             metadata["source_format"] = audio_path.suffix.lstrip(".").lower()
             write_tags(mka_path, metadata)
             logger.debug("resolve_weblocs: wrapped %s -> %s", audio_path.name, mka_path.name)
-        except Exception as exc:
+        except (subprocess.CalledProcessError, OSError) as exc:
             logger.warning("MKA wrapping failed for %s: %s", webloc.name, exc)
             mka_path.unlink(missing_ok=True)
             continue

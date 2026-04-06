@@ -85,7 +85,7 @@ def _collect_metadata(playlist: "Playlist") -> dict[str, list[str]]:
         track_path = playlist.path / filename
         try:
             tags = mka.read_tags(track_path)
-        except Exception:
+        except (OSError, subprocess.CalledProcessError):
             tags = {}
 
         title = tags.get("title") or Path(filename).stem

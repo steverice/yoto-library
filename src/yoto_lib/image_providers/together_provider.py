@@ -1,4 +1,6 @@
 """Together AI image provider — supports multiple models with small size output."""
+from __future__ import annotations
+
 import base64
 import logging
 import os

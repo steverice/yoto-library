@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import logging
+import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable
 
 import httpx
 
@@ -68,7 +69,7 @@ def _process_track(job: _TrackJob, folder: Path, cache_dir: Path) -> tuple[bool,
         wrap_in_mka(raw_path, mka_path)
         raw_path.unlink(missing_ok=True)
         track_ok = True
-    except Exception as exc:
+    except (OSError, httpx.HTTPError, subprocess.CalledProcessError) as exc:
         raw_path.unlink(missing_ok=True)
         return False, False, f"Failed to download {job.title}: {exc}"
 
@@ -79,7 +80,7 @@ def _process_track(job: _TrackJob, folder: Path, cache_dir: Path) -> tuple[bool,
             if icon_data:
                 apply_icon_to_mka(mka_path, icon_data)
                 icon_ok = True
-        except Exception as exc:
+        except (OSError, httpx.HTTPError, subprocess.CalledProcessError) as exc:
             error = f"Failed to set icon for {job.title}: {exc}"
 
     return track_ok, icon_ok, error
@@ -89,7 +90,7 @@ def pull_playlist(
     folder: Path,
     card_id: str | None = None,
     dry_run: bool = False,
-    on_track_done: Optional[Callable[[str], None]] = None,
+    on_track_done: Callable[[str], None] | None = None,
 ) -> PullResult:
     """Download a remote Yoto playlist into a local folder."""
     folder = Path(folder)
@@ -130,7 +131,7 @@ def pull_playlist(
             logger.debug("pull: downloading cover")
             (folder / "cover.png").write_bytes(_download_file(cover_url))
             result.cover_downloaded = True
-        except Exception as exc:
+        except (OSError, httpx.HTTPError) as exc:
             result.errors.append(f"Failed to download cover: {exc}")
 
     # Build track jobs (preserving chapter order)

@@ -220,7 +220,7 @@ class TestGenerateTrackIcon:
     def test_returns_none_on_generate_error(self):
         """Returns None if the provider fails to generate."""
         mock_provider = MagicMock()
-        mock_provider.generate.side_effect = RuntimeError("API error")
+        mock_provider.generate.side_effect = OSError("API error")
 
         with (
             patch("yoto_lib.icons.generate_retrodiffusion_icon", return_value=(None, None)),
@@ -257,7 +257,7 @@ class TestGenerateRetrodiffusionIcons:
         """Returns empty list when provider init fails."""
         with patch(
             "yoto_lib.icons.RetroDiffusionProvider",
-            side_effect=RuntimeError("no API key"),
+            side_effect=ValueError("no API key"),
         ):
             results = generate_retrodiffusion_icons(["desc"])
 
@@ -295,7 +295,7 @@ class TestResolveIconsZones:
         catalog = [{"mediaId": "yoto-dino", "title": "Dinosaur"}]
 
         with (
-            patch("yoto_lib.icons.mka.get_attachment", side_effect=Exception),
+            patch("yoto_lib.icons.mka.get_attachment", side_effect=OSError),
             patch("yoto_lib.icons.mka.read_tags", return_value={"title": "Dinosaur Story"}),
             patch("yoto_lib.icons.get_catalog", return_value=catalog),
             patch("yoto_lib.icons.match_icon_llm", return_value=("yoto-dino", 0.92)),
@@ -319,7 +319,7 @@ class TestResolveIconsZones:
         catalog = [{"mediaId": "star-id", "title": "Star"}]
 
         with (
-            patch("yoto_lib.icons.mka.get_attachment", side_effect=Exception),
+            patch("yoto_lib.icons.mka.get_attachment", side_effect=OSError),
             patch("yoto_lib.icons.mka.read_tags", return_value={"title": "Quantum Physics"}),
             patch("yoto_lib.icons.get_catalog", return_value=catalog),
             patch("yoto_lib.icons.match_icon_llm", return_value=(None, 0.1)),
@@ -347,7 +347,7 @@ class TestResolveIconsZones:
         catalog = [{"mediaId": "yoto-dino", "title": "Dinosaur"}]
 
         with (
-            patch("yoto_lib.icons.mka.get_attachment", side_effect=Exception),
+            patch("yoto_lib.icons.mka.get_attachment", side_effect=OSError),
             patch("yoto_lib.icons.mka.read_tags", return_value={"title": "Dino Fun"}),
             patch("yoto_lib.icons.get_catalog", return_value=catalog),
             patch("yoto_lib.icons.match_icon_llm", return_value=("yoto-dino", 0.6)),
@@ -397,7 +397,7 @@ class TestResolveIconsLexicalShortcut:
         catalog = [{"mediaId": "dino-id", "title": "Dinosaur"}]
 
         with (
-            patch("yoto_lib.icons.mka.get_attachment", side_effect=Exception),
+            patch("yoto_lib.icons.mka.get_attachment", side_effect=OSError),
             patch("yoto_lib.icons.mka.read_tags", return_value={"title": "Dinosaur"}),
             patch("yoto_lib.icons.get_catalog", return_value=catalog),
             patch("yoto_lib.icons.match_icon_llm") as mock_llm,
@@ -419,7 +419,7 @@ class TestResolveIconsLexicalShortcut:
         catalog = [{"mediaId": "dino-id", "title": "Dinosaur"}]
 
         with (
-            patch("yoto_lib.icons.mka.get_attachment", side_effect=Exception),
+            patch("yoto_lib.icons.mka.get_attachment", side_effect=OSError),
             patch("yoto_lib.icons.mka.read_tags", return_value={"title": "Dinosaur Stories"}),
             patch("yoto_lib.icons.get_catalog", return_value=catalog),
             patch("yoto_lib.icons.match_icon_llm", return_value=("dino-id", 0.85)) as mock_llm,

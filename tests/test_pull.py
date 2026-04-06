@@ -130,7 +130,7 @@ class TestProcessTrack:
 
     def test_download_failure(self, tmp_path, mocker):
         """Download raises → (False, False, error string)."""
-        mocker.patch("yoto_lib.pull._download_file", side_effect=Exception("connection refused"))
+        mocker.patch("yoto_lib.pull._download_file", side_effect=OSError("connection refused"))
         mocker.patch("yoto_lib.pull.wrap_in_mka")
 
         job = _TrackJob(title="Song", filename="Song.mka", track_url="https://ex.com/song", icon_ref="")
@@ -144,7 +144,7 @@ class TestProcessTrack:
         """Download succeeds but icon fails → (True, False, error string)."""
         mocker.patch("yoto_lib.pull._download_file", return_value=b"\x00" * 100)
         mocker.patch("yoto_lib.pull.wrap_in_mka")
-        mocker.patch("yoto_lib.pull.download_icon", side_effect=Exception("icon 404"))
+        mocker.patch("yoto_lib.pull.download_icon", side_effect=OSError("icon 404"))
         mocker.patch("yoto_lib.pull.apply_icon_to_mka")
 
         job = _TrackJob(title="Song", filename="Song.mka", track_url="https://ex.com/song", icon_ref="icon123")
@@ -225,7 +225,7 @@ class TestPullCover:
         mock_api = MagicMock()
         mock_api.get_content.return_value = remote
         mocker.patch("yoto_lib.pull.YotoAPI", return_value=mock_api)
-        mocker.patch("yoto_lib.pull._download_file", side_effect=Exception("CDN down"))
+        mocker.patch("yoto_lib.pull._download_file", side_effect=OSError("CDN down"))
 
         result = pull_playlist(tmp_path)
 

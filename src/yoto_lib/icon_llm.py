@@ -94,7 +94,7 @@ def describe_icons_llm(
             logger.debug("describe_icons_llm: result=%s", result)
             return result
         return []
-    except Exception:
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
         return []
 
 
@@ -140,7 +140,7 @@ def match_icon_llm(
         if media_id == "none" or not media_id:
             return None, 0.0
         return media_id, confidence
-    except Exception:
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
         return None, 0.0
 
 
@@ -217,7 +217,7 @@ def compare_icons_llm(
             scores = [float(s) for s in data["scores"]]
             logger.debug("compare_icons_llm: winner=%d scores=%s", winner, scores)
             return winner, scores
-        except Exception:
+        except (json.JSONDecodeError, KeyError, ValueError, TypeError):
             return 1, []
 
 
@@ -252,5 +252,5 @@ def log_icon_feedback(
         FEEDBACK_PATH.parent.mkdir(parents=True, exist_ok=True)
         with open(FEEDBACK_PATH, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
-    except Exception:
+    except OSError:
         pass

@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import httpx
+
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -118,7 +120,7 @@ def get_catalog(
     if api is not None:
         try:
             return refresh_catalog(api, cache_dir)
-        except Exception:
+        except (OSError, httpx.HTTPError):
             pass
 
     # Fallback to stale cache
