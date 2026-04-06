@@ -321,10 +321,9 @@ def check_text_quality(original: bytes, recomposed: bytes) -> bool:
             f"Reply with ONLY: YES or NO"
         )
 
-        response = _call_claude(prompt, allowed_tools="Read", model="haiku")
+        response = _call_claude(prompt, allowed_tools="Read", model="sonnet")
 
         if response:
-            import re
             match = re.search(r"\b(YES|NO)\b", response.upper())
             if match:
                 result = match.group(1) == "YES"
