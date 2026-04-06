@@ -876,9 +876,10 @@ def reset_icon(tracks):
 @cli.command()
 @click.argument("path", default=".", type=click.Path(exists=True), shell_complete=_complete_dirs)
 @click.option("--force", is_flag=True, help="Regenerate even if cover.png exists")
-def cover(path, force):
+@click.option("--backup", is_flag=True, help="Like --force, but rename existing cover.png first")
+def cover(path, force, backup):
     """Generate cover art for a playlist folder."""
-    logger.debug("command: cover path=%s force=%s", path, force)
+    logger.debug("command: cover path=%s force=%s backup=%s", path, force, backup)
     from yoto_lib.cover import generate_cover_if_missing, build_cover_prompt, resize_cover, try_shared_album_art, COVER_WIDTH, COVER_HEIGHT
     from yoto_lib.image_providers import get_provider
     from yoto_lib import mka
@@ -888,9 +889,16 @@ def cover(path, force):
     playlist = load_playlist(folder)
     cover_path = playlist.cover_path
 
-    if cover_path.exists() and not force:
+    if cover_path.exists() and backup:
+        # Find next available backup name
+        n = 1
+        while (backup_path := cover_path.with_name(f"cover.{n}.png")).exists():
+            n += 1
+        cover_path.rename(backup_path)
+        click.echo(f"Backed up existing cover to {backup_path.name}")
+    elif cover_path.exists() and not force:
         click.echo(f"Cover already exists: {cover_path}")
-        click.echo("Use --force to regenerate.")
+        click.echo("Use --force to regenerate, or --backup to keep the old one.")
         return
 
     # Generate description if missing (interactive)
