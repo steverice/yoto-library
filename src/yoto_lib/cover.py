@@ -301,10 +301,14 @@ def compare_covers(padded: bytes, outpainted: bytes) -> str:
 
         response = _call_claude(prompt, allowed_tools="Read", model="haiku")
 
-        if response and "A" in response.upper():
-            if "B" not in response.upper():
-                logger.info("compare_covers: Claude chose padded version (A)")
-                return "a"
+        if response:
+            # Look for a standalone A or B (not embedded in words like "BETTER")
+            import re
+            match = re.search(r"\b([AB])\b", response.upper())
+            if match:
+                choice = match.group(1).lower()
+                logger.info("compare_covers: Claude chose %s version", "padded" if choice == "a" else "outpainted")
+                return choice
 
-        logger.info("compare_covers: using outpainted version (B)")
+        logger.info("compare_covers: defaulting to outpainted version (B)")
         return "b"
