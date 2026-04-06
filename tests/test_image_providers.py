@@ -73,21 +73,15 @@ class TestOpenAIProvider:
 
 class TestGeminiProvider:
     def test_generate_returns_bytes(self, monkeypatch):
-        """generate() returns image bytes from inline_data part."""
+        """generate() returns image bytes from generate_images response."""
         fake_image_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
 
-        mock_part = MagicMock()
-        mock_part.inline_data.mime_type = "image/png"
-        mock_part.inline_data.data = fake_image_bytes
-
-        mock_candidate = MagicMock()
-        mock_candidate.content.parts = [mock_part]
-
         mock_response = MagicMock()
-        mock_response.candidates = [mock_candidate]
+        mock_response.generated_images = [MagicMock()]
+        mock_response.generated_images[0].image.image_bytes = fake_image_bytes
 
         mock_client = MagicMock()
-        mock_client.models.generate_content.return_value = mock_response
+        mock_client.models.generate_images.return_value = mock_response
 
         with patch("yoto_lib.image_providers.gemini_provider.genai.Client", return_value=mock_client):
             from yoto_lib.image_providers.gemini_provider import GeminiProvider
