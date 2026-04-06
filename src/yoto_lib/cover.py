@@ -87,8 +87,9 @@ def pad_to_cover(art_bytes: bytes) -> bytes:
 
 
 _RECOMPOSE_PROMPT = (
-    "A tall portrait version of this scene with no text or logos. "
-    "Same characters, same art style, same colors, same mood."
+    "A tall portrait version of this scene. Same characters, same art style, "
+    "same colors, same mood. Replace any text with plain background color, "
+    "leaving empty space where the text was."
 )
 
 
