@@ -63,7 +63,7 @@ class GeminiProvider:
         logger.debug("gemini: recomposing to %s, prompt=%.80s...", aspect_ratio, prompt)
 
         response = self._get_client().models.generate_content(
-            model="gemini-2.0-flash-exp",
+            model="gemini-2.0-flash",
             contents=[prompt, types.Part.from_bytes(data=image, mime_type="image/png")],
             config=types.GenerateContentConfig(
                 response_modalities=["IMAGE"],
