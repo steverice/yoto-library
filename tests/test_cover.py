@@ -394,7 +394,7 @@ class TestReframeAlbumArt:
             patch("yoto_lib.cover.compare_covers") as mock_compare,
         ):
             mock_provider = MagicMock()
-            mock_provider.edit.side_effect = Exception("API error")
+            mock_provider.edit.side_effect = OSError("API error")
             mock_get_provider.return_value = mock_provider
             reframe_album_art(art_bytes, output)
 

@@ -63,7 +63,7 @@ class TestCollectMetadata:
         playlist.track_files = ["broken.mka"]
 
         with patch("yoto_lib.description.mka.read_tags") as mock_read:
-            mock_read.side_effect = Exception("ffprobe failed")
+            mock_read.side_effect = OSError("ffprobe failed")
             result = _collect_metadata(playlist)
 
         assert result["track_titles"] == ["broken"]

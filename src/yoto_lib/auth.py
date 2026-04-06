@@ -7,6 +7,8 @@ import logging
 import time
 from dataclasses import dataclass
 
+from typing import Any
+
 import httpx
 import keyring
 
@@ -76,7 +78,7 @@ class AuthError(Exception):
     pass
 
 
-def request_device_code() -> dict:
+def request_device_code() -> dict[str, Any]:
     logger.debug("requesting device code")
     response = httpx.post(
         f"{AUTH_BASE}/oauth/device/code",

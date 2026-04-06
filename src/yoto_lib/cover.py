@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import io
 import logging
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -98,7 +99,7 @@ _OUTPAINT_PROMPT = (
 def reframe_album_art(
     art_bytes: bytes,
     output_path: Path,
-    log: "Callable[[str], None] | None" = None,
+    log: Callable[[str], None] | None = None,
 ) -> None:
     """Reframe square album art into a portrait cover.
 
@@ -124,7 +125,7 @@ def reframe_album_art(
             img.save(buf, format="PNG")
             outpainted = buf.getvalue()
             logger.debug("reframe_album_art: outpainting produced %d bytes", len(outpainted))
-    except Exception as exc:
+    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
         logger.warning("reframe_album_art: outpainting failed: %s", exc)
 
     # Pick the winner
@@ -173,8 +174,8 @@ def build_cover_prompt(
 
 
 def try_shared_album_art(
-    playlist: "Playlist",
-    log: "Callable[[str], None] | None" = None,
+    playlist: Playlist,
+    log: Callable[[str], None] | None = None,
 ) -> bool:
     """Check if all tracks share identical album art; if so, save it as the cover.
 
@@ -226,8 +227,8 @@ def try_shared_album_art(
 
 
 def generate_cover_if_missing(
-    playlist: "Playlist",
-    log: "Callable[[str], None] | None" = None,
+    playlist: Playlist,
+    log: Callable[[str], None] | None = None,
 ) -> None:
     """Generate a cover image for the playlist if one doesn't already exist."""
     if playlist.has_cover:
@@ -247,7 +248,7 @@ def generate_cover_if_missing(
             tags = mka.read_tags(track_path)
             title = tags.get("title") or Path(filename).stem
             artist = tags.get("artist", "")
-        except Exception:
+        except (subprocess.CalledProcessError, OSError, KeyError, ValueError):
             title = Path(filename).stem
             artist = ""
 

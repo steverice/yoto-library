@@ -578,7 +578,7 @@ class TestResetIconCommand:
         mka = tmp_path / "track.mka"
         mka.write_bytes(b"fake")
 
-        with patch("yoto_cli.main.remove_attachment", side_effect=Exception("mkvpropedit failed")):
+        with patch("yoto_cli.main.remove_attachment", side_effect=OSError("mkvpropedit failed")):
             result = runner.invoke(cli, ["reset-icon", str(mka)])
 
         assert result.exit_code == 0

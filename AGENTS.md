@@ -43,6 +43,27 @@ data/                  # sample playlists (gitignored)
 - **Cover art dimensions** — 638x1011 pixels (portrait). Print-ready at 300dpi for 54x86mm physical cards.
 - **Icons** — 16x16 PNG or animated GIF, stored as Matroska attachments in MKA files. macOS file icons are set via nearest-neighbor upscaled ICNS.
 
+## Code quality standards
+
+**Type annotations** — every function and method must have full type annotations: all parameters and return type. Use specific types (`list[str]`, `dict[str, Any]`, `tuple[bytes | None, str]`) rather than bare `list`, `dict`, `tuple`. Annotate `self` and `cls` only when the return type needs it (e.g., classmethod returning `Self`).
+
+**Union syntax** — use `X | None`, never `Optional[X]`. All source files have `from __future__ import annotations` so the `|` syntax works at any Python version. Do not import `Optional` from typing.
+
+**Exception handling** — never write bare `except:` or `except Exception:`. Catch the narrowest applicable type:
+- `except ImportError:` for optional-dependency imports
+- `except subprocess.CalledProcessError:` for subprocess calls
+- `except (OSError, httpx.HTTPError):` for file I/O and network operations
+- `except (KeyError, ValueError, TypeError):` for data parsing/validation
+- `except json.JSONDecodeError:` for JSON parsing
+
+If a block genuinely needs to catch everything (e.g., a top-level CLI error boundary), add a comment explaining why.
+
+**Idioms** — prefer generator expressions over materialised lists when the result is consumed once: `any(x for x in items)` not `any([x for x in items])`. Use `Path` objects throughout; never convert to `str` for path operations. Use f-strings, not `%` formatting or `.format()`.
+
+**Imports** — use `TYPE_CHECKING` guards for imports needed only by annotations. Keep runtime imports minimal. Group: stdlib, third-party, local — separated by blank lines.
+
+**No dead code** — do not leave commented-out code, unused imports, or placeholder `pass` statements in non-empty blocks. Delete rather than comment out.
+
 ## Testing
 
 ```

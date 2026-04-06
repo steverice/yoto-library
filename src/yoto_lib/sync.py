@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import logging
 import re
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable
+
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +33,7 @@ from yoto_lib.playlist import (
 
 @dataclass
 class SyncResult:
-    card_id: Optional[str] = None
+    card_id: str | None = None
     tracks_uploaded: int = 0
     cover_uploaded: bool = False
     icons_uploaded: int = 0
@@ -41,7 +44,7 @@ class SyncResult:
 # ── _parse_remote_state ───────────────────────────────────────────────────────
 
 
-def _parse_remote_state(remote_content: dict) -> dict:
+def _parse_remote_state(remote_content: dict[str, Any]) -> dict[str, Any]:
     """
     Extract a normalised remote-state dict from a GET /content/<id> response.
 
@@ -92,7 +95,7 @@ def _parse_remote_state(remote_content: dict) -> dict:
     }
 
 
-def _infer_track_info(file_path: Path) -> dict:
+def _infer_track_info(file_path: Path) -> dict[str, str]:
     """Infer format and channels from a local audio file via ffprobe.
 
     Fallback for reused tracks missing remote format info (legacy cards).
@@ -110,7 +113,7 @@ def _infer_track_info(file_path: Path) -> dict:
                 "format": codec,
                 "channels": "stereo" if channels >= 2 else "mono",
             }
-    except Exception:
+    except (ImportError, OSError, subprocess.CalledProcessError, KeyError, ValueError):
         pass
     return {}
 
@@ -122,8 +125,8 @@ def sync_playlist(
     folder: Path,
     dry_run: bool = False,
     trim: bool = True,
-    on_track_done: Optional[Callable[[str], None]] = None,
-    log: Optional[Callable[[str], None]] = None,
+    on_track_done: Callable[[str], None] | None = None,
+    log: Callable[[str], None] | None = None,
 ) -> SyncResult:
     """
     Sync a single playlist folder to the Yoto API.
@@ -159,7 +162,7 @@ def sync_playlist(
     api = YotoAPI()
 
     # 3. Fetch remote state
-    remote_state: Optional[dict] = None
+    remote_state: dict[str, Any] | None = None
     remote_track_hashes: dict[str, str] = {}
     remote_track_info: dict[str, dict] = {}  # title -> {format, channels}
 
@@ -170,7 +173,7 @@ def sync_playlist(
             remote_track_hashes = remote_state.get("track_hashes", {})
             remote_track_info = remote_state.get("track_info", {})
             logger.debug("sync: fetched remote state for %s (%d tracks)", playlist.card_id, len(remote_state.get("tracks", [])))
-        except Exception as exc:
+        except (OSError, httpx.HTTPError) as exc:
             logger.error("sync: failed to fetch remote state: %s", exc)
             result.errors.append(f"Failed to fetch remote state: {exc}")
     else:
@@ -256,14 +259,14 @@ def sync_playlist(
             }
             if on_track_done:
                 on_track_done(filename)
-        except Exception as exc:
+        except (OSError, httpx.HTTPError) as exc:
             logger.error("sync: upload failed for %s: %s", filename, exc)
             result.errors.append(f"Upload failed for {filename}: {exc}")
             if on_track_done:
                 on_track_done(filename)
 
     # 10. Upload cover if changed, or preserve existing remote cover URL
-    cover_url: Optional[str] = None
+    cover_url: str | None = None
     if diff.cover_changed and playlist.has_cover:
         logger.debug("sync: uploading cover")
         _log("Uploading cover...")
@@ -272,7 +275,7 @@ def sync_playlist(
             ci = cover_result.get("coverImage", cover_result)
             cover_url = ci.get("mediaUrl") or ci.get("url") or cover_result.get("coverUrl")
             result.cover_uploaded = True
-        except Exception as exc:
+        except (OSError, httpx.HTTPError) as exc:
             result.errors.append(f"Cover upload failed: {exc}")
             result.cover_uploaded = False
     elif remote_state and remote_state.get("cover_url"):
@@ -286,7 +289,7 @@ def sync_playlist(
     schema = build_content_schema(playlist, track_hashes, icon_ids, cover_url, track_info)
     try:
         response = api.create_or_update_content(schema)
-        new_card_id: Optional[str] = response.get("cardId") or response.get(
+        new_card_id: str | None = response.get("cardId") or response.get(
             "content", {}
         ).get("cardId")
         if new_card_id:
@@ -295,7 +298,7 @@ def sync_playlist(
             # 12. Write cardId to .yoto-card-id if new
             if not playlist.card_id:
                 playlist.card_id_path.write_text(new_card_id, encoding="utf-8")
-    except Exception as exc:
+    except (OSError, httpx.HTTPError) as exc:
         logger.error("sync: content POST failed: %s", exc)
         result.errors.append(f"Content POST failed: {exc}")
 
@@ -317,8 +320,8 @@ def sync_path(
     path: Path,
     dry_run: bool = False,
     trim: bool = True,
-    on_track_done: Optional[Callable[[str], None]] = None,
-    log: Optional[Callable[[str], None]] = None,
+    on_track_done: Callable[[str], None] | None = None,
+    log: Callable[[str], None] | None = None,
 ) -> list[SyncResult]:
     """
     Sync one or more playlists rooted at path.

@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import sys
+from collections.abc import Callable
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -18,7 +19,7 @@ load_dotenv(find_dotenv(usecwd=True))
 logger = logging.getLogger(__name__)
 
 from yoto_lib.auth import AuthError, run_device_code_flow
-from yoto_lib.api import YotoAPI
+from yoto_lib.api import YotoAPI, YotoAPIError
 from yoto_lib.description import generate_description
 from yoto_lib.sync import sync_path
 from yoto_lib.pull import pull_playlist
@@ -96,11 +97,11 @@ def _has_custom_icon(path: Path) -> bool:
         )
         data = json.loads(result.stdout)
         return any(a.get("file_name") == "icon" for a in data.get("attachments", []))
-    except Exception:
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError, KeyError):
         return False
 
 
-def _complete_path(incomplete: str, filter_fn):
+def _complete_path(incomplete: str, filter_fn: Callable[[Path], bool]) -> list[CompletionItem]:
     """Complete filesystem paths, yielding dirs (for navigation) and filtered files."""
     inc_path = Path(incomplete) if incomplete else Path(".")
 
@@ -130,17 +131,17 @@ def _complete_path(incomplete: str, filter_fn):
     return items
 
 
-def _complete_weblocs(ctx, param, incomplete):
+def _complete_weblocs(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
     """Complete .webloc file paths."""
     return _complete_path(incomplete, lambda p: p.suffix.lower() == ".webloc")
 
 
-def _complete_dirs(ctx, param, incomplete):
+def _complete_dirs(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
     """Complete directory paths only."""
     return _complete_path(incomplete, lambda _: False)
 
 
-def _complete_unimported_dirs(ctx, param, incomplete):
+def _complete_unimported_dirs(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
     """Complete directories that lack a playlist.jsonl, falling back to all dirs."""
     results = _complete_path(
         incomplete,
@@ -154,11 +155,11 @@ def _complete_unimported_dirs(ctx, param, incomplete):
     return filtered if any(item.value.endswith("/") for item in filtered) else results
 
 
-def _is_mka(p):
+def _is_mka(p: Path) -> bool:
     return p.suffix.lower() == ".mka"
 
 
-def _complete_mka_with_icon(ctx, param, incomplete):
+def _complete_mka_with_icon(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
     """Complete .mka files that have a custom icon, falling back to all .mka."""
     results = _complete_path(incomplete, lambda p: _is_mka(p) and _has_custom_icon(p))
     if not any(item.type == "plain" and not item.value.endswith("/") for item in results):
@@ -166,7 +167,7 @@ def _complete_mka_with_icon(ctx, param, incomplete):
     return results
 
 
-def _complete_mka_without_icon(ctx, param, incomplete):
+def _complete_mka_without_icon(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
     """Complete .mka files that lack a custom icon, falling back to all .mka."""
     results = _complete_path(incomplete, lambda p: _is_mka(p) and not _has_custom_icon(p))
     if not any(item.type == "plain" and not item.value.endswith("/") for item in results):
@@ -179,7 +180,7 @@ def _complete_mka_without_icon(ctx, param, incomplete):
 
 @click.group()
 @click.option("-v", "--verbose", is_flag=True, help="Enable verbose (DEBUG) console output")
-def cli(verbose):
+def cli(verbose: bool) -> None:
     """Manage Yoto CYO playlists as folders on disk."""
     _setup_logging(verbose)
 
@@ -188,7 +189,7 @@ def cli(verbose):
 
 
 @cli.command()
-def auth():
+def auth() -> None:
     """Authenticate with Yoto (OAuth device code flow)."""
     logger.debug("command: auth")
     try:
@@ -204,7 +205,7 @@ def auth():
 @click.argument("path", default=".", type=click.Path(exists=True))
 @click.option("--dry-run", is_flag=True, help="Preview changes without executing")
 @click.option("--no-trim", is_flag=True, help="Skip silence trimming on YouTube downloads")
-def sync(path, dry_run, no_trim):
+def sync(path: str, dry_run: bool, no_trim: bool) -> None:
     """Push local playlist state to Yoto."""
     logger.debug("command: sync path=%s dry_run=%s no_trim=%s", path, dry_run, no_trim)
     trim = not no_trim
@@ -228,7 +229,7 @@ def sync(path, dry_run, no_trim):
         pbar = tqdm(total=total * 2 + 2, desc=playlist.title, bar_format="{desc}: \033[48;5;236m{bar}\033[0m {n_fmt}/{total_fmt}")
         step = [0]
 
-        def log(msg: str):
+        def log(msg: str) -> None:
             pbar.set_postfix_str(msg, refresh=True)
             tqdm.write(msg)
             step[0] += 1
@@ -257,7 +258,7 @@ def sync(path, dry_run, no_trim):
 @cli.command()
 @click.argument("path", default=".", type=click.Path(exists=True), shell_complete=_complete_weblocs)
 @click.option("--no-trim", is_flag=True, help="Skip silence trimming on YouTube downloads")
-def download(path, no_trim):
+def download(path: str, no_trim: bool) -> None:
     """Download audio from .webloc URLs in a playlist folder."""
     logger.debug("command: download path=%s no_trim=%s", path, no_trim)
     trim = not no_trim
@@ -280,7 +281,7 @@ def download(path, no_trim):
 @click.argument("path_or_card_id", default=".")
 @click.option("--dry-run", is_flag=True, help="Preview changes without executing")
 @click.option("--all", "pull_all", is_flag=True, help="Pull all playlists into subdirectories of cwd")
-def pull(path_or_card_id, dry_run, pull_all):
+def pull(path_or_card_id: str, dry_run: bool, pull_all: bool) -> None:
     """Pull remote playlist state to local."""
     logger.debug("command: pull path_or_card_id=%s dry_run=%s all=%s", path_or_card_id, dry_run, pull_all)
     if pull_all:
@@ -299,7 +300,7 @@ def pull(path_or_card_id, dry_run, pull_all):
 
 def _pull_one(folder: Path, card_id: str | None = None, dry_run: bool = False) -> None:
     """Pull a single playlist."""
-    def on_track(title: str):
+    def on_track(title: str) -> None:
         click.echo(f"  Downloaded: {title}")
 
     result = pull_playlist(folder, card_id=card_id, dry_run=dry_run, on_track_done=on_track)
@@ -345,7 +346,7 @@ def _pull_all(dry_run: bool = False) -> None:
 
 @cli.command()
 @click.argument("path", default=".", type=click.Path(exists=True))
-def status(path):
+def status(path: str) -> None:
     """Show diff between local and remote state."""
     logger.debug("command: status path=%s", path)
     folder = Path(path)
@@ -360,13 +361,13 @@ def status(path):
             remote_content = api.get_content(playlist.card_id)
             from yoto_lib.sync import _parse_remote_state
             remote_state = _parse_remote_state(remote_content)
-        except Exception as exc:
+        except (YotoAPIError, OSError, KeyError, ValueError) as exc:
             click.echo(f"Warning: could not fetch remote state: {exc}", err=True)
 
     diff = diff_playlists(playlist, remote_state)
 
-    if not any([diff.new_tracks, diff.removed_tracks, diff.order_changed,
-                diff.cover_changed, diff.metadata_changed]):
+    if not any((diff.new_tracks, diff.removed_tracks, diff.order_changed,
+                diff.cover_changed, diff.metadata_changed)):
         click.echo("No changes.")
         return
 
@@ -389,7 +390,7 @@ def status(path):
 
 @cli.command()
 @click.argument("playlist", default="playlist.jsonl", type=click.Path(exists=True))
-def reorder(playlist):
+def reorder(playlist: str) -> None:
     """Open playlist.jsonl in $EDITOR to reorder tracks."""
     logger.debug("command: reorder playlist=%s", playlist)
     playlist_path = Path(playlist)
@@ -427,7 +428,7 @@ def reorder(playlist):
 
 @cli.command()
 @click.argument("path", default=".", type=click.Path())
-def init(path):
+def init(path: str) -> None:
     """Scaffold a new playlist folder."""
     logger.debug("command: init path=%s", path)
     folder = Path(path)
@@ -461,7 +462,7 @@ def _strip_track_number(stem: str) -> str:
     type=click.Path(),
     help="Output folder (defaults to source folder)",
 )
-def import_cmd(source, output):
+def import_cmd(source: str, output: str | None) -> None:
     """Bulk import: convert a folder of audio files into a playlist."""
     logger.debug("command: import source=%s output=%s", source, output)
     source_path = Path(source)
@@ -498,7 +499,7 @@ def import_cmd(source, output):
                 click.echo(f"  Wrapped {audio.name} -> {mka_name}")
                 if source_path == output_path:
                     audio.unlink()
-            except Exception as exc:
+            except (OSError, ValueError, RuntimeError) as exc:
                 click.echo(f"  Error wrapping {audio.name}: {exc}", err=True)
 
     write_jsonl(output_path / "playlist.jsonl", filenames)
@@ -524,7 +525,7 @@ def import_cmd(source, output):
     type=click.Path(),
     help="Output folder (defaults to <playlist>-exported/)",
 )
-def export(playlist, output):
+def export(playlist: str, output: str | None) -> None:
     """Export MKA tracks back to their original audio format."""
     from yoto_lib.mka import extract_audio, apply_source_patch
 
@@ -561,7 +562,7 @@ def export(playlist, output):
                 # No patch — extract directly to output
                 extracted = extract_audio(mka, output_path)
                 click.echo(f"  {mka.name} -> {extracted.name}")
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError) as exc:
             click.echo(f"  Error exporting {mka.name}: {exc}", err=True)
 
     click.echo(f"Exported {len(mka_files)} tracks to {output_path}")
@@ -644,7 +645,7 @@ def _render_icons_side_by_side(
 
 @cli.command(name="select-icon")
 @click.argument("tracks", nargs=-1, required=True, type=click.Path(exists=True), shell_complete=_complete_mka_without_icon)
-def select_icon(tracks):
+def select_icon(tracks: tuple[str, ...]) -> None:
     """Generate 3 icon options per track, show best Yoto match, and attach the chosen one."""
     logger.debug("command: select-icon tracks=%s", tracks)
     import io
@@ -679,7 +680,7 @@ def select_icon(tracks):
             existing_bytes = get_attachment(track_path, "icon")
             if existing_bytes:
                 existing_img = Image.open(io.BytesIO(existing_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)
-        except Exception:
+        except (OSError, ValueError):
             pass
 
         if use_tqdm:
@@ -719,7 +720,7 @@ def select_icon(tracks):
                 pbar.update(1)
                 pbar.set_postfix_str("generating icon 1/3")
 
-            def on_gen_progress(i):
+            def on_gen_progress(i: int) -> None:
                 if pbar:
                     pbar.update(1)
                     if i < 3:
@@ -855,7 +856,7 @@ def select_icon(tracks):
 
 @cli.command(name="reset-icon")
 @click.argument("tracks", nargs=-1, required=True, type=click.Path(exists=True), shell_complete=_complete_mka_with_icon)
-def reset_icon(tracks):
+def reset_icon(tracks: tuple[str, ...]) -> None:
     """Remove the icon from one or more MKA tracks so sync regenerates them."""
     logger.debug("command: reset-icon tracks=%s", tracks)
     from yoto_lib.icons import clear_macos_file_icon
@@ -866,7 +867,7 @@ def reset_icon(tracks):
             remove_attachment(path, "icon")
             clear_macos_file_icon(path)
             click.echo(f"  Cleared icon: {path.name}")
-        except Exception as exc:
+        except (OSError, RuntimeError) as exc:
             click.echo(f"  Error ({path.name}): {exc}", err=True)
 
 
@@ -876,7 +877,7 @@ def reset_icon(tracks):
 @cli.command()
 @click.argument("path", default=".", type=click.Path(exists=True), shell_complete=_complete_dirs)
 @click.option("--force", is_flag=True, help="Regenerate even if cover.png exists")
-def cover(path, force):
+def cover(path: str, force: bool) -> None:
     """Generate cover art for a playlist folder."""
     logger.debug("command: cover path=%s force=%s", path, force)
     from yoto_lib.cover import generate_cover_if_missing, build_cover_prompt, resize_cover, try_shared_album_art, COVER_WIDTH, COVER_HEIGHT
@@ -915,7 +916,7 @@ def cover(path, force):
             tags = mka.read_tags(track_path)
             title = tags.get("title") or Path(filename).stem
             artist = tags.get("artist", "")
-        except Exception:
+        except (OSError, KeyError, ValueError):
             title = Path(filename).stem
             artist = ""
         track_titles.append(title)
@@ -947,7 +948,7 @@ def cover(path, force):
 
 @cli.command()
 @click.argument("shell", required=False, default=None, type=click.Choice(["zsh", "bash", "fish"]))
-def completions(shell):
+def completions(shell: str | None) -> None:
     """Install context-aware shell completions."""
     logger.debug("command: completions shell=%s", shell)
     if shell is None:
@@ -987,7 +988,7 @@ def completions(shell):
 
 
 @cli.command(name="list")
-def list_cmd():
+def list_cmd() -> None:
     """Show all MYO cards on your Yoto account."""
     logger.debug("command: list")
     api = YotoAPI()
@@ -1014,6 +1015,6 @@ def list_cmd():
             detail = api.get_content(card_id)
             chapters = detail.get("content", {}).get("chapters", [])
             num_tracks = len(chapters)
-        except Exception:
+        except (YotoAPIError, OSError, KeyError, ValueError):
             num_tracks = "?"
         click.echo(f"{card_id:<{col_id}}  {title:<{col_title}}  {num_tracks}")

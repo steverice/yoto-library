@@ -6,7 +6,9 @@ import logging
 from difflib import SequenceMatcher
 from pathlib import Path
 import re
+import subprocess
 import tempfile
+from typing import Any
 
 import httpx
 
@@ -17,7 +19,7 @@ logger = logging.getLogger(__name__)
 _ITUNES_SEARCH_URL = "https://itunes.apple.com/search"
 
 
-def search_itunes_album(artist: str, album: str) -> list[dict]:
+def search_itunes_album(artist: str, album: str) -> list[dict[str, Any]]:
     """Query iTunes Search API for albums matching artist and album name.
 
     Returns list of album result dicts, or empty list on failure.
@@ -30,7 +32,7 @@ def search_itunes_album(artist: str, album: str) -> list[dict]:
         )
         response.raise_for_status()
         return response.json().get("results", [])
-    except Exception as exc:
+    except (httpx.HTTPError, OSError, ValueError) as exc:
         logger.warning("iTunes Search API request failed for '%s - %s': %s", artist, album, exc)
         return []
 
@@ -43,7 +45,7 @@ def _normalize(s: str) -> str:
     return re.sub(r"[^\w\s]", "", s.lower()).strip()
 
 
-def match_album(results: list[dict], artist: str, album: str) -> dict | None:
+def match_album(results: list[dict[str, Any]], artist: str, album: str) -> dict[str, Any] | None:
     """Pick the best matching album from iTunes Search results.
 
     Returns the best result dict, or None if no result meets the similarity threshold.
@@ -121,7 +123,7 @@ def embed_album_art(mka_path: Path, image_bytes: bytes) -> bool:
 
         out_path.replace(mka_path)
         return True
-    except Exception as exc:
+    except (subprocess.CalledProcessError, OSError) as exc:
         logger.warning("embed_album_art: failed for %s: %s", mka_path.name, exc)
         return False
     finally:
@@ -142,7 +144,7 @@ _BACKFILL_FIELDS = {
 _NO_MATCH = object()
 
 
-def _download_artwork(result: dict) -> bytes | None:
+def _download_artwork(result: dict[str, Any]) -> bytes | None:
     """Download high-res artwork for an iTunes album result.
 
     Returns JPEG bytes, or None on failure.
@@ -155,7 +157,7 @@ def _download_artwork(result: dict) -> bytes | None:
         response = httpx.get(art_url, follow_redirects=True, timeout=30.0)
         response.raise_for_status()
         return response.content
-    except Exception as exc:
+    except (httpx.HTTPError, OSError) as exc:
         logger.warning("Failed to download iTunes artwork: %s", exc)
         return None
 

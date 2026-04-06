@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import time
 from pathlib import Path
@@ -73,7 +74,7 @@ class YotoAPI:
         if response.status_code >= 400:
             try:
                 body = response.json()
-            except Exception:
+            except (ValueError, json.JSONDecodeError):
                 body = response.text
             logger.error("POST /content failed: %s %s", response.status_code, body)
             raise YotoAPIError(

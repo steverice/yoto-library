@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ for _k, _v in TAG_MAP.items():
 _REVERSE_TAG_MAP["TRACK"] = "track"
 
 
-def _run(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
+def _run(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(cmd, capture_output=True, text=True)
     if check and result.returncode != 0:
         raise subprocess.CalledProcessError(
@@ -120,7 +121,7 @@ def extract_audio(mka_path: Path, output_dir: Path) -> Path:
     return output
 
 
-def probe_audio(path: Path) -> dict:
+def probe_audio(path: Path) -> dict[str, Any]:
     """Get audio file info via ffprobe."""
     result = _run([
         "ffprobe", "-v", "quiet",
@@ -388,7 +389,7 @@ def generate_source_patch(original_path: Path, mka_path: Path) -> bool:
             # Store as attachment
             set_attachment(mka_path, patch_path, name=PATCH_ATTACHMENT_NAME, mime_type="application/octet-stream")
             return True
-        except Exception as exc:
+        except (subprocess.CalledProcessError, OSError) as exc:
             logger.warning("generate_source_patch failed for %s: %s", mka_path.name, exc)
             return False
 
@@ -410,6 +411,6 @@ def apply_source_patch(extracted_path: Path, mka_path: Path, output_path: Path) 
             _run(["bspatch", str(extracted_path), str(output_path), str(patch_file)])
             logger.debug("apply_source_patch: %s -> %s", mka_path.name, output_path.name)
             return True
-        except Exception as exc:
+        except (subprocess.CalledProcessError, OSError) as exc:
             logger.warning("apply_source_patch failed for %s: %s", mka_path.name, exc)
             return False

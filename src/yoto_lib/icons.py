@@ -18,12 +18,15 @@ from yoto_lib import mka
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from yoto_lib.api import YotoAPI
+    from yoto_lib.image_providers import ImageProvider
     from yoto_lib.playlist import Playlist
 
 try:
     from yoto_lib.image_providers.retrodiffusion_provider import RetroDiffusionProvider
-except Exception:
+except ImportError:
     RetroDiffusionProvider = None  # type: ignore[assignment,misc]
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -221,7 +224,7 @@ def download_icon(icon_ref: str, cache_dir: Path = ICON_CACHE_DIR) -> bytes | No
         cache_dir.mkdir(parents=True, exist_ok=True)
         cached.write_bytes(data)
         return data
-    except Exception:
+    except (OSError, httpx.HTTPError):
         return None
 
 
@@ -238,7 +241,7 @@ def apply_icon_to_mka(mka_path: Path, icon_data: bytes) -> None:
     try:
         img = Image.open(io.BytesIO(icon_data))
         set_macos_file_icon(mka_path, img)
-    except Exception:
+    except OSError:
         pass
 
 
@@ -400,21 +403,21 @@ def generate_raw_grid(track_title: str) -> bytes | None:
     try:
         from yoto_lib.image_providers import get_provider
         provider = get_provider()
-    except Exception:
+    except (ImportError, ValueError):
         return None
 
     prompt = build_icon_prompt(track_title)
 
     try:
         image_bytes = provider.generate(prompt, CANVAS_SIZE, CANVAS_SIZE)
-    except Exception:
+    except (OSError, httpx.HTTPError):
         return None
 
     try:
         raw_dir = ICON_CACHE_DIR / "raw"
         raw_dir.mkdir(parents=True, exist_ok=True)
         (raw_dir / f"{_sanitize_title(track_title)}.png").write_bytes(image_bytes)
-    except Exception:
+    except OSError:
         pass
 
     return image_bytes
@@ -431,7 +434,7 @@ def generate_track_icon(track_title: str) -> bytes | None:
         _, icon_bytes = generate_retrodiffusion_icon(track_title)
         if icon_bytes:
             return icon_bytes
-    except Exception:
+    except (OSError, httpx.HTTPError, ValueError):
         pass
 
     # Fallback: old grid technique (1024x1024 → crop → downscale)
@@ -446,7 +449,7 @@ def generate_track_icon(track_title: str) -> bytes | None:
         buf = io.BytesIO()
         icon_16.save(buf, format="PNG")
         return buf.getvalue()
-    except Exception:
+    except (OSError, ValueError):
         return None
 
 
@@ -474,21 +477,21 @@ def generate_pixelart_icon(track_title: str) -> tuple[bytes | None, bytes | None
     try:
         from yoto_lib.image_providers import get_provider
         provider = get_provider()
-    except Exception:
+    except (ImportError, ValueError):
         return None, None
 
     prompt = _build_pixelart_prompt(track_title)
 
     try:
         image_bytes = provider.generate(prompt, CANVAS_SIZE, CANVAS_SIZE)
-    except Exception:
+    except (OSError, httpx.HTTPError):
         return None, None
 
     try:
         raw_dir = ICON_CACHE_DIR / "raw"
         raw_dir.mkdir(parents=True, exist_ok=True)
         (raw_dir / f"{_sanitize_title(track_title)}_pixelart.png").write_bytes(image_bytes)
-    except Exception:
+    except OSError:
         pass
 
     try:
@@ -497,7 +500,7 @@ def generate_pixelart_icon(track_title: str) -> tuple[bytes | None, bytes | None
         buf = io.BytesIO()
         icon_16.save(buf, format="PNG")
         return image_bytes, buf.getvalue()
-    except Exception:
+    except (OSError, ValueError):
         return image_bytes, None
 
 
@@ -505,7 +508,7 @@ def generate_pixelart_icon(track_title: str) -> tuple[bytes | None, bytes | None
 
 
 def _generate_small_icon(
-    provider,
+    provider: "ImageProvider",
     track_title: str,
     width: int,
     height: int,
@@ -519,14 +522,14 @@ def _generate_small_icon(
 
     try:
         image_bytes = provider.generate(prompt, width, height)
-    except Exception:
+    except (OSError, httpx.HTTPError):
         return None, None
 
     try:
         raw_dir = ICON_CACHE_DIR / "raw"
         raw_dir.mkdir(parents=True, exist_ok=True)
         (raw_dir / f"{_sanitize_title(track_title)}_{label}.png").write_bytes(image_bytes)
-    except Exception:
+    except OSError:
         pass
 
     try:
@@ -535,7 +538,7 @@ def _generate_small_icon(
         buf = io.BytesIO()
         icon_16.save(buf, format="PNG")
         return image_bytes, buf.getvalue()
-    except Exception:
+    except (OSError, ValueError):
         return image_bytes, None
 
 
@@ -591,12 +594,12 @@ def generate_retrodiffusion_icon(track_title: str) -> tuple[bytes | None, bytes 
 
         try:
             image_bytes = provider.generate(prompt, ICON_SIZE, ICON_SIZE)
-        except Exception:
+        except (OSError, httpx.HTTPError):
             return None, None
 
         try:
             cache_path.write_bytes(image_bytes)
-        except Exception:
+        except OSError:
             pass
 
     # The output IS 16x16 already — no downscaling needed
@@ -626,14 +629,14 @@ def generate_retrodiffusion_icons(
         if RetroDiffusionProvider is None:
             return []
         provider = RetroDiffusionProvider()
-    except Exception:
+    except (OSError, ValueError):
         return []
 
     def _generate_one(desc: str) -> tuple[bytes, Image.Image] | None:
         prompt = _build_pixelart_prompt(desc)
         try:
             raw_bytes = provider.generate(prompt, ICON_SIZE, ICON_SIZE)
-        except Exception:
+        except (OSError, httpx.HTTPError):
             return None
         img = Image.open(io.BytesIO(raw_bytes))
         img = remove_solid_background(img)
@@ -730,7 +733,7 @@ def generate_textmodel_icon_claude(track_title: str) -> bytes | None:
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         return buf.getvalue()
-    except Exception:
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
 
 
@@ -739,7 +742,7 @@ def generate_textmodel_icon_openai(track_title: str) -> bytes | None:
     try:
         import openai
         client = openai.OpenAI()
-    except Exception:
+    except ImportError:
         return None
 
     prompt = _build_textmodel_prompt(track_title)
@@ -756,7 +759,7 @@ def generate_textmodel_icon_openai(track_title: str) -> bytes | None:
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         return buf.getvalue()
-    except Exception:
+    except (OSError, openai.OpenAIError, KeyError, IndexError):
         return None
 
 
@@ -769,7 +772,7 @@ def _derive_track_title(track_path: Path, filename: str) -> str:
     try:
         tags = mka.read_tags(track_path)
         title = tags.get("title") or title
-    except Exception:
+    except (OSError, subprocess.CalledProcessError):
         pass
     return title
 
@@ -786,7 +789,7 @@ def _upload_icon_bytes(api: "YotoAPI", icon_bytes: bytes) -> str | None:
         media_id = di.get("mediaId") or di.get("id")
         logger.debug("_upload_icon_bytes: -> mediaId=%s", media_id)
         return media_id
-    except Exception as exc:
+    except (OSError, httpx.HTTPError, KeyError, ValueError) as exc:
         logger.debug("_upload_icon_bytes: upload failed: %s", exc)
         return None
     finally:
@@ -873,7 +876,7 @@ def resolve_icons(
         # 1. Check for existing MKA icon attachment
         try:
             icon_bytes = mka.get_attachment(track_path, "icon")
-        except Exception:
+        except (OSError, subprocess.CalledProcessError):
             icon_bytes = None
 
         if icon_bytes is not None:
@@ -909,7 +912,7 @@ def resolve_icons(
                         try:
                             img = Image.open(io.BytesIO(icon_bytes))
                             set_macos_file_icon(track_path, img)
-                        except Exception:
+                        except OSError:
                             pass
                     result[filename] = media_id
                     continue
@@ -1002,7 +1005,7 @@ def resolve_icons(
             try:
                 img = Image.open(io.BytesIO(icon_bytes))
                 set_macos_file_icon(track_path, img)
-            except Exception:
+            except OSError:
                 pass
 
         if media_id is not None:
