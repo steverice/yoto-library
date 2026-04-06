@@ -303,3 +303,38 @@ class TestPadToCover:
         result = pad_to_cover(art_bytes)
         img = Image.open(io.BytesIO(result))
         assert img.size == (COVER_WIDTH, COVER_HEIGHT)
+
+
+# ── TestCompareCovers ─────────────────────────────────────────────────────────
+
+
+from yoto_lib.cover import compare_covers
+
+
+class TestCompareCovers:
+    def test_returns_winner_a(self):
+        """Returns 'a' when Claude picks the padded version."""
+        padded = _make_png_bytes(638, 1011, "green")
+        outpainted = _make_png_bytes(638, 1011, "blue")
+
+        with patch("yoto_lib.cover._call_claude", return_value='"A"'):
+            winner = compare_covers(padded, outpainted)
+        assert winner == "a"
+
+    def test_returns_winner_b(self):
+        """Returns 'b' when Claude picks the outpainted version."""
+        padded = _make_png_bytes(638, 1011, "green")
+        outpainted = _make_png_bytes(638, 1011, "blue")
+
+        with patch("yoto_lib.cover._call_claude", return_value='"B"'):
+            winner = compare_covers(padded, outpainted)
+        assert winner == "b"
+
+    def test_returns_b_on_failure(self):
+        """Falls back to 'b' (outpainted) when Claude call fails."""
+        padded = _make_png_bytes(638, 1011, "green")
+        outpainted = _make_png_bytes(638, 1011, "blue")
+
+        with patch("yoto_lib.cover._call_claude", return_value=None):
+            winner = compare_covers(padded, outpainted)
+        assert winner == "b"

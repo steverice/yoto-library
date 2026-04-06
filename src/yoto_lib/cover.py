@@ -13,6 +13,7 @@ from PIL import Image
 
 from yoto_lib.image_providers import get_provider
 from yoto_lib import mka
+from yoto_lib.icon_llm import _call_claude
 
 logger = logging.getLogger(__name__)
 
@@ -228,3 +229,38 @@ def generate_cover_if_missing(
         resize_cover(tmp_path, playlist.cover_path)
     finally:
         tmp_path.unlink(missing_ok=True)
+
+
+def compare_covers(padded: bytes, outpainted: bytes) -> str:
+    """Ask Claude to compare two cover candidates and pick the better one.
+
+    Returns 'a' (padded) or 'b' (outpainted). Falls back to 'b' on failure.
+    """
+    with tempfile.TemporaryDirectory(prefix="yoto-cover-compare-") as tmpdir:
+        tmp = Path(tmpdir)
+        a_path = tmp / "option_a_padded.png"
+        b_path = tmp / "option_b_outpainted.png"
+        a_path.write_bytes(padded)
+        b_path.write_bytes(outpainted)
+
+        prompt = (
+            f"You are comparing two versions of an album cover reformatted for a "
+            f"portrait frame.\n\n"
+            f"Image A (padded): {a_path}\n"
+            f"Image B (outpainted): {b_path}\n\n"
+            f"Which looks better as an album cover? Consider:\n"
+            f"- Does the original artwork look intact and unaltered?\n"
+            f"- Does the background extension look natural?\n"
+            f"- Is the overall result visually appealing?\n\n"
+            f"Reply with ONLY the letter: A or B"
+        )
+
+        response = _call_claude(prompt, allowed_tools="Read", model="haiku")
+
+        if response and "A" in response.upper():
+            if "B" not in response.upper():
+                logger.info("compare_covers: Claude chose padded version (A)")
+                return "a"
+
+        logger.info("compare_covers: using outpainted version (B)")
+        return "b"
