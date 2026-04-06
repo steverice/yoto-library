@@ -147,6 +147,9 @@ def reframe_album_art(
             if attempt == max_attempts:
                 _log("All attempts had text issues — repairing...")
                 recomposed = repair_text(art_bytes, recomposed, log=log)
+                repaired_path = debug_dir / "repaired.png"
+                repaired_path.write_bytes(recomposed)
+                logger.debug("reframe_album_art: repaired -> %s", repaired_path)
     except Exception as exc:
         logger.warning("reframe_album_art: recomposition failed: %s", exc)
 
