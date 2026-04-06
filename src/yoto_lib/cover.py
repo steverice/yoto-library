@@ -429,13 +429,25 @@ def render_text_layer(original: bytes, ocr_text: str) -> bytes | None:
         )
 
         if not response.candidates:
-            logger.warning("render_text_layer: no candidates in response")
+            feedback = getattr(response, "prompt_feedback", None)
+            logger.warning("render_text_layer: no candidates (feedback=%s)", feedback)
             return None
 
-        for part in response.candidates[0].content.parts:
+        candidate = response.candidates[0]
+        finish = getattr(candidate, "finish_reason", None)
+        if finish and str(finish) not in ("STOP", "0", "FinishReason.STOP"):
+            logger.warning("render_text_layer: finish_reason=%s", finish)
+
+        if not candidate.content or not candidate.content.parts:
+            logger.warning("render_text_layer: empty content in candidate")
+            return None
+
+        for part in candidate.content.parts:
             if part.inline_data is not None:
                 logger.debug("render_text_layer: %d bytes", len(part.inline_data.data))
                 return part.inline_data.data
+            if hasattr(part, "text") and part.text:
+                logger.debug("render_text_layer: got text instead of image: %s", part.text[:200])
     except Exception as exc:
         logger.warning("render_text_layer: failed: %s", exc)
 
