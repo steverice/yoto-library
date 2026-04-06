@@ -87,10 +87,11 @@ def pad_to_cover(art_bytes: bytes) -> bytes:
 
 
 _OUTPAINT_PROMPT = (
-    "Extend the background of this album cover art to fill a portrait frame. "
-    "Keep the original artwork exactly as it is in the center — do not alter, "
-    "redraw, or crop any part of the original image. Only fill the new areas "
-    "at the top and bottom with a natural extension of the existing background."
+    "This is a square album cover. Extend ONLY the background to fill a taller "
+    "portrait frame. Do NOT stretch, scale, distort, or change the aspect ratio "
+    "of any element in the original image. The original artwork must remain "
+    "pixel-identical at its original size and proportions in the center. "
+    "Only add new background content above and below to fill the extra space."
 )
 
 
