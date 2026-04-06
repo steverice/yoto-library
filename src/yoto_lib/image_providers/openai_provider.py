@@ -48,6 +48,8 @@ class OpenAIProvider:
         b64_data = response.data[0].b64_json
         result = base64.b64decode(b64_data)
         logger.debug("openai: generated %d bytes", len(result))
+        from yoto_lib.costs import get_tracker
+        get_tracker().record("openai_generate")
         return result
 
     def edit(self, image_bytes: bytes, mask_bytes: bytes, prompt: str, width: int, height: int) -> bytes:
@@ -71,5 +73,7 @@ class OpenAIProvider:
         b64_data = response.data[0].b64_json
         result = base64.b64decode(b64_data)
         logger.debug("openai: edited %d bytes", len(result))
+        from yoto_lib.costs import get_tracker
+        get_tracker().record("openai_edit")
         return result
 

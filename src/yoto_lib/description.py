@@ -158,6 +158,8 @@ def _call_claude(prompt: str) -> str | None:
         except json.JSONDecodeError:
             text = result.stdout
 
+        from yoto_lib.costs import get_tracker, is_subscription
+        get_tracker().record("claude_haiku", subscription=is_subscription("claude_haiku"))
         return text.strip()
     except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
         logger.debug("description._call_claude: failed with %s", type(exc).__name__)
