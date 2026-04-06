@@ -128,10 +128,18 @@ class TestGeminiProviderEdit:
         mock_client = MagicMock()
         mock_client.models.edit_image.return_value = mock_response
 
+        # edit() now opens the image with PIL, so pass valid PNG bytes
+        from PIL import Image as PILImage
+        import io
+        test_img = PILImage.new("RGB", (100, 100), color="green")
+        buf = io.BytesIO()
+        test_img.save(buf, format="PNG")
+        test_png = buf.getvalue()
+
         with patch("yoto_lib.image_providers.gemini_provider.genai.Client", return_value=mock_client):
             from yoto_lib.image_providers.gemini_provider import GeminiProvider
             provider = GeminiProvider()
-            result = provider.edit(b"source image", "extend the background", 638, 1011)
+            result = provider.edit(test_png, "extend the background", 638, 1011)
 
         assert result == fake_image_bytes
         mock_client.models.edit_image.assert_called_once()
