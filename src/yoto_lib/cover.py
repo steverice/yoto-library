@@ -87,9 +87,10 @@ def pad_to_cover(art_bytes: bytes) -> bytes:
 
 
 _RECOMPOSE_PROMPT = (
-    "The black areas above and below the artwork are empty. Fill them with "
-    "background that naturally extends the scene — matching the art style, "
-    "colors, and mood of the original. Do not alter the artwork in the center."
+    "Reimagine this as a portrait composition. Rearrange the characters, "
+    "objects, and background to fill the full frame naturally. Use the same "
+    "art style, colors, characters, and mood — but create a new layout that "
+    "works as a tall portrait image. Any text must be fully within the frame."
 )
 
 
