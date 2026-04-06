@@ -116,12 +116,8 @@ def reframe_album_art(
         if hasattr(provider, "recompose"):
             _log("Recomposing album art for cover...")
             recomposed_raw = provider.recompose(art_bytes, _RECOMPOSE_PROMPT, COVER_WIDTH, COVER_HEIGHT)
-            # Resize to exact cover dimensions
-            img = Image.open(io.BytesIO(recomposed_raw))
-            img = img.resize((COVER_WIDTH, COVER_HEIGHT), Image.LANCZOS)
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            recomposed = buf.getvalue()
+            # Fit to cover dimensions (pad rather than stretch/crop)
+            recomposed = pad_to_cover(recomposed_raw)
             logger.debug("reframe_album_art: recomposition produced %d bytes", len(recomposed))
     except Exception as exc:
         logger.warning("reframe_album_art: recomposition failed: %s", exc)
