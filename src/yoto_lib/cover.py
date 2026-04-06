@@ -98,16 +98,24 @@ def reframe_album_art(
     art_bytes: bytes,
     output_path: Path,
     log: "Callable[[str], None] | None" = None,
+    style: str = "compare",
 ) -> None:
     """Reframe square album art into a portrait cover.
 
-    Generates two candidates (padded and outpainted), uses Claude vision
-    to pick the better one, and saves it to output_path.
+    style controls which candidate is used:
+      - "compare": generate both, let Claude pick (default)
+      - "ai": always use AI recomposition (fall back to padded on failure)
+      - "pad": always use padded, skip AI
     """
     _log = log or (lambda msg: None)
 
     # Candidate A: simple padding
     padded = pad_to_cover(art_bytes)
+
+    if style == "pad":
+        _log("Using padded album art as cover")
+        output_path.write_bytes(padded)
+        return
 
     # Candidate B: AI recomposition
     recomposed = None
@@ -122,8 +130,10 @@ def reframe_album_art(
     except Exception as exc:
         logger.warning("reframe_album_art: recomposition failed: %s", exc)
 
-    # Pick the winner
-    if recomposed is not None:
+    if style == "ai":
+        result = recomposed if recomposed is not None else padded
+        _log(f"Using {'recomposed' if recomposed is not None else 'padded (fallback)'} cover")
+    elif recomposed is not None:
         winner = compare_covers(padded, recomposed)
         result = padded if winner == "a" else recomposed
         _log(f"Cover comparison: using {'padded' if winner == 'a' else 'recomposed'} version")
@@ -170,6 +180,7 @@ def build_cover_prompt(
 def try_shared_album_art(
     playlist: "Playlist",
     log: "Callable[[str], None] | None" = None,
+    style: str = "compare",
 ) -> bool:
     """Check if all tracks share identical album art; if so, save it as the cover.
 
@@ -216,7 +227,7 @@ def try_shared_album_art(
     )
     _log("Reusing shared album art as cover")
 
-    reframe_album_art(first_art_bytes, playlist.cover_path, log=log)
+    reframe_album_art(first_art_bytes, playlist.cover_path, log=log, style=style)
     return True
 
 
