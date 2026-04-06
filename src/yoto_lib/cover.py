@@ -91,7 +91,9 @@ def pad_to_cover(art_bytes: bytes) -> bytes:
 
 _RECOMPOSE_PROMPT = (
     "A tall portrait version of this scene. Same characters, same art style, "
-    "same colors, same mood. Keep all text exactly as it appears."
+    "same colors, same mood. Keep all text exactly as it appears. "
+    "Extend the scene into the black areas with detailed artwork — "
+    "not a solid color fill."
 )
 
 
