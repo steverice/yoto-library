@@ -48,6 +48,8 @@ def _call_claude(prompt: str, *, allowed_tools: str = "", timeout: int = 120, mo
         text = wrapper.get("result", result.stdout).strip()
         parsed = _extract_json(text)
         logger.debug("icon_llm._call_claude response: %s", parsed)
+        from yoto_lib.costs import get_tracker, is_subscription
+        get_tracker().record(f"claude_{model}", subscription=is_subscription(f"claude_{model}"))
         return parsed
     except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
         logger.debug("icon_llm._call_claude: failed with %s", type(exc).__name__)

@@ -3,12 +3,27 @@ from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
     Progress,
+    ProgressColumn,
     SpinnerColumn,
     TextColumn,
     TimeElapsedColumn,
 )
+from rich.text import Text
 
 _console = Console(stderr=True)
+
+
+class CostColumn(ProgressColumn):
+    """Show running cost total on the right side of the progress bar."""
+
+    max_refresh = 0.5
+
+    def render(self, task):
+        from yoto_lib.costs import get_tracker
+        total = get_tracker().total
+        if total == 0:
+            return Text("")
+        return Text(f"${total:.2f}", style="dim cyan")
 
 
 def make_progress() -> Progress:
@@ -20,6 +35,7 @@ def make_progress() -> Progress:
         MofNCompleteColumn(),
         TimeElapsedColumn(),
         TextColumn("[dim]{task.fields[status]}"),
+        CostColumn(),
         console=_console,
         transient=False,
     )

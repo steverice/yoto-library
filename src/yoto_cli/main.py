@@ -26,6 +26,15 @@ from yoto_lib.playlist import read_jsonl, write_jsonl, scan_audio_files, load_pl
 from yoto_lib.mka import wrap_in_mka, remove_attachment, set_attachment, read_source_tags, write_tags, generate_source_patch
 from yoto_lib.itunes import enrich_from_itunes
 from yoto_lib.sources import resolve_weblocs
+from yoto_lib.costs import get_tracker, reset_tracker
+
+
+def _print_cost_summary():
+    tracker = get_tracker()
+    if not tracker.has_records():
+        return
+    for line in tracker.summary_lines():
+        click.echo(line)
 
 
 # ── Logging setup ────────────────────────────────────────────────────────────
@@ -208,6 +217,7 @@ def sync(path, dry_run, no_trim):
     """Push local playlist state to Yoto."""
     logger.debug("command: sync path=%s dry_run=%s no_trim=%s", path, dry_run, no_trim)
     trim = not no_trim
+    reset_tracker()
     if dry_run:
         results = sync_path(Path(path), dry_run=True, trim=trim)
         for result in results:
@@ -239,6 +249,7 @@ def sync(path, dry_run, no_trim):
         )
         for error in result.errors:
             click.echo(f"Error: {error}", err=True)
+    _print_cost_summary()
 
 
 # ── download ─────────────────────────────────────────────────────────────────
@@ -483,6 +494,7 @@ def import_cmd(source, output):
     output_path = Path(output) if output else source_path
 
     output_path.mkdir(parents=True, exist_ok=True)
+    reset_tracker()
 
     audio_files = scan_audio_files(source_path)
     if not audio_files:
@@ -536,6 +548,7 @@ def import_cmd(source, output):
         log=lambda msg: click.echo(msg),
         ask_user=lambda q: click.prompt(q),
     )
+    _print_cost_summary()
 
 
 # ── export ───────────────────────────────────────────────────────────────
@@ -690,6 +703,7 @@ def select_icon(tracks):
     from yoto_lib.icon_llm import match_icon_llm, compare_icons_llm, describe_icons_llm, log_icon_feedback
 
     from yoto_cli.progress import make_progress
+    reset_tracker()
 
     # Shared resources — loaded once
     api = YotoAPI()
@@ -891,6 +905,8 @@ def select_icon(tracks):
         icon_tmp.unlink(missing_ok=True)
         tmpdir.rmdir()
 
+    _print_cost_summary()
+
 
 # ── reset-icon ───────────────────────────────────────────────────────────
 
@@ -924,6 +940,7 @@ def cover(path, force, backup):
     if force and backup:
         raise click.UsageError("--force and --backup are mutually exclusive")
     logger.debug("command: cover path=%s force=%s backup=%s", path, force, backup)
+    reset_tracker()
     from yoto_lib.cover import build_cover_prompt, resize_cover, try_shared_album_art, add_title_to_illustration
     from yoto_lib.image_providers import get_provider
     from yoto_lib import mka
@@ -956,6 +973,7 @@ def cover(path, force, backup):
     # Try reusing shared album art first
     if try_shared_album_art(playlist):
         click.echo(f"Reused album art as cover: {cover_path}")
+        _print_cost_summary()
         return
 
     # Build prompt from track metadata
@@ -998,6 +1016,7 @@ def cover(path, force, backup):
         tmp_path.unlink(missing_ok=True)
 
     click.echo(f"Saved cover to {cover_path}")
+    _print_cost_summary()
 
 
 # ── completions ──────────────────────────────────────────────────────────────

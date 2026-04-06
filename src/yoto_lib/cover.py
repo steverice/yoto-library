@@ -524,6 +524,8 @@ def render_text_layer(original: bytes, text_descriptions: list[dict]) -> bytes |
         for part in candidate.content.parts:
             if part.inline_data is not None:
                 logger.debug("render_text_layer: %d bytes", len(part.inline_data.data))
+                from yoto_lib.costs import get_tracker
+                get_tracker().record("gemini_flash_image")
                 return part.inline_data.data
             if hasattr(part, "text") and part.text:
                 logger.debug("render_text_layer: got text instead of image: %s", part.text[:200])
