@@ -86,6 +86,58 @@ def pad_to_cover(art_bytes: bytes) -> bytes:
     return buf.getvalue()
 
 
+_OUTPAINT_PROMPT = (
+    "Extend the background of this album cover art to fill a portrait frame. "
+    "Keep the original artwork exactly as it is in the center — do not alter, "
+    "redraw, or crop any part of the original image. Only fill the new areas "
+    "at the top and bottom with a natural extension of the existing background."
+)
+
+
+def reframe_album_art(
+    art_bytes: bytes,
+    output_path: Path,
+    log: "Callable[[str], None] | None" = None,
+) -> None:
+    """Reframe square album art into a portrait cover.
+
+    Generates two candidates (padded and outpainted), uses Claude vision
+    to pick the better one, and saves it to output_path.
+    """
+    _log = log or (lambda msg: None)
+
+    # Candidate A: simple padding
+    padded = pad_to_cover(art_bytes)
+
+    # Candidate B: AI outpainting
+    outpainted = None
+    try:
+        provider = get_provider()
+        if hasattr(provider, "edit"):
+            _log("Outpainting album art for cover...")
+            outpainted_raw = provider.edit(art_bytes, _OUTPAINT_PROMPT, COVER_WIDTH, COVER_HEIGHT)
+            # Resize to exact cover dimensions
+            img = Image.open(io.BytesIO(outpainted_raw))
+            img = img.resize((COVER_WIDTH, COVER_HEIGHT), Image.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            outpainted = buf.getvalue()
+            logger.debug("reframe_album_art: outpainting produced %d bytes", len(outpainted))
+    except Exception as exc:
+        logger.warning("reframe_album_art: outpainting failed: %s", exc)
+
+    # Pick the winner
+    if outpainted is not None:
+        winner = compare_covers(padded, outpainted)
+        result = padded if winner == "a" else outpainted
+        _log(f"Cover comparison: using {'padded' if winner == 'a' else 'outpainted'} version")
+    else:
+        result = padded
+        _log("Using padded album art as cover")
+
+    output_path.write_bytes(result)
+
+
 def build_cover_prompt(
     description: str | None,
     track_titles: list[str],
