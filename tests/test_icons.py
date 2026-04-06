@@ -17,7 +17,7 @@ from yoto_lib.icons import (
     build_icon_prompt,
     extract_icon_hash,
     generate_icns_sizes,
-    generate_retrodiffusion_batch,
+    generate_retrodiffusion_icons,
     generate_track_icon,
     match_public_icon,
     nearest_neighbor_upscale,
@@ -198,7 +198,10 @@ class TestGenerateTrackIcon:
         mock_provider = MagicMock()
         mock_provider.generate.return_value = fake_image
 
-        with patch("yoto_lib.image_providers.get_provider", return_value=mock_provider):
+        with (
+            patch("yoto_lib.icons.generate_retrodiffusion_icon", return_value=(None, None)),
+            patch("yoto_lib.image_providers.get_provider", return_value=mock_provider),
+        ):
             result = generate_track_icon("Test Song")
 
         assert result is not None
@@ -207,7 +210,10 @@ class TestGenerateTrackIcon:
 
     def test_returns_none_on_no_provider(self):
         """Returns None if no image provider is configured."""
-        with patch("yoto_lib.image_providers.get_provider", side_effect=ValueError("no key")):
+        with (
+            patch("yoto_lib.icons.generate_retrodiffusion_icon", return_value=(None, None)),
+            patch("yoto_lib.image_providers.get_provider", side_effect=ValueError("no key")),
+        ):
             result = generate_track_icon("Test Song")
         assert result is None
 
@@ -216,46 +222,44 @@ class TestGenerateTrackIcon:
         mock_provider = MagicMock()
         mock_provider.generate.side_effect = RuntimeError("API error")
 
-        with patch("yoto_lib.image_providers.get_provider", return_value=mock_provider):
+        with (
+            patch("yoto_lib.icons.generate_retrodiffusion_icon", return_value=(None, None)),
+            patch("yoto_lib.image_providers.get_provider", return_value=mock_provider),
+        ):
             result = generate_track_icon("Test Song")
         assert result is None
 
 
-class TestGenerateRetrodiffusionBatch:
+class TestGenerateRetrodiffusionIcons:
     def test_returns_three_raw_and_processed_pairs(self):
         """Returns list of (raw_bytes, processed_Image) tuples."""
-        fake_pngs = []
-        for _ in range(3):
-            img = Image.new("RGB", (16, 16), "black")
-            img.putpixel((8, 8), (255, 0, 0))
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            fake_pngs.append(buf.getvalue())
+        fake_png = Image.new("RGB", (16, 16), "black")
+        fake_png.putpixel((8, 8), (255, 0, 0))
+        buf = io.BytesIO()
+        fake_png.save(buf, format="PNG")
+        fake_png_bytes = buf.getvalue()
 
         mock_provider = MagicMock()
-        mock_provider.generate_batch.return_value = fake_pngs
+        mock_provider.generate.return_value = fake_png_bytes
 
         with patch(
             "yoto_lib.icons.RetroDiffusionProvider",
             return_value=mock_provider,
         ):
-            results = generate_retrodiffusion_batch("Test Song")
+            results = generate_retrodiffusion_icons(["desc1", "desc2", "desc3"])
 
         assert len(results) == 3
         for raw_bytes, processed_img in results:
             assert isinstance(raw_bytes, bytes)
             assert processed_img.size == (16, 16)
 
-    def test_returns_empty_on_failure(self):
-        """Returns empty list when provider fails."""
-        mock_provider = MagicMock()
-        mock_provider.generate_batch.side_effect = RuntimeError("fail")
-
+    def test_returns_empty_on_provider_init_failure(self):
+        """Returns empty list when provider init fails."""
         with patch(
             "yoto_lib.icons.RetroDiffusionProvider",
-            return_value=mock_provider,
+            side_effect=RuntimeError("no API key"),
         ):
-            results = generate_retrodiffusion_batch("Test Song")
+            results = generate_retrodiffusion_icons(["desc"])
 
         assert results == []
 
@@ -298,7 +302,7 @@ class TestResolveIconsZones:
             patch("yoto_lib.icons.download_icon", return_value=icon_png),
             patch("yoto_lib.icons.apply_icon_to_mka"),
             patch("yoto_lib.icons.set_macos_file_icon"),
-            patch("yoto_lib.icons.generate_retrodiffusion_batch") as mock_gen,
+            patch("yoto_lib.icons.generate_retrodiffusion_icons") as mock_gen,
         ):
             from yoto_lib.icons import resolve_icons
             result = resolve_icons(playlist, api)
@@ -319,7 +323,7 @@ class TestResolveIconsZones:
             patch("yoto_lib.icons.mka.read_tags", return_value={"title": "Quantum Physics"}),
             patch("yoto_lib.icons.get_catalog", return_value=catalog),
             patch("yoto_lib.icons.match_icon_llm", return_value=(None, 0.1)),
-            patch("yoto_lib.icons.generate_retrodiffusion_batch") as mock_gen,
+            patch("yoto_lib.icons.generate_retrodiffusion_icons") as mock_gen,
             patch("yoto_lib.icons.compare_icons_llm", return_value=(2, [0.5, 0.9, 0.6])),
             patch("yoto_lib.icons.apply_icon_to_mka"),
             patch("yoto_lib.icons._upload_icon_bytes", return_value="uploaded-id"),
@@ -348,7 +352,7 @@ class TestResolveIconsZones:
             patch("yoto_lib.icons.get_catalog", return_value=catalog),
             patch("yoto_lib.icons.match_icon_llm", return_value=("yoto-dino", 0.6)),
             patch("yoto_lib.icons.download_icon", return_value=icon_png),
-            patch("yoto_lib.icons.generate_retrodiffusion_batch") as mock_gen,
+            patch("yoto_lib.icons.generate_retrodiffusion_icons") as mock_gen,
             patch("yoto_lib.icons.compare_icons_llm") as mock_compare,
             patch("yoto_lib.icons.apply_icon_to_mka"),
             patch("yoto_lib.icons._upload_icon_bytes", return_value="uploaded-id"),
