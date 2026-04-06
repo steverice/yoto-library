@@ -277,7 +277,7 @@ def set_macos_file_icon(file_path: Path, icon_16: Image.Image) -> None:
         icns_path = tmp.name
 
     try:
-        abs_file = str(Path(file_path).resolve())
+        abs_file = str(Path(file_path).resolve()).replace('\\', '\\\\').replace('"', '\\"')
         script = _OSASCRIPT_TEMPLATE.format(
             icns_path=icns_path,
             file_path=abs_file,
@@ -289,7 +289,7 @@ def set_macos_file_icon(file_path: Path, icon_16: Image.Image) -> None:
 
 def clear_macos_file_icon(file_path: Path) -> None:
     """Remove the custom Finder icon from a file."""
-    abs_file = str(Path(file_path).resolve())
+    abs_file = str(Path(file_path).resolve()).replace('\\', '\\\\').replace('"', '\\"')
     script = (
         f'use framework "AppKit"\n'
         f'use scripting additions\n'
