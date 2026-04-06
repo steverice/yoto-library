@@ -86,12 +86,11 @@ def pad_to_cover(art_bytes: bytes) -> bytes:
     return buf.getvalue()
 
 
-_OUTPAINT_PROMPT = (
-    "This is a square album cover. Extend ONLY the background to fill a taller "
-    "portrait frame. Do NOT stretch, scale, distort, or change the aspect ratio "
-    "of any element in the original image. The original artwork must remain "
-    "pixel-identical at its original size and proportions in the center. "
-    "Only add new background content above and below to fill the extra space."
+_RECOMPOSE_PROMPT = (
+    "This is a square album cover. Create a new portrait-oriented (2:3) version "
+    "of it, reusing the same characters, art style, colors, and mood. Rearrange "
+    "the elements to fill the taller frame naturally. Any text or title must be "
+    "well within the image boundaries — not near the edges."
 )
 
 
@@ -110,28 +109,28 @@ def reframe_album_art(
     # Candidate A: simple padding
     padded = pad_to_cover(art_bytes)
 
-    # Candidate B: AI outpainting
-    outpainted = None
+    # Candidate B: AI recomposition
+    recomposed = None
     try:
         provider = get_provider()
-        if hasattr(provider, "edit"):
-            _log("Outpainting album art for cover...")
-            outpainted_raw = provider.edit(art_bytes, _OUTPAINT_PROMPT, COVER_WIDTH, COVER_HEIGHT)
+        if hasattr(provider, "recompose"):
+            _log("Recomposing album art for cover...")
+            recomposed_raw = provider.recompose(art_bytes, _RECOMPOSE_PROMPT, COVER_WIDTH, COVER_HEIGHT)
             # Resize to exact cover dimensions
-            img = Image.open(io.BytesIO(outpainted_raw))
+            img = Image.open(io.BytesIO(recomposed_raw))
             img = img.resize((COVER_WIDTH, COVER_HEIGHT), Image.LANCZOS)
             buf = io.BytesIO()
             img.save(buf, format="PNG")
-            outpainted = buf.getvalue()
-            logger.debug("reframe_album_art: outpainting produced %d bytes", len(outpainted))
+            recomposed = buf.getvalue()
+            logger.debug("reframe_album_art: recomposition produced %d bytes", len(recomposed))
     except Exception as exc:
-        logger.warning("reframe_album_art: outpainting failed: %s", exc)
+        logger.warning("reframe_album_art: recomposition failed: %s", exc)
 
     # Pick the winner
-    if outpainted is not None:
-        winner = compare_covers(padded, outpainted)
-        result = padded if winner == "a" else outpainted
-        _log(f"Cover comparison: using {'padded' if winner == 'a' else 'outpainted'} version")
+    if recomposed is not None:
+        winner = compare_covers(padded, recomposed)
+        result = padded if winner == "a" else recomposed
+        _log(f"Cover comparison: using {'padded' if winner == 'a' else 'recomposed'} version")
     else:
         result = padded
         _log("Using padded album art as cover")

@@ -1,8 +1,5 @@
 """Gemini image provider implementation."""
-import io
 import logging
-
-from PIL import Image
 
 from google import genai
 from google.genai import types
@@ -53,66 +50,30 @@ class GeminiProvider:
 
         raise RuntimeError("No image found in Gemini response")
 
-    def edit(self, image: bytes, prompt: str, width: int, height: int) -> bytes:
-        """Edit an image using Gemini Vertex AI inpainting. Returns PNG bytes.
+    def recompose(self, image: bytes, prompt: str, width: int, height: int) -> bytes:
+        """Recompose an image into new dimensions using Gemini multimodal generation.
 
-        Places the source image centered on a canvas of the target dimensions,
-        creates a mask for the padding areas, and asks Imagen to fill them in.
+        Sends the source image to Gemini's generate_content API along with a
+        text prompt, and asks it to create a new image inspired by the original.
         """
-        logger.debug("gemini: editing to %dx%d, prompt=%.80s...", width, height, prompt)
+        target = width / height
+        options = [("1:1", 1.0), ("9:16", 9/16), ("16:9", 16/9),
+                   ("2:3", 2/3), ("3:2", 3/2), ("3:4", 3/4), ("4:3", 4/3)]
+        aspect_ratio = min(options, key=lambda x: abs(x[1] - target))[0]
+        logger.debug("gemini: recomposing to %s, prompt=%.80s...", aspect_ratio, prompt)
 
-        art = Image.open(io.BytesIO(image)).convert("RGB")
-
-        # Scale art to fit within target dimensions
-        scale = min(width / art.width, height / art.height)
-        new_w = int(art.width * scale)
-        new_h = int(art.height * scale)
-        scaled = art.resize((new_w, new_h), Image.LANCZOS)
-
-        # Place on target-sized canvas
-        canvas = Image.new("RGB", (width, height), (0, 0, 0))
-        x_off = (width - new_w) // 2
-        y_off = (height - new_h) // 2
-        canvas.paste(scaled, (x_off, y_off))
-
-        # Mask: white = fill (padding), black = keep (art)
-        mask = Image.new("L", (width, height), 255)
-        mask.paste(0, (x_off, y_off, x_off + new_w, y_off + new_h))
-
-        def _to_bytes(img: Image.Image) -> bytes:
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            return buf.getvalue()
-
-        response = self._get_vertex_client().models.edit_image(
-            model="imagen-3.0-capability-001",
-            prompt=prompt,
-            reference_images=[
-                types.RawReferenceImage(
-                    reference_image=types.Image(
-                        image_bytes=_to_bytes(canvas), mime_type="image/png",
-                    ),
-                    reference_id=0,
-                ),
-                types.MaskReferenceImage(
-                    reference_image=types.Image(
-                        image_bytes=_to_bytes(mask), mime_type="image/png",
-                    ),
-                    reference_id=0,
-                    config=types.MaskReferenceConfig(
-                        mask_mode="MASK_MODE_USER_PROVIDED",
-                    ),
-                ),
-            ],
-            config=types.EditImageConfig(
-                edit_mode="EDIT_MODE_INPAINT_INSERTION",
-                number_of_images=1,
+        response = self._get_client().models.generate_content(
+            model="gemini-2.0-flash-exp",
+            contents=[prompt, types.Part.from_bytes(data=image, mime_type="image/png")],
+            config=types.GenerateContentConfig(
+                response_modalities=["IMAGE"],
             ),
         )
 
-        if response.generated_images:
-            result = response.generated_images[0].image.image_bytes
-            logger.debug("gemini: edited %d bytes", len(result))
-            return result
+        for part in response.candidates[0].content.parts:
+            if part.inline_data is not None:
+                result = part.inline_data.data
+                logger.debug("gemini: recomposed %d bytes", len(result))
+                return result
 
-        raise RuntimeError("No image found in Gemini edit response")
+        raise RuntimeError("No image found in Gemini recompose response")

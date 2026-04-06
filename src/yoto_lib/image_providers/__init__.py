@@ -9,8 +9,8 @@ class ImageProvider(Protocol):
         """Generate an image from a text prompt. Returns PNG bytes."""
         ...
 
-    def edit(self, image: bytes, prompt: str, width: int, height: int) -> bytes:
-        """Edit/outpaint an image. Returns image bytes."""
+    def recompose(self, image: bytes, prompt: str, width: int, height: int) -> bytes:
+        """Recompose an image into new dimensions. Returns image bytes."""
         ...
 
 
