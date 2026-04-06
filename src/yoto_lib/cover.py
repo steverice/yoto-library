@@ -178,7 +178,7 @@ def try_shared_album_art(
     """Check if all tracks share identical album art; if so, save it as the cover.
 
     Extracts embedded album art from each track's video stream, hashes them,
-    and if all hashes match, resizes the shared art to cover dimensions.
+    and if all hashes match, reframes the shared art into a portrait cover.
 
     Returns True if shared art was used, False otherwise.
     """
