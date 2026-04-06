@@ -6,7 +6,7 @@ import logging
 import plistlib
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from yoto_lib.mka import wrap_in_mka, write_tags
 
@@ -41,7 +41,7 @@ def _unique_path(directory: Path, stem: str, suffix: str) -> Path:
         n += 1
 
 
-def resolve_weblocs(playlist_dir: Path, trim: bool = True) -> list[Path]:
+def resolve_weblocs(playlist_dir: Path, trim: bool = True, on_track_done: Callable[[str], None] | None = None) -> list[Path]:
     """Resolve .webloc files in a playlist directory into .mka tracks.
 
     For each .webloc:
@@ -108,5 +108,7 @@ def resolve_weblocs(playlist_dir: Path, trim: bool = True) -> list[Path]:
         # Success — consume the .webloc
         webloc.unlink()
         created.append(mka_path)
+        if on_track_done:
+            on_track_done(mka_path.name)
 
     return created

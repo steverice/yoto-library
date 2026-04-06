@@ -218,30 +218,20 @@ def sync(path: str, dry_run: bool, no_trim: bool) -> None:
                 click.echo(f"Error: {error}", err=True)
         return
 
-    if sys.stderr.isatty():
-        from tqdm import tqdm
+    from yoto_lib.playlist import load_playlist as _load
+    from yoto_cli.progress import make_progress
+    playlist = _load(Path(path))
+    total = len(playlist.track_files) * 2 + 2
 
-        # Load playlist to get total track count for the progress bar
-        from yoto_lib.playlist import load_playlist as _load
-        playlist = _load(Path(path))
-        total = len(playlist.track_files)
-        # Steps: icons + uploads + cover + save
-        pbar = tqdm(total=total * 2 + 2, desc=playlist.title, bar_format="{desc}: \033[48;5;236m{bar}\033[0m {n_fmt}/{total_fmt}")
-        step = [0]
+    with make_progress() as progress:
+        task = progress.add_task(playlist.title, total=total, status="starting")
 
         def log(msg: str) -> None:
-            pbar.set_postfix_str(msg, refresh=True)
-            tqdm.write(msg)
-            step[0] += 1
-            pbar.n = min(step[0], pbar.total)
-            pbar.refresh()
+            progress.update(task, advance=1, status=msg)
+            progress.console.print(msg)
 
         results = sync_path(Path(path), dry_run=False, trim=trim, log=log)
-        pbar.n = pbar.total
-        pbar.refresh()
-        pbar.close()
-    else:
-        results = sync_path(Path(path), dry_run=False, trim=trim, log=lambda msg: click.echo(msg))
+        progress.update(task, completed=total)
 
     for result in results:
         icon_msg = f", {result.icons_uploaded} icons" if result.icons_uploaded else ""
@@ -263,7 +253,19 @@ def download(path: str, no_trim: bool) -> None:
     logger.debug("command: download path=%s no_trim=%s", path, no_trim)
     trim = not no_trim
     folder = Path(path)
-    created = resolve_weblocs(folder, trim=trim)
+
+    webloc_count = len(list(folder.glob("*.webloc")))
+    if sys.stderr.isatty() and webloc_count > 0:
+        from yoto_cli.progress import make_progress
+        with make_progress() as progress:
+            task = progress.add_task(folder.name, total=webloc_count, status="")
+
+            def on_track(name: str) -> None:
+                progress.update(task, advance=1, status=name)
+
+            created = resolve_weblocs(folder, trim=trim, on_track_done=on_track)
+    else:
+        created = resolve_weblocs(folder, trim=trim)
 
     if not created:
         click.echo("No .webloc files resolved.")
@@ -300,10 +302,23 @@ def pull(path_or_card_id: str, dry_run: bool, pull_all: bool) -> None:
 
 def _pull_one(folder: Path, card_id: str | None = None, dry_run: bool = False) -> None:
     """Pull a single playlist."""
-    def on_track(title: str) -> None:
-        click.echo(f"  Downloaded: {title}")
+    if sys.stderr.isatty():
+        from yoto_cli.progress import make_progress
+        with make_progress() as progress:
+            task = progress.add_task(folder.name, total=None, status="fetching")
 
-    result = pull_playlist(folder, card_id=card_id, dry_run=dry_run, on_track_done=on_track)
+            def on_total(n: int) -> None:
+                progress.update(task, total=n, status="downloading")
+
+            def on_track(title: str) -> None:
+                progress.update(task, advance=1, status=title)
+
+            result = pull_playlist(folder, card_id=card_id, dry_run=dry_run,
+                                   on_track_done=on_track, on_total=on_total)
+    else:
+        def on_track(title: str) -> None:
+            click.echo(f"  Downloaded: {title}")
+        result = pull_playlist(folder, card_id=card_id, dry_run=dry_run, on_track_done=on_track)
 
     if dry_run:
         click.echo(f"[Dry run] {result.card_id}")
@@ -477,30 +492,40 @@ def import_cmd(source: str, output: str | None) -> None:
 
     album_cache: dict = {}
     filenames = []
-    for audio in audio_files:
-        clean_stem = _strip_track_number(audio.stem)
-        mka_name = clean_stem + ".mka"
-        mka_dest = output_path / mka_name
-        if audio.suffix.lower() == ".mka" and source_path == output_path:
-            # Already MKA in place — just record it
-            filenames.append(mka_name)
-        else:
-            try:
-                wrap_in_mka(audio, mka_dest)
-                # Copy metadata from source file to MKA
-                source_tags = read_source_tags(audio)
-                source_tags["source_format"] = audio.suffix.lstrip(".").lower()
-                write_tags(mka_dest, source_tags)
-                # Fetch album art from iTunes if missing
-                enrich_from_itunes(mka_dest, source_tags, album_cache)
-                # Generate bsdiff patch for byte-perfect export
-                generate_source_patch(audio, mka_dest)
+
+    from contextlib import nullcontext
+    from yoto_cli.progress import make_progress
+    progress_ctx = make_progress() if sys.stderr.isatty() else nullcontext()
+    with progress_ctx as progress:
+        task = progress.add_task(source_path.name, total=len(audio_files), status="") if progress else None
+        for audio in audio_files:
+            if progress and task is not None:
+                progress.update(task, status=audio.name)
+            clean_stem = _strip_track_number(audio.stem)
+            mka_name = clean_stem + ".mka"
+            mka_dest = output_path / mka_name
+            if audio.suffix.lower() == ".mka" and source_path == output_path:
+                # Already MKA in place — just record it
                 filenames.append(mka_name)
-                click.echo(f"  Wrapped {audio.name} -> {mka_name}")
-                if source_path == output_path:
-                    audio.unlink()
-            except (OSError, ValueError, RuntimeError) as exc:
-                click.echo(f"  Error wrapping {audio.name}: {exc}", err=True)
+            else:
+                try:
+                    wrap_in_mka(audio, mka_dest)
+                    # Copy metadata from source file to MKA
+                    source_tags = read_source_tags(audio)
+                    source_tags["source_format"] = audio.suffix.lstrip(".").lower()
+                    write_tags(mka_dest, source_tags)
+                    # Fetch album art from iTunes if missing
+                    enrich_from_itunes(mka_dest, source_tags, album_cache)
+                    # Generate bsdiff patch for byte-perfect export
+                    generate_source_patch(audio, mka_dest)
+                    filenames.append(mka_name)
+                    click.echo(f"  Wrapped {audio.name} -> {mka_name}")
+                    if source_path == output_path:
+                        audio.unlink()
+                except (OSError, ValueError, RuntimeError) as exc:
+                    click.echo(f"  Error wrapping {audio.name}: {exc}", err=True)
+            if progress and task is not None:
+                progress.update(task, advance=1)
 
     write_jsonl(output_path / "playlist.jsonl", filenames)
     click.echo(f"Imported {len(filenames)} tracks into {output_path}")
@@ -541,29 +566,38 @@ def export(playlist: str, output: str | None) -> None:
 
     import tempfile
     from yoto_lib.mka import get_attachment, PATCH_ATTACHMENT_NAME
+    from contextlib import nullcontext
+    from yoto_cli.progress import make_progress
 
-    for mka in mka_files:
-        try:
-            has_patch = get_attachment(mka, PATCH_ATTACHMENT_NAME) is not None
+    progress_ctx = make_progress() if sys.stderr.isatty() else nullcontext()
+    with progress_ctx as progress:
+        task = progress.add_task(playlist_path.name, total=len(mka_files), status="") if progress else None
+        for mka in mka_files:
+            if progress and task is not None:
+                progress.update(task, status=mka.name)
+            try:
+                has_patch = get_attachment(mka, PATCH_ATTACHMENT_NAME) is not None
 
-            if has_patch:
-                # Extract to temp dir, then apply patch to final location
-                with tempfile.TemporaryDirectory(prefix="yoto-export-") as tmpdir:
-                    extracted = extract_audio(mka, Path(tmpdir))
-                    final_path = output_path / (mka.stem + extracted.suffix)
-                    if apply_source_patch(extracted, mka, final_path):
-                        click.echo(f"  {mka.name} -> {final_path.name} (byte-perfect)")
-                    else:
-                        # Patch failed — copy the extraction as fallback
-                        import shutil
-                        shutil.copy2(extracted, final_path)
-                        click.echo(f"  {mka.name} -> {final_path.name}")
-            else:
-                # No patch — extract directly to output
-                extracted = extract_audio(mka, output_path)
-                click.echo(f"  {mka.name} -> {extracted.name}")
-        except (OSError, ValueError, RuntimeError) as exc:
-            click.echo(f"  Error exporting {mka.name}: {exc}", err=True)
+                if has_patch:
+                    # Extract to temp dir, then apply patch to final location
+                    with tempfile.TemporaryDirectory(prefix="yoto-export-") as tmpdir:
+                        extracted = extract_audio(mka, Path(tmpdir))
+                        final_path = output_path / (mka.stem + extracted.suffix)
+                        if apply_source_patch(extracted, mka, final_path):
+                            click.echo(f"  {mka.name} -> {final_path.name} (byte-perfect)")
+                        else:
+                            # Patch failed — copy the extraction as fallback
+                            import shutil
+                            shutil.copy2(extracted, final_path)
+                            click.echo(f"  {mka.name} -> {final_path.name}")
+                else:
+                    # No patch — extract directly to output
+                    extracted = extract_audio(mka, output_path)
+                    click.echo(f"  {mka.name} -> {extracted.name}")
+            except (OSError, ValueError, RuntimeError) as exc:
+                click.echo(f"  Error exporting {mka.name}: {exc}", err=True)
+            if progress and task is not None:
+                progress.update(task, advance=1)
 
     click.echo(f"Exported {len(mka_files)} tracks to {output_path}")
 
@@ -656,8 +690,7 @@ def select_icon(tracks: tuple[str, ...]) -> None:
     from yoto_lib.icon_catalog import get_catalog
     from yoto_lib.icon_llm import match_icon_llm, compare_icons_llm, describe_icons_llm, log_icon_feedback
 
-    use_tqdm = sys.stderr.isatty()
-    bar_fmt = "{desc}: \033[48;5;236m{bar}\033[0m {n_fmt}/{total_fmt} {postfix}"
+    from yoto_cli.progress import make_progress
 
     # Shared resources — loaded once
     api = YotoAPI()
@@ -683,69 +716,67 @@ def select_icon(tracks: tuple[str, ...]) -> None:
         except (OSError, ValueError):
             pass
 
-        if use_tqdm:
-            from tqdm import tqdm
-            pbar = tqdm(total=7, desc=title, bar_format=bar_fmt)
-            pbar.set_postfix_str("matching Yoto icon")
-        else:
-            pbar = None
-
-        yoto_media_id, yoto_confidence = match_icon_llm(title, catalog)
+        yoto_media_id, yoto_confidence = None, 0.0
         yoto_img: "Image.Image | None" = None
         yoto_title: str | None = None
         yoto_bytes: bytes | None = None
 
-        if yoto_media_id:
-            yoto_bytes = download_icon(yoto_media_id)
-            if yoto_bytes:
-                yoto_img = Image.open(io.BytesIO(yoto_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)
-                for icon in catalog:
-                    if icon.get("mediaId") == yoto_media_id:
-                        yoto_title = icon.get("title", "") or icon.get("name", "")
-                        break
+        with make_progress() as progress:
+            task = progress.add_task(title, total=7, status="matching Yoto icon")
 
-        if pbar:
-            pbar.update(1)
-            pbar.set_postfix_str("describing icons")
+            yoto_media_id, yoto_confidence = match_icon_llm(title, catalog)
 
-        tmpdir = Path(tempfile.mkdtemp(prefix="yoto-icon-"))
-        skipped = False
+            if yoto_media_id:
+                yoto_bytes = download_icon(yoto_media_id)
+                if yoto_bytes:
+                    yoto_img = Image.open(io.BytesIO(yoto_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)
+                    for icon in catalog:
+                        if icon.get("mediaId") == yoto_media_id:
+                            yoto_title = icon.get("title", "") or icon.get("name", "")
+                            break
 
-        while True:
+            progress.update(task, advance=1, status="describing icons")
+            tmpdir = Path(tempfile.mkdtemp(prefix="yoto-icon-"))
+            skipped = False
+
             descriptions = describe_icons_llm(title, album_description=album_desc)
             if not descriptions:
                 descriptions = [title, title, title]  # fallback to raw title
 
-            if pbar:
-                pbar.update(1)
-                pbar.set_postfix_str("generating icon 1/3")
+            progress.update(task, advance=1, status="generating icon 1/3")
 
             def on_gen_progress(i: int) -> None:
-                if pbar:
-                    pbar.update(1)
-                    if i < 3:
-                        pbar.set_postfix_str(f"generating icon {i + 1}/3")
-                    else:
-                        pbar.set_postfix_str("evaluating icons")
+                if i < 3:
+                    progress.update(task, advance=1, status=f"generating icon {i + 1}/3")
+                else:
+                    progress.update(task, advance=1, status="evaluating icons")
 
             batch = generate_retrodiffusion_icons(descriptions, on_progress=on_gen_progress)
             if not batch:
-                if pbar:
-                    pbar.close()
                 click.echo(f"Icon generation failed for {track_path.name}", err=True)
                 skipped = True
-                break
+            else:
+                raw_bytes_list: list[bytes] = [rb for rb, _ in batch]
+                winner, scores = compare_icons_llm(
+                    title, raw_bytes_list,
+                    yoto_icon=yoto_bytes if yoto_img is not None else None,
+                    descriptions=descriptions,
+                    album_description=album_desc,
+                )
+                progress.update(task, advance=1)
+        # progress bar closed — interactive prompt starts below
 
-            icons_16: list[Image.Image] = []
-            raw_bytes_list: list[bytes] = []
-            images_to_show: list[Image.Image] = []
-            labels_to_show: list[str] = []
-            for i, (raw_bytes, processed_img) in enumerate(batch):
-                icons_16.append(processed_img)
-                raw_bytes_list.append(raw_bytes)
-                images_to_show.append(processed_img)
-                desc_label = descriptions[i] if i < len(descriptions) else "AI"
-                labels_to_show.append(f"[{i + 1}] {desc_label}")
+        if skipped:
+            tmpdir.rmdir()
+            continue
+
+        while True:
+            icons_16: list[Image.Image] = [processed for _, processed in batch]
+            images_to_show: list[Image.Image] = list(icons_16)
+            labels_to_show: list[str] = [
+                f"[{i + 1}] {descriptions[i] if i < len(descriptions) else 'AI'}"
+                for i in range(len(icons_16))
+            ]
 
             next_idx = len(images_to_show) + 1
 
@@ -768,19 +799,6 @@ def select_icon(tracks: tuple[str, ...]) -> None:
             max_choice = next_idx - 1
             prompt_text = f"Pick an icon (1-{max_choice}, or 'r' to regenerate)"
 
-            # LLM comparison
-            winner, scores = compare_icons_llm(
-                title, raw_bytes_list,
-                yoto_icon=yoto_bytes if yoto_img is not None else None,
-                descriptions=descriptions,
-                album_description=album_desc,
-            )
-
-            if pbar:
-                pbar.update(1)
-                pbar.close()
-                pbar = None
-
             # Build score labels (existing icon gets no score)
             score_labels = []
             for i in range(len(images_to_show)):
@@ -797,10 +815,34 @@ def select_icon(tracks: tuple[str, ...]) -> None:
             default_choice = str(winner) if 1 <= winner <= max_choice else "1"
             raw = click.prompt(prompt_text, default=default_choice)
             if raw.lower() == "r":
-                if use_tqdm:
-                    from tqdm import tqdm
-                    pbar = tqdm(total=5, desc=title, bar_format=bar_fmt)
-                    pbar.set_postfix_str("describing icons")
+                with make_progress() as progress:
+                    task = progress.add_task(title, total=6, status="describing icons")
+                    descriptions = describe_icons_llm(title, album_description=album_desc)
+                    if not descriptions:
+                        descriptions = [title, title, title]
+                    progress.update(task, advance=1, status="generating icon 1/3")
+
+                    def on_gen_progress(i: int) -> None:
+                        if i < 3:
+                            progress.update(task, advance=1, status=f"generating icon {i + 1}/3")
+                        else:
+                            progress.update(task, advance=1, status="evaluating icons")
+
+                    batch = generate_retrodiffusion_icons(descriptions, on_progress=on_gen_progress)
+                    if not batch:
+                        click.echo(f"Icon generation failed for {track_path.name}", err=True)
+                        skipped = True
+                    else:
+                        raw_bytes_list = [rb for rb, _ in batch]
+                        winner, scores = compare_icons_llm(
+                            title, raw_bytes_list,
+                            yoto_icon=yoto_bytes if yoto_img is not None else None,
+                            descriptions=descriptions,
+                            album_description=album_desc,
+                        )
+                        progress.update(task, advance=1)
+                if skipped:
+                    break
                 continue
 
             try:
@@ -925,11 +967,12 @@ def cover(path: str, force: bool) -> None:
 
     prompt = build_cover_prompt(playlist.description, track_titles, artists, playlist.title)
 
-    click.echo("Generating cover art...")
     provider = get_provider()
+    from yoto_cli.progress import spinner_status
     # 3:4 aspect — wider than 638:1011 target, so resize_cover crops sides
     # and preserves full height including title text at top.
-    image_bytes = provider.generate(prompt, 768, 1024)
+    with spinner_status("Generating cover art..."):
+        image_bytes = provider.generate(prompt, 768, 1024)
 
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp.write(image_bytes)
