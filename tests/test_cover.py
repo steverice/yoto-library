@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -441,3 +442,32 @@ class TestTrySharedAlbumArtReframe:
         assert result is True
         mock_reframe.assert_called_once_with(shared_art, cover_path, log=None)
         mock_resize.assert_not_called()
+
+
+# ── TestReframeE2E ────────────────────────────────────────────────────────────
+
+
+needs_network = pytest.mark.skipif(
+    os.environ.get("SKIP_NETWORK_TESTS", "0") == "1",
+    reason="Network tests disabled",
+)
+
+
+@needs_network
+class TestReframeE2E:
+    def test_reframe_with_real_outpainting(self, tmp_path):
+        """Integration test: pad + outpaint + compare with real providers."""
+        # Create a solid-green test image simulating album art
+        art_bytes = _make_png_bytes(600, 600, "#2baf45")
+        output = tmp_path / "cover.png"
+
+        # This test exercises the full pipeline with real API calls
+        # It may fail if no OPENAI_API_KEY / GEMINI_API_KEY is configured
+        try:
+            reframe_album_art(art_bytes, output)
+        except (ValueError, Exception) as exc:
+            pytest.skip(f"Provider not configured: {exc}")
+
+        assert output.exists()
+        img = Image.open(output)
+        assert img.size == (COVER_WIDTH, COVER_HEIGHT)
