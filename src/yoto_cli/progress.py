@@ -23,7 +23,7 @@ class CostColumn(ProgressColumn):
         total = get_tracker().total
         if total == 0:
             return Text("")
-        return Text(f"${total:.2f}", style="dim cyan")
+        return Text(f"${total:.3f}", style="dim cyan")
 
 
 def make_progress() -> Progress:
