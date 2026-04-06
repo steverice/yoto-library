@@ -118,26 +118,26 @@ def reframe_album_art(
         output_path.write_bytes(padded)
         return
 
-    # Candidate B: AI recomposition (retry up to 3 times for good text)
+    # Candidate B: AI recomposition via FLUX Kontext (retry up to 3 times for good text)
     recomposed = None
     max_attempts = 3
     try:
-        provider = get_provider()
-        if hasattr(provider, "recompose"):
-            for attempt in range(1, max_attempts + 1):
-                _log(f"Recomposing album art for cover (attempt {attempt}/{max_attempts})...")
-                recomposed_raw = provider.recompose(art_bytes, _RECOMPOSE_PROMPT, COVER_WIDTH, COVER_HEIGHT)
-                recomposed = pad_to_cover(recomposed_raw)
-                logger.debug("reframe_album_art: recomposition produced %d bytes", len(recomposed))
+        from yoto_lib.image_providers.flux_provider import FluxProvider
+        provider = FluxProvider()
+        for attempt in range(1, max_attempts + 1):
+            _log(f"Recomposing album art for cover (attempt {attempt}/{max_attempts})...")
+            recomposed_raw = provider.recompose(art_bytes, _RECOMPOSE_PROMPT, COVER_WIDTH, COVER_HEIGHT)
+            recomposed = pad_to_cover(recomposed_raw)
+            logger.debug("reframe_album_art: recomposition produced %d bytes", len(recomposed))
 
-                if check_text_quality(art_bytes, recomposed):
-                    _log("Text check passed")
-                    break
-                _log("Text check failed")
+            if check_text_quality(art_bytes, recomposed):
+                _log("Text check passed")
+                break
+            _log("Text check failed")
 
-                if attempt == max_attempts:
-                    _log("All attempts had text issues — repairing...")
-                    recomposed = repair_text(art_bytes, recomposed, log=log)
+            if attempt == max_attempts:
+                _log("All attempts had text issues — repairing...")
+                recomposed = repair_text(art_bytes, recomposed, log=log)
     except Exception as exc:
         logger.warning("reframe_album_art: recomposition failed: %s", exc)
 
