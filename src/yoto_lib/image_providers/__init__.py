@@ -24,5 +24,8 @@ def get_provider() -> ImageProvider:
     elif provider_name == "gemini":
         from yoto_lib.image_providers.gemini_provider import GeminiProvider
         return GeminiProvider()
+    elif provider_name == "flux":
+        from yoto_lib.image_providers.flux_provider import FluxProvider
+        return FluxProvider()
     else:
         raise ValueError(f"Unknown image provider: {provider_name!r}")
