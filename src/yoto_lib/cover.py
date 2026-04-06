@@ -194,9 +194,6 @@ def build_cover_prompt(
     """Build a text prompt for image generation from playlist metadata."""
     parts: list[str] = []
 
-    if playlist_title:
-        parts.append(f'Playlist: "{playlist_title}".')
-
     if description:
         parts.append(description.strip())
 
@@ -209,13 +206,43 @@ def build_cover_prompt(
         parts.append("Artists: " + ", ".join(unique_artists))
 
     parts.append(
-        "Create a portrait-oriented children's book cover illustration."
-        " Display the playlist name as a title inside a decorative banner"
-        " in the upper portion of the image. The banner and all text must be"
-        " well within the image boundaries — nothing near the edges."
+        "Create a portrait-oriented children's book illustration with NO text."
+        " Leave clear, uncluttered space in the upper 25% of the image for a title"
+        " to be added later — use soft sky, clouds, a simple background, or a gentle"
+        " color gradient there. No words, letters, or signs anywhere in the image."
     )
 
     return " ".join(parts)
+
+
+def add_title_to_illustration(image_bytes: bytes, title: str, width: int, height: int) -> bytes:
+    """Add a title to an illustration using OpenAI image editing.
+
+    Passes the illustration to OpenAI's edit endpoint (no mask) and asks it
+    to add the playlist title in a style matching the illustration.
+    Returns PNG bytes at the same dimensions as input.
+
+    Note: edit before resize — the API only accepts supported sizes
+    (1024×1024, 1024×1536, 1536×1024), not the final 638×1011 cover.
+    """
+    from yoto_lib.image_providers.openai_provider import OpenAIProvider
+
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
+    img_buf = io.BytesIO()
+    img.save(img_buf, format="PNG")
+
+    prompt = (
+        f'Add the title "{title}" as a decorative banner in the upper portion of the image. '
+        f"Use large, elegant lettering that matches the illustration's art style and color palette. "
+        f"The title must be fully visible, horizontally centered, and well within the image boundaries — "
+        f"leave clear margin on all sides. Keep the rest of the illustration unchanged."
+    )
+
+    provider = OpenAIProvider()
+    # No mask — the model places the title naturally without painting outside the canvas.
+    result = provider.edit(img_buf.getvalue(), b"", prompt, width, height)
+    logger.debug("add_title_to_illustration: got %d bytes", len(result))
+    return result
 
 
 def try_shared_album_art(
@@ -306,11 +333,15 @@ def generate_cover_if_missing(
 
     provider = get_provider()
     logger.debug("generate_cover: using provider %s", type(provider).__name__)
-    # Request 3:4 aspect — wider than our 638:1011 target (~0.63), so
-    # resize_cover crops the sides and preserves the full height including
-    # title text at the top.
-    image_bytes = provider.generate(prompt, 768, 1024)
+    # Request 1024×1536 (2:3, ~0.667) — maps exactly to that OpenAI size,
+    # only ~28px cropped per side to reach our 638:1011 (~0.631) target.
+    image_bytes = provider.generate(prompt, 1024, 1536)
     logger.debug("generate_cover: generated %d bytes", len(image_bytes))
+
+    # Add title via AI inpainting before resize (edit API needs supported dimensions).
+    if playlist.title:
+        logger.debug("generate_cover: adding title '%s' via inpainting", playlist.title)
+        image_bytes = add_title_to_illustration(image_bytes, playlist.title, 1024, 1536)
 
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp.write(image_bytes)

@@ -50,3 +50,26 @@ class OpenAIProvider:
         logger.debug("openai: generated %d bytes", len(result))
         return result
 
+    def edit(self, image_bytes: bytes, mask_bytes: bytes, prompt: str, width: int, height: int) -> bytes:
+        """Edit an image. Pass empty mask_bytes to let the model edit freely. Returns PNG bytes."""
+        import io as _io
+        nearest_w, nearest_h = _nearest_size(width, height)
+        size_str = f"{nearest_w}x{nearest_h}"
+        logger.debug("openai: editing %s mask=%s prompt=%.80s...", size_str, bool(mask_bytes), prompt)
+
+        kwargs: dict = dict(
+            model="gpt-image-1",
+            image=("image.png", _io.BytesIO(image_bytes), "image/png"),
+            prompt=prompt,
+            size=size_str,
+        )
+        if mask_bytes:
+            kwargs["mask"] = ("mask.png", _io.BytesIO(mask_bytes), "image/png")
+
+        response = self._client.images.edit(**kwargs)
+
+        b64_data = response.data[0].b64_json
+        result = base64.b64decode(b64_data)
+        logger.debug("openai: edited %d bytes", len(result))
+        return result
+

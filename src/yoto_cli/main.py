@@ -882,7 +882,7 @@ def cover(path, force, backup):
     if force and backup:
         raise click.UsageError("--force and --backup are mutually exclusive")
     logger.debug("command: cover path=%s force=%s backup=%s", path, force, backup)
-    from yoto_lib.cover import generate_cover_if_missing, build_cover_prompt, resize_cover, try_shared_album_art, COVER_WIDTH, COVER_HEIGHT
+    from yoto_lib.cover import build_cover_prompt, resize_cover, try_shared_album_art, add_title_to_illustration
     from yoto_lib.image_providers import get_provider
     from yoto_lib import mka
     import tempfile
@@ -936,9 +936,14 @@ def cover(path, force, backup):
 
     click.echo("Generating cover art...")
     provider = get_provider()
-    # 3:4 aspect — wider than 638:1011 target, so resize_cover crops sides
-    # and preserves full height including title text at top.
-    image_bytes = provider.generate(prompt, 768, 1024)
+    # Request 1024×1536 — maps exactly to that OpenAI size (~0.667),
+    # only ~28px cropped per side to reach 638:1011 (~0.631) target.
+    image_bytes = provider.generate(prompt, 1024, 1536)
+
+    # Add title via AI inpainting before resize (edit API needs supported dimensions).
+    if playlist.title:
+        click.echo("Adding title...")
+        image_bytes = add_title_to_illustration(image_bytes, playlist.title, 1024, 1536)
 
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp.write(image_bytes)
