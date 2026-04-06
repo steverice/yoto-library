@@ -116,17 +116,12 @@ def reframe_album_art(
         if hasattr(provider, "recompose"):
             _log("Recomposing album art for cover...")
             recomposed_raw = provider.recompose(art_bytes, _RECOMPOSE_PROMPT, COVER_WIDTH, COVER_HEIGHT)
-            # Center-crop to exact cover dimensions (preserves aspect ratio)
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                tmp.write(recomposed_raw)
-                tmp_path = Path(tmp.name)
-            try:
-                cropped_path = Path(tmp_path.parent / "cropped.png")
-                resize_cover(tmp_path, cropped_path)
-                recomposed = cropped_path.read_bytes()
-                cropped_path.unlink(missing_ok=True)
-            finally:
-                tmp_path.unlink(missing_ok=True)
+            # Resize to exact cover dimensions
+            img = Image.open(io.BytesIO(recomposed_raw))
+            img = img.resize((COVER_WIDTH, COVER_HEIGHT), Image.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            recomposed = buf.getvalue()
             logger.debug("reframe_album_art: recomposition produced %d bytes", len(recomposed))
     except Exception as exc:
         logger.warning("reframe_album_art: recomposition failed: %s", exc)
