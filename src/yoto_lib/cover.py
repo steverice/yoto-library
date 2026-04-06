@@ -96,7 +96,7 @@ _RECOMPOSE_PROMPT = (
     "A tall portrait version of this scene. Same characters, same art style, "
     "same colors, same mood. Keep all text exactly as it appears. "
     "Extend the scene to fill the entire frame with detailed artwork — "
-    "the solid-colored bars at the top and bottom should become part of the scene."
+    "any solid-colored borders should become part of the scene."
 )
 
 
