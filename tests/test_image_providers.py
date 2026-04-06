@@ -120,3 +120,24 @@ class TestOpenAIProviderEdit:
         mock_client.images.edit.assert_called_once()
         call_kwargs = mock_client.images.edit.call_args
         assert "extend the background" in str(call_kwargs)
+
+
+class TestGeminiProviderEdit:
+    def test_edit_calls_api_with_image(self, monkeypatch):
+        """edit() sends source image to Gemini editing API and returns bytes."""
+        fake_image_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
+
+        mock_response = MagicMock()
+        mock_response.generated_images = [MagicMock()]
+        mock_response.generated_images[0].image.image_bytes = fake_image_bytes
+
+        mock_client = MagicMock()
+        mock_client.models.edit_image.return_value = mock_response
+
+        with patch("yoto_lib.image_providers.gemini_provider.genai.Client", return_value=mock_client):
+            from yoto_lib.image_providers.gemini_provider import GeminiProvider
+            provider = GeminiProvider()
+            result = provider.edit(b"source image", "extend the background", 638, 1011)
+
+        assert result == fake_image_bytes
+        mock_client.models.edit_image.assert_called_once()
