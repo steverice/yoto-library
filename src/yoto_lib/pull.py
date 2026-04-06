@@ -91,6 +91,7 @@ def pull_playlist(
     card_id: str | None = None,
     dry_run: bool = False,
     on_track_done: Callable[[str], None] | None = None,
+    on_total: Callable[[int], None] | None = None,
 ) -> PullResult:
     """Download a remote Yoto playlist into a local folder."""
     folder = Path(folder)
@@ -152,6 +153,9 @@ def pull_playlist(
                 track_url=track_url,
                 icon_ref=icon_ref,
             ))
+
+    if on_total:
+        on_total(len(jobs))
 
     # Process tracks in parallel
     logger.debug("pull: %d tracks to download", len(jobs))
