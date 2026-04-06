@@ -256,7 +256,7 @@ class TestTrySharedAlbumArt:
             result = try_shared_album_art(playlist)
 
         assert result is True
-        mock_reframe.assert_called_once_with(shared_art, cover_path, log=None)
+        mock_reframe.assert_called_once_with(shared_art, cover_path, log=None, style="compare")
 
     def test_generate_cover_tries_shared_art_first(self):
         """generate_cover_if_missing tries shared art before AI generation."""
@@ -350,73 +350,73 @@ class TestReframeAlbumArt:
         art_bytes = _make_png_bytes(500, 500, "green")
         output = tmp_path / "cover.png"
 
+        mock_provider = MagicMock()
+        mock_provider.recompose.return_value = _make_png_bytes(638, 1011, "blue")
+
         with (
-            patch("yoto_lib.cover.get_provider") as mock_get_provider,
+            patch("yoto_lib.image_providers.flux_provider.FluxProvider", return_value=mock_provider),
+            patch("yoto_lib.cover.check_text_quality", return_value=True),
             patch("yoto_lib.cover.compare_covers", return_value="a"),
         ):
-            mock_provider = MagicMock()
-            mock_provider.edit.return_value = _make_png_bytes(638, 1011, "blue")
-            mock_get_provider.return_value = mock_provider
             reframe_album_art(art_bytes, output)
 
         assert output.exists()
         img = Image.open(output)
         assert img.size == (COVER_WIDTH, COVER_HEIGHT)
 
-    def test_uses_outpainted_when_claude_picks_b(self, tmp_path):
-        """When Claude picks B, the outpainted version is saved."""
+    def test_uses_recomposed_when_claude_picks_b(self, tmp_path):
+        """When Claude picks B, the recomposed version is saved."""
         art_bytes = _make_png_bytes(500, 500, "green")
         output = tmp_path / "cover.png"
 
-        outpainted_bytes = _make_png_bytes(638, 1011, "blue")
+        mock_provider = MagicMock()
+        mock_provider.recompose.return_value = _make_png_bytes(638, 1011, "blue")
 
         with (
-            patch("yoto_lib.cover.get_provider") as mock_get_provider,
+            patch("yoto_lib.image_providers.flux_provider.FluxProvider", return_value=mock_provider),
+            patch("yoto_lib.cover.check_text_quality", return_value=True),
             patch("yoto_lib.cover.compare_covers", return_value="b"),
         ):
-            mock_provider = MagicMock()
-            mock_provider.edit.return_value = outpainted_bytes
-            mock_get_provider.return_value = mock_provider
             reframe_album_art(art_bytes, output)
 
-        # The saved cover should be blue (outpainted), not green (padded)
+        # The saved cover should be blue (recomposed), not green (padded)
         img = Image.open(output)
         center = img.getpixel((COVER_WIDTH // 2, COVER_HEIGHT // 2))
         assert center[2] > 200  # blue channel dominant
 
-    def test_falls_back_to_padded_when_outpaint_fails(self, tmp_path):
-        """When the provider's edit() fails, use the padded version."""
+    def test_falls_back_to_padded_when_recompose_fails(self, tmp_path):
+        """When FluxProvider raises, use the padded version."""
         art_bytes = _make_png_bytes(500, 500, "green")
         output = tmp_path / "cover.png"
 
         with (
-            patch("yoto_lib.cover.get_provider") as mock_get_provider,
+            patch("yoto_lib.image_providers.flux_provider.FluxProvider", side_effect=Exception("API error")),
             patch("yoto_lib.cover.compare_covers") as mock_compare,
         ):
-            mock_provider = MagicMock()
-            mock_provider.edit.side_effect = OSError("API error")
-            mock_get_provider.return_value = mock_provider
             reframe_album_art(art_bytes, output)
 
-        # Should not have called compare (only one candidate)
         mock_compare.assert_not_called()
         assert output.exists()
         img = Image.open(output)
         assert img.size == (COVER_WIDTH, COVER_HEIGHT)
 
-    def test_falls_back_to_padded_when_no_provider(self, tmp_path):
-        """When get_provider raises, use the padded version."""
+    def test_text_repair_triggered_after_max_attempts(self, tmp_path):
+        """When all FLUX attempts fail text check, repair pipeline runs."""
         art_bytes = _make_png_bytes(500, 500, "green")
         output = tmp_path / "cover.png"
 
-        with (
-            patch("yoto_lib.cover.get_provider", side_effect=ValueError("no provider")),
-            patch("yoto_lib.cover.compare_covers") as mock_compare,
-        ):
-            reframe_album_art(art_bytes, output)
+        mock_provider = MagicMock()
+        mock_provider.recompose.return_value = _make_png_bytes(638, 1011, "blue")
 
-        mock_compare.assert_not_called()
-        assert output.exists()
+        with (
+            patch("yoto_lib.image_providers.flux_provider.FluxProvider", return_value=mock_provider),
+            patch("yoto_lib.cover.check_text_quality", return_value=False),
+            patch("yoto_lib.cover.repair_text", return_value=_make_png_bytes(638, 1011, "red")) as mock_repair,
+        ):
+            reframe_album_art(art_bytes, output, style="ai")
+
+        assert mock_provider.recompose.call_count == 3
+        mock_repair.assert_called_once()
 
 
 class TestTrySharedAlbumArtReframe:
@@ -440,7 +440,7 @@ class TestTrySharedAlbumArtReframe:
             result = try_shared_album_art(playlist)
 
         assert result is True
-        mock_reframe.assert_called_once_with(shared_art, cover_path, log=None)
+        mock_reframe.assert_called_once_with(shared_art, cover_path, log=None, style="compare")
         mock_resize.assert_not_called()
 
 
@@ -455,8 +455,8 @@ needs_network = pytest.mark.skipif(
 
 @needs_network
 class TestReframeE2E:
-    def test_reframe_with_real_outpainting(self, tmp_path):
-        """Integration test: pad + outpaint + compare with real providers."""
+    def test_reframe_with_real_recomposition(self, tmp_path):
+        """Integration test: pad + recompose + compare with real providers."""
         # Create a solid-green test image simulating album art
         art_bytes = _make_png_bytes(600, 600, "#2baf45")
         output = tmp_path / "cover.png"

@@ -15,7 +15,14 @@ Each playlist is a folder. Audio files live in MKA containers that carry metadat
 **Optional:**
 
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) — YouTube audio downloads (for `.webloc` support)
-- [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) — auto-generated descriptions, LLM-based icon matching
+
+**AI services (for icon and cover art generation):**
+
+- [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) — descriptions, icon matching, cover text quality checks (uses your Claude subscription)
+- [RetroDiffusion](https://www.retrodiffusion.ai/) — 16x16 pixel art icon generation (`RETRODIFFUSION_API_KEY`)
+- [Together AI](https://www.together.ai/) — album art recomposition via FLUX Kontext (`TOGETHER_API_KEY`)
+- [Google Gemini](https://aistudio.google.com/) — text rendering for cover art repair (`GEMINI_API_KEY`)
+- [OpenAI](https://platform.openai.com/) — text-to-image cover generation when no album art exists (`OPENAI_API_KEY`)
 
 On macOS with Homebrew:
 
@@ -176,20 +183,16 @@ Print the shell completion setup command for zsh, bash, or fish. Auto-detects yo
 
 Authentication is handled via macOS Keychain — no config file needed. Run `yoto auth` to log in.
 
-AI image generation requires API keys in a `.env` file at the project root:
+AI services require API keys set as environment variables (e.g., in `.env` at the project root):
 
 ```
-OPENAI_API_KEY=...           # cover art via OpenAI
-GOOGLE_API_KEY=...           # cover art via Gemini
-RETRODIFFUSION_API_KEY=...   # icon generation
-TOGETHER_AI_KEY=...          # alternative icon generation
+RETRODIFFUSION_API_KEY=...   # retrodiffusion.ai — icon generation
+TOGETHER_API_KEY=...         # together.ai — album art recomposition (FLUX Kontext)
+GEMINI_API_KEY=...           # aistudio.google.com — text layer rendering
+OPENAI_API_KEY=...           # platform.openai.com — text-to-image cover generation
 ```
 
-Select the image provider for cover art generation:
-
-```
-YOTO_IMAGE_PROVIDER=openai    # default; also supports "gemini"
-```
+Each service handles a specific part of the pipeline — see [AI providers](#ai-providers) below.
 
 ## How it works
 
@@ -199,9 +202,34 @@ YOTO_IMAGE_PROVIDER=openai    # default; also supports "gemini"
 
 **Icon pipeline** — if a track already has an icon attachment in its MKA, that icon is used. Otherwise, the track title is matched against Yoto's public icon catalog via LLM. High-confidence matches are used directly; lower-confidence matches are compared against 3 AI-generated alternatives (via RetroDiffusion pixel art). The LLM picks the winner.
 
-**Cover art** — if `cover.png` is missing, the tool first checks whether all tracks share identical embedded album art (e.g., from a ripped CD or tagged album). If so, it resizes that artwork to 638x1011 and uses it directly. Otherwise, a description is auto-generated from track metadata via Claude CLI, then an image is generated via the configured provider and cropped to fit. Delete `cover.png` to regenerate.
+**Cover art** — if `cover.png` is missing, the tool first checks whether all tracks share identical embedded album art (e.g., from a ripped CD or tagged album). If so, FLUX Kontext recomposes the square art into a 638x1011 portrait layout. Claude checks the result for text quality — if text is mangled after 3 attempts, a repair pipeline kicks in: Claude OCRs the original text, Gemini renders a styled text layer, Claude picks placement coordinates, and PIL composites the text onto the artwork. If no shared album art exists, OpenAI generates a cover from scratch using track metadata. Delete `cover.png` to regenerate.
+
+The `yoto cover` command supports `--style` to control reframing behavior:
+- `compare` (default) — generates padded and AI versions, Claude picks the better one
+- `ai` — always use the AI recomposition
+- `pad` — simple edge-color padding, no AI
 
 **YouTube downloads** — drop a `.webloc` file (Safari bookmark) into a playlist folder. On `yoto sync` or `yoto download`, the URL is resolved via yt-dlp, silence is trimmed from pre/post-roll, and the audio is wrapped in MKA. The `.webloc` is deleted after successful download.
+
+## AI providers
+
+Each AI task uses a specific provider chosen for best results at that task:
+
+| Task | Provider | Key | Pricing |
+|------|----------|-----|---------|
+| Icon generation (16x16 pixel art) | [RetroDiffusion](https://www.retrodiffusion.ai/) | `RETRODIFFUSION_API_KEY` | ~$0.003/image |
+| Album art recomposition | [FLUX Kontext Pro](https://www.together.ai/) via Together AI | `TOGETHER_API_KEY` | ~$0.04/image |
+| Text layer rendering (cover repair) | [Gemini 2.5 Flash](https://aistudio.google.com/) | `GEMINI_API_KEY` | ~$0.07/image |
+| Text-to-image cover generation | [OpenAI gpt-image-1](https://platform.openai.com/) | `OPENAI_API_KEY` | ~$0.05/image |
+| Descriptions, icon matching, text checks | [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) | Subscription | Included with Claude subscription |
+
+**Getting API keys:**
+
+- **RetroDiffusion** — sign up at [retrodiffusion.ai](https://www.retrodiffusion.ai/), key is on your dashboard
+- **Together AI** — sign up at [together.ai](https://www.together.ai/), create key in Settings → API Keys
+- **Gemini** — create a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (free tier available)
+- **OpenAI** — sign up at [platform.openai.com](https://platform.openai.com/), create key in API Keys
+- **Claude CLI** — install from [docs.anthropic.com](https://docs.anthropic.com/en/docs/claude-code), uses your Claude subscription
 
 ## Development
 

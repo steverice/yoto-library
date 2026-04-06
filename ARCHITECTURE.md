@@ -119,6 +119,24 @@ ffmpeg -y -i track.mka \
 
 This produces byte-identical output regardless of what tags, icons, or other attachments have been added to the MKA since the bsdiff patch was generated.
 
+## AI provider strategy
+
+Each AI-powered feature uses a hardcoded provider chosen for best results at that specific task. Providers are not interchangeable — the pipeline depends on each model's specific strengths.
+
+**Icon pipeline:** RetroDiffusion generates 16x16 pixel art icons. Claude CLI (Haiku) matches track titles to Yoto's catalog; Claude CLI (Sonnet) compares candidates visually.
+
+**Cover recomposition pipeline** (when shared album art exists):
+
+1. **FLUX Kontext Pro** (Together AI) — recomposes square album art into portrait layout. Retried up to 3 times.
+2. **Claude CLI** (Haiku) — checks if text survived the recomposition.
+3. If text is mangled after 3 attempts, the repair pipeline runs:
+   - **Claude CLI** (Sonnet) — OCRs original album text
+   - **Gemini 2.5 Flash Image** (AI Studio) — renders styled text on black background
+   - **Claude CLI** (Sonnet) — picks placement coordinates on the portrait image
+   - **PIL** — chroma keys black background and composites text at coordinates
+
+**Text-to-image cover generation** (when no shared album art exists): OpenAI `gpt-image-1` generates a cover from track metadata.
+
 ## Upload pipeline
 
 Yoto's transcode API accepts any audio format — including MKA — and transcodes to Opus/OGG for playback. MKA files are uploaded directly without extraction; the transcoder handles the Matroska container and finds the audio stream inside.
