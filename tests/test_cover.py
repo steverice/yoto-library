@@ -16,6 +16,7 @@ from yoto_lib.cover import (
     compare_covers,
     generate_cover_if_missing,
     pad_to_cover,
+    reframe_album_art,
     resize_cover,
     try_shared_album_art,
 )
@@ -336,3 +337,81 @@ class TestCompareCovers:
         with patch("yoto_lib.cover._call_claude", return_value=None):
             winner = compare_covers(padded, outpainted)
         assert winner == "b"
+
+
+# ── TestReframeAlbumArt ───────────────────────────────────────────────────────
+
+
+class TestReframeAlbumArt:
+    def test_saves_cover_with_correct_dimensions(self, tmp_path):
+        """Output file must be COVER_WIDTH x COVER_HEIGHT."""
+        art_bytes = _make_png_bytes(500, 500, "green")
+        output = tmp_path / "cover.png"
+
+        with (
+            patch("yoto_lib.cover.get_provider") as mock_get_provider,
+            patch("yoto_lib.cover.compare_covers", return_value="a"),
+        ):
+            mock_provider = MagicMock()
+            mock_provider.edit.return_value = _make_png_bytes(638, 1011, "blue")
+            mock_get_provider.return_value = mock_provider
+            reframe_album_art(art_bytes, output)
+
+        assert output.exists()
+        img = Image.open(output)
+        assert img.size == (COVER_WIDTH, COVER_HEIGHT)
+
+    def test_uses_outpainted_when_claude_picks_b(self, tmp_path):
+        """When Claude picks B, the outpainted version is saved."""
+        art_bytes = _make_png_bytes(500, 500, "green")
+        output = tmp_path / "cover.png"
+
+        outpainted_bytes = _make_png_bytes(638, 1011, "blue")
+
+        with (
+            patch("yoto_lib.cover.get_provider") as mock_get_provider,
+            patch("yoto_lib.cover.compare_covers", return_value="b"),
+        ):
+            mock_provider = MagicMock()
+            mock_provider.edit.return_value = outpainted_bytes
+            mock_get_provider.return_value = mock_provider
+            reframe_album_art(art_bytes, output)
+
+        # The saved cover should be blue (outpainted), not green (padded)
+        img = Image.open(output)
+        center = img.getpixel((COVER_WIDTH // 2, COVER_HEIGHT // 2))
+        assert center[2] > 200  # blue channel dominant
+
+    def test_falls_back_to_padded_when_outpaint_fails(self, tmp_path):
+        """When the provider's edit() fails, use the padded version."""
+        art_bytes = _make_png_bytes(500, 500, "green")
+        output = tmp_path / "cover.png"
+
+        with (
+            patch("yoto_lib.cover.get_provider") as mock_get_provider,
+            patch("yoto_lib.cover.compare_covers") as mock_compare,
+        ):
+            mock_provider = MagicMock()
+            mock_provider.edit.side_effect = Exception("API error")
+            mock_get_provider.return_value = mock_provider
+            reframe_album_art(art_bytes, output)
+
+        # Should not have called compare (only one candidate)
+        mock_compare.assert_not_called()
+        assert output.exists()
+        img = Image.open(output)
+        assert img.size == (COVER_WIDTH, COVER_HEIGHT)
+
+    def test_falls_back_to_padded_when_no_provider(self, tmp_path):
+        """When get_provider raises, use the padded version."""
+        art_bytes = _make_png_bytes(500, 500, "green")
+        output = tmp_path / "cover.png"
+
+        with (
+            patch("yoto_lib.cover.get_provider", side_effect=ValueError("no provider")),
+            patch("yoto_lib.cover.compare_covers") as mock_compare,
+        ):
+            reframe_album_art(art_bytes, output)
+
+        mock_compare.assert_not_called()
+        assert output.exists()
