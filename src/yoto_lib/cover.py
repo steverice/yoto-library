@@ -53,15 +53,18 @@ def resize_cover(source: Path, output: Path) -> None:
     img.save(output, format="PNG")
 
 
-def pad_to_cover(art_bytes: bytes) -> bytes:
-    """Scale album art to fit within cover dimensions and pad with edge color.
+def pad_to_cover(
+    art_bytes: bytes,
+    target_width: int = COVER_WIDTH,
+    target_height: int = COVER_HEIGHT,
+) -> bytes:
+    """Scale album art to fit within target dimensions and pad with edge color.
 
-    Returns PNG bytes of the padded image at COVER_WIDTH x COVER_HEIGHT.
+    Returns PNG bytes of the padded image at target_width x target_height.
     """
     art = Image.open(io.BytesIO(art_bytes)).convert("RGB")
 
-    # Scale to fit within cover dimensions (constrained by width or height)
-    scale = min(COVER_WIDTH / art.width, COVER_HEIGHT / art.height)
+    scale = min(target_width / art.width, target_height / art.height)
     new_w = int(art.width * scale)
     new_h = int(art.height * scale)
     scaled = art.resize((new_w, new_h), Image.LANCZOS)
@@ -79,9 +82,9 @@ def pad_to_cover(art_bytes: bytes) -> bytes:
     avg_g = sum(p[1] for p in edge_pixels) // len(edge_pixels)
     avg_b = sum(p[2] for p in edge_pixels) // len(edge_pixels)
 
-    cover = Image.new("RGB", (COVER_WIDTH, COVER_HEIGHT), (avg_r, avg_g, avg_b))
-    x_offset = (COVER_WIDTH - new_w) // 2
-    y_offset = (COVER_HEIGHT - new_h) // 2
+    cover = Image.new("RGB", (target_width, target_height), (avg_r, avg_g, avg_b))
+    x_offset = (target_width - new_w) // 2
+    y_offset = (target_height - new_h) // 2
     cover.paste(scaled, (x_offset, y_offset))
 
     buf = io.BytesIO()

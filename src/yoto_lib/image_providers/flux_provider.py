@@ -38,22 +38,14 @@ class FluxProvider:
     def recompose(self, image: bytes, prompt: str, width: int, height: int) -> bytes:
         """Recompose an image using FLUX Kontext.
 
-        Pads the source image to portrait dimensions with black bars, then
-        asks FLUX Kontext to recompose the scene for the taller frame.
+        Pads the source image to portrait dimensions using the average edge
+        color, then asks FLUX Kontext to recompose the scene for the taller
+        frame. Edge-color padding blends naturally with the artwork, encouraging
+        FLUX to extend the scene rather than treating the padding as solid bars.
         """
-        # Build a padded canvas: original art centered, black bars fill the rest
-        art = PILImage.open(io.BytesIO(image)).convert("RGB")
-        scale = min(width / art.width, height / art.height)
-        new_w = int(art.width * scale)
-        new_h = int(art.height * scale)
-        scaled = art.resize((new_w, new_h), PILImage.LANCZOS)
-        canvas = PILImage.new("RGB", (width, height), (0, 0, 0))
-        x_off = (width - new_w) // 2
-        y_off = (height - new_h) // 2
-        canvas.paste(scaled, (x_off, y_off))
-        buf = io.BytesIO()
-        canvas.save(buf, format="PNG")
-        padded_b64 = base64.b64encode(buf.getvalue()).decode()
+        from yoto_lib.cover import pad_to_cover
+        padded_bytes = pad_to_cover(image, width, height)
+        padded_b64 = base64.b64encode(padded_bytes).decode()
         data_uri = f"data:image/png;base64,{padded_b64}"
 
         logger.debug("flux: recomposing with kontext, canvas=%dx%d", width, height)
