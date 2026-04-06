@@ -68,13 +68,17 @@ class FluxProvider:
         import io
         from PIL import Image as PILImage
 
+        # Round to multiples of 16 (FLUX requirement)
+        w = round(width / 16) * 16
+        h = round(height / 16) * 16
+
         # Build a padded canvas: original art centered, black bars fill the rest
         art = PILImage.open(io.BytesIO(image)).convert("RGB")
-        scale = min(width / art.width, height / art.height)
+        scale = min(w / art.width, h / art.height)
         new_w = int(art.width * scale)
         new_h = int(art.height * scale)
         scaled = art.resize((new_w, new_h), PILImage.LANCZOS)
-        canvas = PILImage.new("RGB", (width, height), (0, 0, 0))
+        canvas = PILImage.new("RGB", (w, h), (0, 0, 0))
         x_off = (width - new_w) // 2
         y_off = (height - new_h) // 2
         canvas.paste(scaled, (x_off, y_off))
@@ -82,7 +86,7 @@ class FluxProvider:
         canvas.save(buf, format="PNG")
         padded_bytes = buf.getvalue()
 
-        logger.debug("flux: recomposing with kontext fill, canvas=%dx%d", width, height)
+        logger.debug("flux: recomposing with kontext fill, canvas=%dx%d", w, h)
         image_url = _upload_temp(padded_bytes)
         logger.debug("flux: uploaded padded canvas to %s", image_url)
 
