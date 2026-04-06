@@ -36,3 +36,32 @@ class GeminiProvider:
             return result
 
         raise RuntimeError("No image found in Gemini response")
+
+    def edit(self, image: bytes, prompt: str, width: int, height: int) -> bytes:
+        """Edit an image using Gemini's image editing API. Returns PNG bytes."""
+        target = width / height
+        options = [("1:1", 1.0), ("9:16", 9/16), ("16:9", 16/9),
+                   ("3:4", 3/4), ("4:3", 4/3)]
+        aspect_ratio = min(options, key=lambda x: abs(x[1] - target))[0]
+        logger.debug("gemini: editing, aspect=%s prompt=%.80s...", aspect_ratio, prompt)
+
+        response = self._client.models.edit_image(
+            model="imagen-3.0-capability-001",
+            prompt=prompt,
+            reference_images=[types.RawReferenceImage(
+                reference_image=types.Image(image_bytes=image, mime_type="image/png"),
+                reference_id=0,
+            )],
+            config=types.EditImageConfig(
+                edit_mode="EDIT_MODE_OUTPAINT",
+                number_of_images=1,
+                aspect_ratio=aspect_ratio,
+            ),
+        )
+
+        if response.generated_images:
+            result = response.generated_images[0].image.image_bytes
+            logger.debug("gemini: edited %d bytes", len(result))
+            return result
+
+        raise RuntimeError("No image found in Gemini edit response")
