@@ -93,9 +93,8 @@ def pad_to_cover(
 
 
 _RECOMPOSE_PROMPT = (
-    "Outpaint this image to a taller portrait view, maintaining the subject, "
-    "style, lighting, and atmosphere. Keep all text exactly as it appears. "
-    "Extend the scene naturally into the surrounding areas."
+    "A tall portrait version of this scene. Same characters, same art style, "
+    "same colors, same mood. Keep all text exactly as it appears."
 )
 
 
