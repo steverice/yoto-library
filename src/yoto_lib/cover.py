@@ -93,10 +93,9 @@ def pad_to_cover(
 
 
 _RECOMPOSE_PROMPT = (
-    "A tall portrait version of this scene. Same characters, same art style, "
-    "same colors, same mood. Keep all text exactly as it appears. "
-    "Extend the scene to fill the entire frame with detailed artwork — "
-    "any solid-colored borders should become part of the scene."
+    "Outpaint this image to a taller portrait view, maintaining the subject, "
+    "style, lighting, and atmosphere. Keep all text exactly as it appears. "
+    "Extend the scene naturally into the surrounding areas."
 )
 
 
