@@ -482,15 +482,16 @@ def composite_text(
         return recomposed
     text_cropped = text_rgba.crop(bbox)
 
-    # Scale to 40% of image height
-    target_h = int(flux_img.height * 0.4)
-    scale = target_h / text_cropped.height
+    # Scale to fit within placement box
+    pw, ph = placement["width"], placement["height"]
+    scale = min(pw / text_cropped.width, ph / text_cropped.height)
     tw = max(1, int(text_cropped.width * scale))
-    text_final = text_cropped.resize((tw, target_h), Image.LANCZOS)
+    th = max(1, int(text_cropped.height * scale))
+    text_final = text_cropped.resize((tw, th), Image.LANCZOS)
 
     # Center on placement box center
-    cx = placement["x"] + placement["width"] // 2 - tw // 2
-    cy = placement["y"] + placement["height"] // 2 - target_h // 2
+    cx = placement["x"] + pw // 2 - tw // 2
+    cy = placement["y"] + ph // 2 - th // 2
     # Clamp to image bounds
     cx = max(0, min(cx, flux_img.width - tw))
     cy = max(0, min(cy, flux_img.height - target_h))
