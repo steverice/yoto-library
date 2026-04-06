@@ -13,6 +13,7 @@ from yoto_lib.cover import (
     COVER_HEIGHT,
     COVER_WIDTH,
     build_cover_prompt,
+    compare_covers,
     generate_cover_if_missing,
     pad_to_cover,
     resize_cover,
@@ -306,9 +307,6 @@ class TestPadToCover:
 
 
 # ── TestCompareCovers ─────────────────────────────────────────────────────────
-
-
-from yoto_lib.cover import compare_covers
 
 
 class TestCompareCovers:
