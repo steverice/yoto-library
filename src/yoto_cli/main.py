@@ -876,9 +876,11 @@ def reset_icon(tracks):
 @cli.command()
 @click.argument("path", default=".", type=click.Path(exists=True), shell_complete=_complete_dirs)
 @click.option("--force", is_flag=True, help="Regenerate even if cover.png exists")
-def cover(path, force):
+@click.option("--style", type=click.Choice(["compare", "ai", "pad"]), default="compare",
+              help="Reframe style: compare (Claude picks), ai (always AI), pad (no AI)")
+def cover(path, force, style):
     """Generate cover art for a playlist folder."""
-    logger.debug("command: cover path=%s force=%s", path, force)
+    logger.debug("command: cover path=%s force=%s style=%s", path, force, style)
     from yoto_lib.cover import generate_cover_if_missing, build_cover_prompt, resize_cover, try_shared_album_art, COVER_WIDTH, COVER_HEIGHT
     from yoto_lib.image_providers import get_provider
     from yoto_lib import mka
@@ -902,7 +904,7 @@ def cover(path, force):
         )
 
     # Try reusing shared album art first
-    if try_shared_album_art(playlist):
+    if try_shared_album_art(playlist, style=style):
         click.echo(f"Reused album art as cover: {cover_path}")
         return
 

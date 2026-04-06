@@ -1,11 +1,35 @@
 """FLUX image provider via Together AI."""
 import base64
 import logging
+import tempfile
+from pathlib import Path
 
 import requests
 from together import Together
 
 logger = logging.getLogger(__name__)
+
+# Temporary file hosting for image upload (Together AI requires HTTP URLs)
+_TMPFILES_UPLOAD = "https://tmpfiles.org/api/v1/upload"
+
+
+def _upload_temp(image_bytes: bytes) -> str:
+    """Upload image bytes to tmpfiles.org, return a direct-download URL."""
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+        f.write(image_bytes)
+        tmp_path = Path(f.name)
+    try:
+        resp = requests.post(
+            _TMPFILES_UPLOAD,
+            files={"file": ("image.png", open(tmp_path, "rb"), "image/png")},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        url = resp.json()["data"]["url"]
+        # Convert page URL to direct download URL
+        return url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 class FluxProvider:
@@ -27,12 +51,12 @@ class FluxProvider:
             width=w,
             height=h,
             steps=28,
+            response_format="base64",
         )
 
-        url = response.data[0].url
-        img_bytes = requests.get(url, timeout=30).content
-        logger.debug("flux: generated %d bytes", len(img_bytes))
-        return img_bytes
+        result = base64.b64decode(response.data[0].b64_json)
+        logger.debug("flux: generated %d bytes", len(result))
+        return result
 
     def recompose(self, image: bytes, prompt: str, width: int, height: int) -> bytes:
         """Recompose an image using FLUX Kontext. Returns image bytes."""
@@ -40,19 +64,19 @@ class FluxProvider:
         h = round(height / 16) * 16
         logger.debug("flux: recomposing %dx%d, prompt=%.80s...", w, h, prompt)
 
-        b64 = base64.b64encode(image).decode()
-        data_uri = f"data:image/png;base64,{b64}"
+        image_url = _upload_temp(image)
+        logger.debug("flux: uploaded source image to %s", image_url)
 
         response = self._client.images.generate(
             model="black-forest-labs/FLUX.1-kontext-pro",
             prompt=prompt,
-            image_url=data_uri,
+            image_url=image_url,
             width=w,
             height=h,
             steps=28,
+            response_format="base64",
         )
 
-        url = response.data[0].url
-        img_bytes = requests.get(url, timeout=30).content
-        logger.debug("flux: recomposed %d bytes", len(img_bytes))
-        return img_bytes
+        result = base64.b64decode(response.data[0].b64_json)
+        logger.debug("flux: recomposed %d bytes", len(result))
+        return result
