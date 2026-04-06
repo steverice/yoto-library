@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import logging
-import subprocess
+import re
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
 from PIL import Image
 
 from yoto_lib.image_providers import get_provider
@@ -87,52 +89,65 @@ def pad_to_cover(art_bytes: bytes) -> bytes:
     return buf.getvalue()
 
 
-_OUTPAINT_PROMPT = (
-    "This is a square album cover. Extend ONLY the background to fill a taller "
-    "portrait frame. Do NOT stretch, scale, distort, or change the aspect ratio "
-    "of any element in the original image. The original artwork must remain "
-    "pixel-identical at its original size and proportions in the center. "
-    "Only add new background content above and below to fill the extra space."
+_RECOMPOSE_PROMPT = (
+    "A tall portrait version of this scene. Same characters, same art style, "
+    "same colors, same mood. Keep all text exactly as it appears."
 )
 
 
 def reframe_album_art(
     art_bytes: bytes,
     output_path: Path,
-    log: Callable[[str], None] | None = None,
+    log: "Callable[[str], None] | None" = None,
+    style: str = "compare",
 ) -> None:
     """Reframe square album art into a portrait cover.
 
-    Generates two candidates (padded and outpainted), uses Claude vision
-    to pick the better one, and saves it to output_path.
+    style controls which candidate is used:
+      - "compare": generate both, let Claude pick (default)
+      - "ai": always use AI recomposition (fall back to padded on failure)
+      - "pad": always use padded, skip AI
     """
     _log = log or (lambda msg: None)
 
     # Candidate A: simple padding
     padded = pad_to_cover(art_bytes)
 
-    # Candidate B: AI outpainting
-    outpainted = None
-    try:
-        provider = get_provider()
-        if hasattr(provider, "edit"):
-            _log("Outpainting album art for cover...")
-            outpainted_raw = provider.edit(art_bytes, _OUTPAINT_PROMPT, COVER_WIDTH, COVER_HEIGHT)
-            # Resize to exact cover dimensions
-            img = Image.open(io.BytesIO(outpainted_raw))
-            img = img.resize((COVER_WIDTH, COVER_HEIGHT), Image.LANCZOS)
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            outpainted = buf.getvalue()
-            logger.debug("reframe_album_art: outpainting produced %d bytes", len(outpainted))
-    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
-        logger.warning("reframe_album_art: outpainting failed: %s", exc)
+    if style == "pad":
+        _log("Using padded album art as cover")
+        output_path.write_bytes(padded)
+        return
 
-    # Pick the winner
-    if outpainted is not None:
-        winner = compare_covers(padded, outpainted)
-        result = padded if winner == "a" else outpainted
-        _log(f"Cover comparison: using {'padded' if winner == 'a' else 'outpainted'} version")
+    # Candidate B: AI recomposition via FLUX Kontext (retry up to 3 times for good text)
+    recomposed = None
+    max_attempts = 3
+    try:
+        from yoto_lib.image_providers.flux_provider import FluxProvider
+        provider = FluxProvider()
+        for attempt in range(1, max_attempts + 1):
+            _log(f"Recomposing album art for cover (attempt {attempt}/{max_attempts})...")
+            recomposed_raw = provider.recompose(art_bytes, _RECOMPOSE_PROMPT, COVER_WIDTH, COVER_HEIGHT)
+            recomposed = pad_to_cover(recomposed_raw)
+            logger.debug("reframe_album_art: recomposition produced %d bytes", len(recomposed))
+
+            if check_text_quality(art_bytes, recomposed):
+                _log("Text check passed")
+                break
+            _log("Text check failed")
+
+            if attempt == max_attempts:
+                _log("All attempts had text issues — repairing...")
+                recomposed = repair_text(art_bytes, recomposed, log=log)
+    except Exception as exc:
+        logger.warning("reframe_album_art: recomposition failed: %s", exc)
+
+    if style == "ai":
+        result = recomposed if recomposed is not None else padded
+        _log(f"Using {'recomposed' if recomposed is not None else 'padded (fallback)'} cover")
+    elif recomposed is not None:
+        winner = compare_covers(padded, recomposed)
+        result = padded if winner == "a" else recomposed
+        _log(f"Cover comparison: using {'padded' if winner == 'a' else 'recomposed'} version")
     else:
         result = padded
         _log("Using padded album art as cover")
@@ -174,8 +189,9 @@ def build_cover_prompt(
 
 
 def try_shared_album_art(
-    playlist: Playlist,
-    log: Callable[[str], None] | None = None,
+    playlist: "Playlist",
+    log: "Callable[[str], None] | None" = None,
+    style: str = "compare",
 ) -> bool:
     """Check if all tracks share identical album art; if so, save it as the cover.
 
@@ -222,13 +238,13 @@ def try_shared_album_art(
     )
     _log("Reusing shared album art as cover")
 
-    reframe_album_art(first_art_bytes, playlist.cover_path, log=log)
+    reframe_album_art(first_art_bytes, playlist.cover_path, log=log, style=style)
     return True
 
 
 def generate_cover_if_missing(
-    playlist: Playlist,
-    log: Callable[[str], None] | None = None,
+    playlist: "Playlist",
+    log: "Callable[[str], None] | None" = None,
 ) -> None:
     """Generate a cover image for the playlist if one doesn't already exist."""
     if playlist.has_cover:
@@ -248,7 +264,7 @@ def generate_cover_if_missing(
             tags = mka.read_tags(track_path)
             title = tags.get("title") or Path(filename).stem
             artist = tags.get("artist", "")
-        except (subprocess.CalledProcessError, OSError, KeyError, ValueError):
+        except Exception:
             title = Path(filename).stem
             artist = ""
 
@@ -275,6 +291,228 @@ def generate_cover_if_missing(
         resize_cover(tmp_path, playlist.cover_path)
     finally:
         tmp_path.unlink(missing_ok=True)
+
+
+def check_text_quality(original: bytes, recomposed: bytes) -> bool:
+    """Ask Claude to check if text from the original survives in the recomposed image.
+
+    Returns True if text is intact, False if mangled/missing.
+    Falls back to True (accept) on failure.
+    """
+    with tempfile.TemporaryDirectory(prefix="yoto-text-check-") as tmpdir:
+        tmp = Path(tmpdir)
+        orig_path = tmp / "original.png"
+        recomp_path = tmp / "recomposed.png"
+        orig_path.write_bytes(original)
+        recomp_path.write_bytes(recomposed)
+
+        prompt = (
+            f"Compare the text in these two album cover images.\n\n"
+            f"Original: {orig_path}\n"
+            f"Recomposed: {recomp_path}\n\n"
+            f"Is all visible text from the original image present and correctly "
+            f"spelled in the recomposed image? Minor repositioning is fine — "
+            f"only flag missing, garbled, or misspelled text.\n"
+            f"If the original has no text, answer YES.\n\n"
+            f"Reply with ONLY: YES or NO"
+        )
+
+        response = _call_claude(prompt, allowed_tools="Read", model="haiku")
+
+        if response:
+            import re
+            match = re.search(r"\b(YES|NO)\b", response.upper())
+            if match:
+                result = match.group(1) == "YES"
+                logger.info("check_text_quality: %s", "pass" if result else "fail")
+                return result
+
+        logger.info("check_text_quality: defaulting to pass")
+        return True
+
+
+def ocr_album_text(art_bytes: bytes) -> str | None:
+    """Use Claude Sonnet to OCR text from album art. Returns text or None."""
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+        f.write(art_bytes)
+        tmp = f.name
+    try:
+        response = _call_claude(
+            f"Read this album cover image: {tmp}\n"
+            f"List ALL visible text exactly as it appears, preserving "
+            f"capitalization and punctuation. Return ONLY the text, "
+            f"one line per text element. No commentary.",
+            allowed_tools="Read",
+            model="sonnet",
+        )
+        if response and response.strip():
+            logger.debug("ocr_album_text: %r", response.strip())
+            return response.strip()
+    finally:
+        Path(tmp).unlink(missing_ok=True)
+    return None
+
+
+def get_text_placement(
+    original: bytes, recomposed: bytes, width: int, height: int,
+) -> dict | None:
+    """Ask Claude where to place text on the recomposed image.
+
+    Returns dict with x, y, width, height keys, or None on failure.
+    """
+    with tempfile.TemporaryDirectory(prefix="yoto-placement-") as tmpdir:
+        tmp = Path(tmpdir)
+        orig_path = tmp / "original.png"
+        recomp_path = tmp / "recomposed.png"
+        orig_path.write_bytes(original)
+        recomp_path.write_bytes(recomposed)
+
+        response = _call_claude(
+            f"Original album cover: {orig_path}\n"
+            f"Portrait version ({width}x{height}): {recomp_path}\n\n"
+            f"The portrait is missing text from the original. Where should I "
+            f"place it? Match the original's relative position (same side/corner).\n\n"
+            f'Return ONLY JSON: {{"x": <left>, "y": <top>, "width": <w>, "height": <h>}}',
+            allowed_tools="Read",
+            model="sonnet",
+            timeout=180,
+        )
+
+        if response:
+            match = re.search(r"\{[^}]+\}", response)
+            if match:
+                try:
+                    placement = json.loads(match.group())
+                    logger.debug("get_text_placement: %s", placement)
+                    return placement
+                except json.JSONDecodeError:
+                    pass
+
+    logger.warning("get_text_placement: failed")
+    return None
+
+
+def render_text_layer(original: bytes, ocr_text: str) -> bytes | None:
+    """Use Gemini to render album text on a black background.
+
+    Shows Gemini the original art for style reference and tells it the
+    exact text to render. Returns PNG bytes or None on failure.
+    """
+    try:
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client()
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-image",
+            contents=[
+                f"Look at the text styling in this album cover — the font, color, "
+                f"size, weight, and position of each text element. "
+                f"Generate a new image with ONLY this exact text on a pure black "
+                f"(#000000) background:\n\n{ocr_text}\n\n"
+                f"Match the font style, color, and approximate position from the "
+                f"original. Spell the text EXACTLY as provided above.\n"
+                f"Only render text on solid black — no artwork, no photos.",
+                types.Part.from_bytes(data=original, mime_type="image/png"),
+            ],
+            config=types.GenerateContentConfig(
+                response_modalities=["IMAGE"],
+            ),
+        )
+
+        for part in response.candidates[0].content.parts:
+            if part.inline_data is not None:
+                logger.debug("render_text_layer: %d bytes", len(part.inline_data.data))
+                return part.inline_data.data
+    except Exception as exc:
+        logger.warning("render_text_layer: failed: %s", exc)
+
+    return None
+
+
+def composite_text(
+    recomposed: bytes, text_layer: bytes, placement: dict,
+) -> bytes:
+    """Chroma-key text from black background and composite onto recomposed image.
+
+    Crops the text layer to its bounding box, scales to 40% of image height,
+    and centers it at the placement coordinates.
+    """
+    flux_img = Image.open(io.BytesIO(recomposed)).convert("RGBA")
+    text_img = Image.open(io.BytesIO(text_layer)).convert("RGBA")
+
+    # Chroma key: black → transparent, feather edges
+    data = np.array(text_img)
+    brightness = data[:, :, :3].astype(float).max(axis=2)
+    data[brightness < 30, 3] = 0
+    edge = (brightness >= 30) & (brightness < 60)
+    data[edge, 3] = ((brightness[edge] - 30) / 30 * 255).clip(0, 255).astype(np.uint8)
+    text_rgba = Image.fromarray(data)
+
+    bbox = text_rgba.getbbox()
+    if bbox is None:
+        logger.warning("composite_text: no visible text in layer")
+        return recomposed
+    text_cropped = text_rgba.crop(bbox)
+
+    # Scale to 40% of image height
+    target_h = int(flux_img.height * 0.4)
+    scale = target_h / text_cropped.height
+    tw = max(1, int(text_cropped.width * scale))
+    text_final = text_cropped.resize((tw, target_h), Image.LANCZOS)
+
+    # Center on placement box center
+    cx = placement["x"] + placement["width"] // 2 - tw // 2
+    cy = placement["y"] + placement["height"] // 2 - target_h // 2
+    # Clamp to image bounds
+    cx = max(0, min(cx, flux_img.width - tw))
+    cy = max(0, min(cy, flux_img.height - target_h))
+
+    logger.debug("composite_text: placing %dx%d at (%d, %d)", tw, target_h, cx, cy)
+    flux_img.paste(text_final, (cx, cy), text_final)
+
+    buf = io.BytesIO()
+    flux_img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def repair_text(
+    original: bytes,
+    recomposed: bytes,
+    log: "Callable[[str], None] | None" = None,
+) -> bytes:
+    """Repair missing/mangled text on a recomposed cover.
+
+    Pipeline: OCR original → Gemini renders text on black → Claude picks
+    placement → chroma key composite onto recomposed image.
+    Falls back to the recomposed image unchanged on any failure.
+    """
+    _log = log or (lambda msg: None)
+
+    _log("Repairing text on cover...")
+    ocr_text = ocr_album_text(original)
+    if not ocr_text:
+        logger.warning("repair_text: OCR failed, keeping recomposed as-is")
+        return recomposed
+
+    logger.debug("repair_text: OCR text: %r", ocr_text)
+
+    text_layer = render_text_layer(original, ocr_text)
+    if not text_layer:
+        logger.warning("repair_text: text rendering failed")
+        return recomposed
+
+    recomposed_img = Image.open(io.BytesIO(recomposed))
+    placement = get_text_placement(
+        original, recomposed, recomposed_img.width, recomposed_img.height,
+    )
+    if not placement:
+        logger.warning("repair_text: placement failed")
+        return recomposed
+
+    result = composite_text(recomposed, text_layer, placement)
+    _log("Text repaired on cover")
+    return result
 
 
 def compare_covers(padded: bytes, outpainted: bytes) -> str:

@@ -6,7 +6,6 @@ import logging
 import os
 import re
 import sys
-from collections.abc import Callable
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -19,7 +18,7 @@ load_dotenv(find_dotenv(usecwd=True))
 logger = logging.getLogger(__name__)
 
 from yoto_lib.auth import AuthError, run_device_code_flow
-from yoto_lib.api import YotoAPI, YotoAPIError
+from yoto_lib.api import YotoAPI
 from yoto_lib.description import generate_description
 from yoto_lib.sync import sync_path
 from yoto_lib.pull import pull_playlist
@@ -97,11 +96,11 @@ def _has_custom_icon(path: Path) -> bool:
         )
         data = json.loads(result.stdout)
         return any(a.get("file_name") == "icon" for a in data.get("attachments", []))
-    except (OSError, subprocess.SubprocessError, json.JSONDecodeError, KeyError):
+    except Exception:
         return False
 
 
-def _complete_path(incomplete: str, filter_fn: Callable[[Path], bool]) -> list[CompletionItem]:
+def _complete_path(incomplete: str, filter_fn):
     """Complete filesystem paths, yielding dirs (for navigation) and filtered files."""
     inc_path = Path(incomplete) if incomplete else Path(".")
 
@@ -131,17 +130,17 @@ def _complete_path(incomplete: str, filter_fn: Callable[[Path], bool]) -> list[C
     return items
 
 
-def _complete_weblocs(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
+def _complete_weblocs(ctx, param, incomplete):
     """Complete .webloc file paths."""
     return _complete_path(incomplete, lambda p: p.suffix.lower() == ".webloc")
 
 
-def _complete_dirs(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
+def _complete_dirs(ctx, param, incomplete):
     """Complete directory paths only."""
     return _complete_path(incomplete, lambda _: False)
 
 
-def _complete_unimported_dirs(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
+def _complete_unimported_dirs(ctx, param, incomplete):
     """Complete directories that lack a playlist.jsonl, falling back to all dirs."""
     results = _complete_path(
         incomplete,
@@ -155,11 +154,11 @@ def _complete_unimported_dirs(ctx: click.Context, param: click.Parameter, incomp
     return filtered if any(item.value.endswith("/") for item in filtered) else results
 
 
-def _is_mka(p: Path) -> bool:
+def _is_mka(p):
     return p.suffix.lower() == ".mka"
 
 
-def _complete_mka_with_icon(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
+def _complete_mka_with_icon(ctx, param, incomplete):
     """Complete .mka files that have a custom icon, falling back to all .mka."""
     results = _complete_path(incomplete, lambda p: _is_mka(p) and _has_custom_icon(p))
     if not any(item.type == "plain" and not item.value.endswith("/") for item in results):
@@ -167,7 +166,7 @@ def _complete_mka_with_icon(ctx: click.Context, param: click.Parameter, incomple
     return results
 
 
-def _complete_mka_without_icon(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
+def _complete_mka_without_icon(ctx, param, incomplete):
     """Complete .mka files that lack a custom icon, falling back to all .mka."""
     results = _complete_path(incomplete, lambda p: _is_mka(p) and not _has_custom_icon(p))
     if not any(item.type == "plain" and not item.value.endswith("/") for item in results):
@@ -178,24 +177,9 @@ def _complete_mka_without_icon(ctx: click.Context, param: click.Parameter, incom
 # ── CLI group ─────────────────────────────────────────────────────────────────
 
 
-class _VerboseGroup(click.Group):
-    """Allow -v/--verbose anywhere in the command line."""
-
-    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
-        # Pull -v/--verbose from anywhere in args so it works both
-        # before and after the subcommand name (e.g. `yoto cover -v`)
-        cleaned = []
-        for arg in args:
-            if arg in ("-v", "--verbose"):
-                ctx.params["verbose"] = True
-            else:
-                cleaned.append(arg)
-        return super().parse_args(ctx, cleaned)
-
-
-@click.group(cls=_VerboseGroup)
+@click.group()
 @click.option("-v", "--verbose", is_flag=True, help="Enable verbose (DEBUG) console output")
-def cli(verbose: bool) -> None:
+def cli(verbose):
     """Manage Yoto CYO playlists as folders on disk."""
     _setup_logging(verbose)
 
@@ -204,7 +188,7 @@ def cli(verbose: bool) -> None:
 
 
 @cli.command()
-def auth() -> None:
+def auth():
     """Authenticate with Yoto (OAuth device code flow)."""
     logger.debug("command: auth")
     try:
@@ -220,7 +204,7 @@ def auth() -> None:
 @click.argument("path", default=".", type=click.Path(exists=True))
 @click.option("--dry-run", is_flag=True, help="Preview changes without executing")
 @click.option("--no-trim", is_flag=True, help="Skip silence trimming on YouTube downloads")
-def sync(path: str, dry_run: bool, no_trim: bool) -> None:
+def sync(path, dry_run, no_trim):
     """Push local playlist state to Yoto."""
     logger.debug("command: sync path=%s dry_run=%s no_trim=%s", path, dry_run, no_trim)
     trim = not no_trim
@@ -233,20 +217,30 @@ def sync(path: str, dry_run: bool, no_trim: bool) -> None:
                 click.echo(f"Error: {error}", err=True)
         return
 
-    from yoto_lib.playlist import load_playlist as _load
-    from yoto_cli.progress import make_progress
-    playlist = _load(Path(path))
-    total = len(playlist.track_files) * 2 + 2
+    if sys.stderr.isatty():
+        from tqdm import tqdm
 
-    with make_progress() as progress:
-        task = progress.add_task(playlist.title, total=total, status="starting")
+        # Load playlist to get total track count for the progress bar
+        from yoto_lib.playlist import load_playlist as _load
+        playlist = _load(Path(path))
+        total = len(playlist.track_files)
+        # Steps: icons + uploads + cover + save
+        pbar = tqdm(total=total * 2 + 2, desc=playlist.title, bar_format="{desc}: \033[48;5;236m{bar}\033[0m {n_fmt}/{total_fmt}")
+        step = [0]
 
-        def log(msg: str) -> None:
-            progress.update(task, advance=1, status=msg)
-            progress.console.print(msg)
+        def log(msg: str):
+            pbar.set_postfix_str(msg, refresh=True)
+            tqdm.write(msg)
+            step[0] += 1
+            pbar.n = min(step[0], pbar.total)
+            pbar.refresh()
 
         results = sync_path(Path(path), dry_run=False, trim=trim, log=log)
-        progress.update(task, completed=total)
+        pbar.n = pbar.total
+        pbar.refresh()
+        pbar.close()
+    else:
+        results = sync_path(Path(path), dry_run=False, trim=trim, log=lambda msg: click.echo(msg))
 
     for result in results:
         icon_msg = f", {result.icons_uploaded} icons" if result.icons_uploaded else ""
@@ -263,24 +257,12 @@ def sync(path: str, dry_run: bool, no_trim: bool) -> None:
 @cli.command()
 @click.argument("path", default=".", type=click.Path(exists=True), shell_complete=_complete_weblocs)
 @click.option("--no-trim", is_flag=True, help="Skip silence trimming on YouTube downloads")
-def download(path: str, no_trim: bool) -> None:
+def download(path, no_trim):
     """Download audio from .webloc URLs in a playlist folder."""
     logger.debug("command: download path=%s no_trim=%s", path, no_trim)
     trim = not no_trim
     folder = Path(path)
-
-    webloc_count = len(list(folder.glob("*.webloc")))
-    if sys.stderr.isatty() and webloc_count > 0:
-        from yoto_cli.progress import make_progress
-        with make_progress() as progress:
-            task = progress.add_task(folder.name, total=webloc_count, status="")
-
-            def on_track(name: str) -> None:
-                progress.update(task, advance=1, status=name)
-
-            created = resolve_weblocs(folder, trim=trim, on_track_done=on_track)
-    else:
-        created = resolve_weblocs(folder, trim=trim)
+    created = resolve_weblocs(folder, trim=trim)
 
     if not created:
         click.echo("No .webloc files resolved.")
@@ -298,7 +280,7 @@ def download(path: str, no_trim: bool) -> None:
 @click.argument("path_or_card_id", default=".")
 @click.option("--dry-run", is_flag=True, help="Preview changes without executing")
 @click.option("--all", "pull_all", is_flag=True, help="Pull all playlists into subdirectories of cwd")
-def pull(path_or_card_id: str, dry_run: bool, pull_all: bool) -> None:
+def pull(path_or_card_id, dry_run, pull_all):
     """Pull remote playlist state to local."""
     logger.debug("command: pull path_or_card_id=%s dry_run=%s all=%s", path_or_card_id, dry_run, pull_all)
     if pull_all:
@@ -317,23 +299,10 @@ def pull(path_or_card_id: str, dry_run: bool, pull_all: bool) -> None:
 
 def _pull_one(folder: Path, card_id: str | None = None, dry_run: bool = False) -> None:
     """Pull a single playlist."""
-    if sys.stderr.isatty():
-        from yoto_cli.progress import make_progress
-        with make_progress() as progress:
-            task = progress.add_task(folder.name, total=None, status="fetching")
+    def on_track(title: str):
+        click.echo(f"  Downloaded: {title}")
 
-            def on_total(n: int) -> None:
-                progress.update(task, total=n, status="downloading")
-
-            def on_track(title: str) -> None:
-                progress.update(task, advance=1, status=title)
-
-            result = pull_playlist(folder, card_id=card_id, dry_run=dry_run,
-                                   on_track_done=on_track, on_total=on_total)
-    else:
-        def on_track(title: str) -> None:
-            click.echo(f"  Downloaded: {title}")
-        result = pull_playlist(folder, card_id=card_id, dry_run=dry_run, on_track_done=on_track)
+    result = pull_playlist(folder, card_id=card_id, dry_run=dry_run, on_track_done=on_track)
 
     if dry_run:
         click.echo(f"[Dry run] {result.card_id}")
@@ -376,7 +345,7 @@ def _pull_all(dry_run: bool = False) -> None:
 
 @cli.command()
 @click.argument("path", default=".", type=click.Path(exists=True))
-def status(path: str) -> None:
+def status(path):
     """Show diff between local and remote state."""
     logger.debug("command: status path=%s", path)
     folder = Path(path)
@@ -391,13 +360,13 @@ def status(path: str) -> None:
             remote_content = api.get_content(playlist.card_id)
             from yoto_lib.sync import _parse_remote_state
             remote_state = _parse_remote_state(remote_content)
-        except (YotoAPIError, OSError, KeyError, ValueError) as exc:
+        except Exception as exc:
             click.echo(f"Warning: could not fetch remote state: {exc}", err=True)
 
     diff = diff_playlists(playlist, remote_state)
 
-    if not any((diff.new_tracks, diff.removed_tracks, diff.order_changed,
-                diff.cover_changed, diff.metadata_changed)):
+    if not any([diff.new_tracks, diff.removed_tracks, diff.order_changed,
+                diff.cover_changed, diff.metadata_changed]):
         click.echo("No changes.")
         return
 
@@ -420,7 +389,7 @@ def status(path: str) -> None:
 
 @cli.command()
 @click.argument("playlist", default="playlist.jsonl", type=click.Path(exists=True))
-def reorder(playlist: str) -> None:
+def reorder(playlist):
     """Open playlist.jsonl in $EDITOR to reorder tracks."""
     logger.debug("command: reorder playlist=%s", playlist)
     playlist_path = Path(playlist)
@@ -458,7 +427,7 @@ def reorder(playlist: str) -> None:
 
 @cli.command()
 @click.argument("path", default=".", type=click.Path())
-def init(path: str) -> None:
+def init(path):
     """Scaffold a new playlist folder."""
     logger.debug("command: init path=%s", path)
     folder = Path(path)
@@ -492,7 +461,7 @@ def _strip_track_number(stem: str) -> str:
     type=click.Path(),
     help="Output folder (defaults to source folder)",
 )
-def import_cmd(source: str, output: str | None) -> None:
+def import_cmd(source, output):
     """Bulk import: convert a folder of audio files into a playlist."""
     logger.debug("command: import source=%s output=%s", source, output)
     source_path = Path(source)
@@ -507,40 +476,30 @@ def import_cmd(source: str, output: str | None) -> None:
 
     album_cache: dict = {}
     filenames = []
-
-    from contextlib import nullcontext
-    from yoto_cli.progress import make_progress
-    progress_ctx = make_progress() if sys.stderr.isatty() else nullcontext()
-    with progress_ctx as progress:
-        task = progress.add_task(source_path.name, total=len(audio_files), status="") if progress else None
-        for audio in audio_files:
-            if progress and task is not None:
-                progress.update(task, status=audio.name)
-            clean_stem = _strip_track_number(audio.stem)
-            mka_name = clean_stem + ".mka"
-            mka_dest = output_path / mka_name
-            if audio.suffix.lower() == ".mka" and source_path == output_path:
-                # Already MKA in place — just record it
+    for audio in audio_files:
+        clean_stem = _strip_track_number(audio.stem)
+        mka_name = clean_stem + ".mka"
+        mka_dest = output_path / mka_name
+        if audio.suffix.lower() == ".mka" and source_path == output_path:
+            # Already MKA in place — just record it
+            filenames.append(mka_name)
+        else:
+            try:
+                wrap_in_mka(audio, mka_dest)
+                # Copy metadata from source file to MKA
+                source_tags = read_source_tags(audio)
+                source_tags["source_format"] = audio.suffix.lstrip(".").lower()
+                write_tags(mka_dest, source_tags)
+                # Fetch album art from iTunes if missing
+                enrich_from_itunes(mka_dest, source_tags, album_cache)
+                # Generate bsdiff patch for byte-perfect export
+                generate_source_patch(audio, mka_dest)
                 filenames.append(mka_name)
-            else:
-                try:
-                    wrap_in_mka(audio, mka_dest)
-                    # Copy metadata from source file to MKA
-                    source_tags = read_source_tags(audio)
-                    source_tags["source_format"] = audio.suffix.lstrip(".").lower()
-                    write_tags(mka_dest, source_tags)
-                    # Fetch album art from iTunes if missing
-                    enrich_from_itunes(mka_dest, source_tags, album_cache)
-                    # Generate bsdiff patch for byte-perfect export
-                    generate_source_patch(audio, mka_dest)
-                    filenames.append(mka_name)
-                    click.echo(f"  Wrapped {audio.name} -> {mka_name}")
-                    if source_path == output_path:
-                        audio.unlink()
-                except (OSError, ValueError, RuntimeError) as exc:
-                    click.echo(f"  Error wrapping {audio.name}: {exc}", err=True)
-            if progress and task is not None:
-                progress.update(task, advance=1)
+                click.echo(f"  Wrapped {audio.name} -> {mka_name}")
+                if source_path == output_path:
+                    audio.unlink()
+            except Exception as exc:
+                click.echo(f"  Error wrapping {audio.name}: {exc}", err=True)
 
     write_jsonl(output_path / "playlist.jsonl", filenames)
     click.echo(f"Imported {len(filenames)} tracks into {output_path}")
@@ -565,7 +524,7 @@ def import_cmd(source: str, output: str | None) -> None:
     type=click.Path(),
     help="Output folder (defaults to <playlist>-exported/)",
 )
-def export(playlist: str, output: str | None) -> None:
+def export(playlist, output):
     """Export MKA tracks back to their original audio format."""
     from yoto_lib.mka import extract_audio, apply_source_patch
 
@@ -581,38 +540,29 @@ def export(playlist: str, output: str | None) -> None:
 
     import tempfile
     from yoto_lib.mka import get_attachment, PATCH_ATTACHMENT_NAME
-    from contextlib import nullcontext
-    from yoto_cli.progress import make_progress
 
-    progress_ctx = make_progress() if sys.stderr.isatty() else nullcontext()
-    with progress_ctx as progress:
-        task = progress.add_task(playlist_path.name, total=len(mka_files), status="") if progress else None
-        for mka in mka_files:
-            if progress and task is not None:
-                progress.update(task, status=mka.name)
-            try:
-                has_patch = get_attachment(mka, PATCH_ATTACHMENT_NAME) is not None
+    for mka in mka_files:
+        try:
+            has_patch = get_attachment(mka, PATCH_ATTACHMENT_NAME) is not None
 
-                if has_patch:
-                    # Extract to temp dir, then apply patch to final location
-                    with tempfile.TemporaryDirectory(prefix="yoto-export-") as tmpdir:
-                        extracted = extract_audio(mka, Path(tmpdir))
-                        final_path = output_path / (mka.stem + extracted.suffix)
-                        if apply_source_patch(extracted, mka, final_path):
-                            click.echo(f"  {mka.name} -> {final_path.name} (byte-perfect)")
-                        else:
-                            # Patch failed — copy the extraction as fallback
-                            import shutil
-                            shutil.copy2(extracted, final_path)
-                            click.echo(f"  {mka.name} -> {final_path.name}")
-                else:
-                    # No patch — extract directly to output
-                    extracted = extract_audio(mka, output_path)
-                    click.echo(f"  {mka.name} -> {extracted.name}")
-            except (OSError, ValueError, RuntimeError) as exc:
-                click.echo(f"  Error exporting {mka.name}: {exc}", err=True)
-            if progress and task is not None:
-                progress.update(task, advance=1)
+            if has_patch:
+                # Extract to temp dir, then apply patch to final location
+                with tempfile.TemporaryDirectory(prefix="yoto-export-") as tmpdir:
+                    extracted = extract_audio(mka, Path(tmpdir))
+                    final_path = output_path / (mka.stem + extracted.suffix)
+                    if apply_source_patch(extracted, mka, final_path):
+                        click.echo(f"  {mka.name} -> {final_path.name} (byte-perfect)")
+                    else:
+                        # Patch failed — copy the extraction as fallback
+                        import shutil
+                        shutil.copy2(extracted, final_path)
+                        click.echo(f"  {mka.name} -> {final_path.name}")
+            else:
+                # No patch — extract directly to output
+                extracted = extract_audio(mka, output_path)
+                click.echo(f"  {mka.name} -> {extracted.name}")
+        except Exception as exc:
+            click.echo(f"  Error exporting {mka.name}: {exc}", err=True)
 
     click.echo(f"Exported {len(mka_files)} tracks to {output_path}")
 
@@ -694,7 +644,7 @@ def _render_icons_side_by_side(
 
 @cli.command(name="select-icon")
 @click.argument("tracks", nargs=-1, required=True, type=click.Path(exists=True), shell_complete=_complete_mka_without_icon)
-def select_icon(tracks: tuple[str, ...]) -> None:
+def select_icon(tracks):
     """Generate 3 icon options per track, show best Yoto match, and attach the chosen one."""
     logger.debug("command: select-icon tracks=%s", tracks)
     import io
@@ -705,7 +655,8 @@ def select_icon(tracks: tuple[str, ...]) -> None:
     from yoto_lib.icon_catalog import get_catalog
     from yoto_lib.icon_llm import match_icon_llm, compare_icons_llm, describe_icons_llm, log_icon_feedback
 
-    from yoto_cli.progress import make_progress
+    use_tqdm = sys.stderr.isatty()
+    bar_fmt = "{desc}: \033[48;5;236m{bar}\033[0m {n_fmt}/{total_fmt} {postfix}"
 
     # Shared resources — loaded once
     api = YotoAPI()
@@ -728,70 +679,72 @@ def select_icon(tracks: tuple[str, ...]) -> None:
             existing_bytes = get_attachment(track_path, "icon")
             if existing_bytes:
                 existing_img = Image.open(io.BytesIO(existing_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)
-        except (OSError, ValueError):
+        except Exception:
             pass
 
-        yoto_media_id, yoto_confidence = None, 0.0
+        if use_tqdm:
+            from tqdm import tqdm
+            pbar = tqdm(total=7, desc=title, bar_format=bar_fmt)
+            pbar.set_postfix_str("matching Yoto icon")
+        else:
+            pbar = None
+
+        yoto_media_id, yoto_confidence = match_icon_llm(title, catalog)
         yoto_img: "Image.Image | None" = None
         yoto_title: str | None = None
         yoto_bytes: bytes | None = None
 
-        with make_progress() as progress:
-            task = progress.add_task(title, total=7, status="matching Yoto icon")
+        if yoto_media_id:
+            yoto_bytes = download_icon(yoto_media_id)
+            if yoto_bytes:
+                yoto_img = Image.open(io.BytesIO(yoto_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)
+                for icon in catalog:
+                    if icon.get("mediaId") == yoto_media_id:
+                        yoto_title = icon.get("title", "") or icon.get("name", "")
+                        break
 
-            yoto_media_id, yoto_confidence = match_icon_llm(title, catalog)
+        if pbar:
+            pbar.update(1)
+            pbar.set_postfix_str("describing icons")
 
-            if yoto_media_id:
-                yoto_bytes = download_icon(yoto_media_id)
-                if yoto_bytes:
-                    yoto_img = Image.open(io.BytesIO(yoto_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)
-                    for icon in catalog:
-                        if icon.get("mediaId") == yoto_media_id:
-                            yoto_title = icon.get("title", "") or icon.get("name", "")
-                            break
+        tmpdir = Path(tempfile.mkdtemp(prefix="yoto-icon-"))
+        skipped = False
 
-            progress.update(task, advance=1, status="describing icons")
-            tmpdir = Path(tempfile.mkdtemp(prefix="yoto-icon-"))
-            skipped = False
-
+        while True:
             descriptions = describe_icons_llm(title, album_description=album_desc)
             if not descriptions:
                 descriptions = [title, title, title]  # fallback to raw title
 
-            progress.update(task, advance=1, status="generating icon 1/3")
+            if pbar:
+                pbar.update(1)
+                pbar.set_postfix_str("generating icon 1/3")
 
-            def on_gen_progress(i: int) -> None:
-                if i < 3:
-                    progress.update(task, advance=1, status=f"generating icon {i + 1}/3")
-                else:
-                    progress.update(task, advance=1, status="evaluating icons")
+            def on_gen_progress(i):
+                if pbar:
+                    pbar.update(1)
+                    if i < 3:
+                        pbar.set_postfix_str(f"generating icon {i + 1}/3")
+                    else:
+                        pbar.set_postfix_str("evaluating icons")
 
             batch = generate_retrodiffusion_icons(descriptions, on_progress=on_gen_progress)
             if not batch:
+                if pbar:
+                    pbar.close()
                 click.echo(f"Icon generation failed for {track_path.name}", err=True)
                 skipped = True
-            else:
-                raw_bytes_list: list[bytes] = [rb for rb, _ in batch]
-                winner, scores = compare_icons_llm(
-                    title, raw_bytes_list,
-                    yoto_icon=yoto_bytes if yoto_img is not None else None,
-                    descriptions=descriptions,
-                    album_description=album_desc,
-                )
-                progress.update(task, advance=1)
-        # progress bar closed — interactive prompt starts below
+                break
 
-        if skipped:
-            tmpdir.rmdir()
-            continue
-
-        while True:
-            icons_16: list[Image.Image] = [processed for _, processed in batch]
-            images_to_show: list[Image.Image] = list(icons_16)
-            labels_to_show: list[str] = [
-                f"[{i + 1}] {descriptions[i] if i < len(descriptions) else 'AI'}"
-                for i in range(len(icons_16))
-            ]
+            icons_16: list[Image.Image] = []
+            raw_bytes_list: list[bytes] = []
+            images_to_show: list[Image.Image] = []
+            labels_to_show: list[str] = []
+            for i, (raw_bytes, processed_img) in enumerate(batch):
+                icons_16.append(processed_img)
+                raw_bytes_list.append(raw_bytes)
+                images_to_show.append(processed_img)
+                desc_label = descriptions[i] if i < len(descriptions) else "AI"
+                labels_to_show.append(f"[{i + 1}] {desc_label}")
 
             next_idx = len(images_to_show) + 1
 
@@ -814,6 +767,19 @@ def select_icon(tracks: tuple[str, ...]) -> None:
             max_choice = next_idx - 1
             prompt_text = f"Pick an icon (1-{max_choice}, or 'r' to regenerate)"
 
+            # LLM comparison
+            winner, scores = compare_icons_llm(
+                title, raw_bytes_list,
+                yoto_icon=yoto_bytes if yoto_img is not None else None,
+                descriptions=descriptions,
+                album_description=album_desc,
+            )
+
+            if pbar:
+                pbar.update(1)
+                pbar.close()
+                pbar = None
+
             # Build score labels (existing icon gets no score)
             score_labels = []
             for i in range(len(images_to_show)):
@@ -830,34 +796,10 @@ def select_icon(tracks: tuple[str, ...]) -> None:
             default_choice = str(winner) if 1 <= winner <= max_choice else "1"
             raw = click.prompt(prompt_text, default=default_choice)
             if raw.lower() == "r":
-                with make_progress() as progress:
-                    task = progress.add_task(title, total=6, status="describing icons")
-                    descriptions = describe_icons_llm(title, album_description=album_desc)
-                    if not descriptions:
-                        descriptions = [title, title, title]
-                    progress.update(task, advance=1, status="generating icon 1/3")
-
-                    def on_gen_progress(i: int) -> None:
-                        if i < 3:
-                            progress.update(task, advance=1, status=f"generating icon {i + 1}/3")
-                        else:
-                            progress.update(task, advance=1, status="evaluating icons")
-
-                    batch = generate_retrodiffusion_icons(descriptions, on_progress=on_gen_progress)
-                    if not batch:
-                        click.echo(f"Icon generation failed for {track_path.name}", err=True)
-                        skipped = True
-                    else:
-                        raw_bytes_list = [rb for rb, _ in batch]
-                        winner, scores = compare_icons_llm(
-                            title, raw_bytes_list,
-                            yoto_icon=yoto_bytes if yoto_img is not None else None,
-                            descriptions=descriptions,
-                            album_description=album_desc,
-                        )
-                        progress.update(task, advance=1)
-                if skipped:
-                    break
+                if use_tqdm:
+                    from tqdm import tqdm
+                    pbar = tqdm(total=5, desc=title, bar_format=bar_fmt)
+                    pbar.set_postfix_str("describing icons")
                 continue
 
             try:
@@ -913,7 +855,7 @@ def select_icon(tracks: tuple[str, ...]) -> None:
 
 @cli.command(name="reset-icon")
 @click.argument("tracks", nargs=-1, required=True, type=click.Path(exists=True), shell_complete=_complete_mka_with_icon)
-def reset_icon(tracks: tuple[str, ...]) -> None:
+def reset_icon(tracks):
     """Remove the icon from one or more MKA tracks so sync regenerates them."""
     logger.debug("command: reset-icon tracks=%s", tracks)
     from yoto_lib.icons import clear_macos_file_icon
@@ -924,7 +866,7 @@ def reset_icon(tracks: tuple[str, ...]) -> None:
             remove_attachment(path, "icon")
             clear_macos_file_icon(path)
             click.echo(f"  Cleared icon: {path.name}")
-        except (OSError, RuntimeError) as exc:
+        except Exception as exc:
             click.echo(f"  Error ({path.name}): {exc}", err=True)
 
 
@@ -934,9 +876,11 @@ def reset_icon(tracks: tuple[str, ...]) -> None:
 @cli.command()
 @click.argument("path", default=".", type=click.Path(exists=True), shell_complete=_complete_dirs)
 @click.option("--force", is_flag=True, help="Regenerate even if cover.png exists")
-def cover(path: str, force: bool) -> None:
+@click.option("--style", type=click.Choice(["compare", "ai", "pad"]), default="compare",
+              help="Reframe style: compare (Claude picks), ai (always AI), pad (no AI)")
+def cover(path, force, style):
     """Generate cover art for a playlist folder."""
-    logger.debug("command: cover path=%s force=%s", path, force)
+    logger.debug("command: cover path=%s force=%s style=%s", path, force, style)
     from yoto_lib.cover import generate_cover_if_missing, build_cover_prompt, resize_cover, try_shared_album_art, COVER_WIDTH, COVER_HEIGHT
     from yoto_lib.image_providers import get_provider
     from yoto_lib import mka
@@ -960,7 +904,7 @@ def cover(path: str, force: bool) -> None:
         )
 
     # Try reusing shared album art first
-    if try_shared_album_art(playlist):
+    if try_shared_album_art(playlist, style=style):
         click.echo(f"Reused album art as cover: {cover_path}")
         return
 
@@ -973,7 +917,7 @@ def cover(path: str, force: bool) -> None:
             tags = mka.read_tags(track_path)
             title = tags.get("title") or Path(filename).stem
             artist = tags.get("artist", "")
-        except (OSError, KeyError, ValueError):
+        except Exception:
             title = Path(filename).stem
             artist = ""
         track_titles.append(title)
@@ -982,12 +926,11 @@ def cover(path: str, force: bool) -> None:
 
     prompt = build_cover_prompt(playlist.description, track_titles, artists, playlist.title)
 
+    click.echo("Generating cover art...")
     provider = get_provider()
-    from yoto_cli.progress import spinner_status
     # 3:4 aspect — wider than 638:1011 target, so resize_cover crops sides
     # and preserves full height including title text at top.
-    with spinner_status("Generating cover art..."):
-        image_bytes = provider.generate(prompt, 768, 1024)
+    image_bytes = provider.generate(prompt, 768, 1024)
 
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp.write(image_bytes)
@@ -1006,7 +949,7 @@ def cover(path: str, force: bool) -> None:
 
 @cli.command()
 @click.argument("shell", required=False, default=None, type=click.Choice(["zsh", "bash", "fish"]))
-def completions(shell: str | None) -> None:
+def completions(shell):
     """Install context-aware shell completions."""
     logger.debug("command: completions shell=%s", shell)
     if shell is None:
@@ -1046,7 +989,7 @@ def completions(shell: str | None) -> None:
 
 
 @cli.command(name="list")
-def list_cmd() -> None:
+def list_cmd():
     """Show all MYO cards on your Yoto account."""
     logger.debug("command: list")
     api = YotoAPI()
@@ -1073,6 +1016,6 @@ def list_cmd() -> None:
             detail = api.get_content(card_id)
             chapters = detail.get("content", {}).get("chapters", [])
             num_tracks = len(chapters)
-        except (YotoAPIError, OSError, KeyError, ValueError):
+        except Exception:
             num_tracks = "?"
         click.echo(f"{card_id:<{col_id}}  {title:<{col_title}}  {num_tracks}")
