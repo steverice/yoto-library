@@ -342,23 +342,38 @@ def check_text_quality(original: bytes, recomposed: bytes) -> bool:
         return True
 
 
-def ocr_album_text(art_bytes: bytes) -> str | None:
-    """Use Claude Sonnet to OCR text from album art. Returns text or None."""
+def describe_album_text(art_bytes: bytes) -> list[dict] | None:
+    """Use Claude Sonnet to describe text and its visual style from album art.
+
+    Returns list of dicts with keys: text, font, color, size, position, orientation.
+    Returns None on failure.
+    """
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
         f.write(art_bytes)
         tmp = f.name
     try:
         response = _call_claude(
             f"Read this album cover image: {tmp}\n"
-            f"List ALL visible text exactly as it appears, preserving "
-            f"capitalization and punctuation. Return ONLY the text, "
-            f"one line per text element. No commentary.",
+            f"Describe ALL visible text and its visual style. For each text element:\n"
+            f"- text: the exact text\n"
+            f"- font: serif/sans-serif, bold/light, italic, etc.\n"
+            f"- color: be specific (e.g. \"dark gray\", \"white\", \"yellow-green\")\n"
+            f"- size: small/medium/large relative to the image\n"
+            f"- position: e.g. \"top-right corner\", \"bottom-center\"\n"
+            f"- orientation: horizontal or vertical\n\n"
+            f"Skip any parental advisory or rating labels.\n"
+            f"Return ONLY a JSON array. No commentary.",
             allowed_tools="Read",
             model="sonnet",
         )
-        if response and response.strip():
-            logger.debug("ocr_album_text: %r", response.strip())
-            return response.strip()
+        if response:
+            match = re.search(r"\[[\s\S]*\]", response)
+            if match:
+                result = json.loads(match.group())
+                logger.debug("describe_album_text: %s", result)
+                return result
+    except Exception as exc:
+        logger.warning("describe_album_text: failed: %s", exc)
     finally:
         Path(tmp).unlink(missing_ok=True)
     return None
@@ -403,12 +418,25 @@ def get_text_placement(
     return None
 
 
-def render_text_layer(original: bytes, ocr_text: str) -> bytes | None:
+def render_text_layer(original: bytes, text_descriptions: list[dict]) -> bytes | None:
     """Use Gemini to render album text on a black background.
 
-    Shows Gemini the original art for style reference and tells it the
-    exact text to render. Returns PNG bytes or None on failure.
+    Takes structured text descriptions (from describe_album_text) and renders
+    them styled on black. Shows Gemini the original art for style reference.
+    Returns PNG bytes or None on failure.
     """
+    # Build rendering instructions from descriptions
+    instructions = []
+    for t in text_descriptions:
+        instructions.append(
+            f'- "{t["text"]}" in {t.get("color", "white")} {t.get("font", "")} font, '
+            f'{t.get("size", "medium")} size, {t.get("position", "center")}, '
+            f'{t.get("orientation", "horizontal")}'
+        )
+
+    if not instructions:
+        return None
+
     try:
         from google import genai
         from google.genai import types
@@ -417,13 +445,10 @@ def render_text_layer(original: bytes, ocr_text: str) -> bytes | None:
         response = client.models.generate_content(
             model="gemini-2.5-flash-image",
             contents=[
-                f"Look at the text styling in this album cover — the font, color, "
-                f"size, weight, and position of each text element. "
-                f"Generate a new image with ONLY this exact text on a pure black "
-                f"(#000000) background:\n\n{ocr_text}\n\n"
-                f"Match the font style, color, and approximate position from the "
-                f"original. Spell the text EXACTLY as provided above.\n"
-                f"Only render text on solid black — no artwork, no photos.",
+                f"Generate an image with ONLY text on a pure black (#000000) "
+                f"background. Render these text elements:\n"
+                + "\n".join(instructions)
+                + "\n\nNothing else in the image — only the text on solid black.",
                 types.Part.from_bytes(data=original, mime_type="image/png"),
             ],
             config=types.GenerateContentConfig(
@@ -518,14 +543,14 @@ def repair_text(
     _log = log or (lambda msg: None)
 
     _log("Repairing text on cover...")
-    ocr_text = ocr_album_text(original)
-    if not ocr_text:
-        logger.warning("repair_text: OCR failed, keeping recomposed as-is")
+    text_descriptions = describe_album_text(original)
+    if not text_descriptions:
+        logger.warning("repair_text: text description failed, keeping recomposed as-is")
         return recomposed
 
-    logger.debug("repair_text: OCR text: %r", ocr_text)
+    logger.debug("repair_text: found %d text elements", len(text_descriptions))
 
-    text_layer = render_text_layer(original, ocr_text)
+    text_layer = render_text_layer(original, text_descriptions)
     if not text_layer:
         logger.warning("repair_text: text rendering failed")
         return recomposed
