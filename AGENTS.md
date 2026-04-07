@@ -53,6 +53,8 @@ Cost tracking is automatic — providers record costs via `get_tracker().record(
 
 **Environment** — API keys loaded from `.env` via `python-dotenv`. No other config files.
 
+**Parallelism** — `YOTO_WORKERS` (default 4) controls the max parallel workers used for downloads, uploads, imports, and exports. Read via `int(os.environ.get("YOTO_WORKERS", "4"))` at module level; always cap with `min(WORKERS, len(jobs))` to avoid spawning idle threads.
+
 ## Architecture rules
 
 - **Library/CLI separation** — `yoto_lib` must be importable without Click. No CLI framework imports in library code. The library is designed to be called by other tools (e.g., a Quick Look plugin).

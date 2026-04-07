@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -12,6 +13,8 @@ from typing import Callable
 import httpx
 
 logger = logging.getLogger(__name__)
+
+WORKERS = int(os.environ.get("YOTO_WORKERS", "4"))
 
 from yoto_lib.api import YotoAPI
 from yoto_lib.icons import ICON_CACHE_DIR, apply_icon_to_mka, download_icon
@@ -77,6 +80,7 @@ def _process_track(
     folder: Path,
     cache_dir: Path,
     on_progress: Callable[[int, int | None], None] | None = None,
+    on_track_start: Callable[[str], None] | None = None,
 ) -> tuple[bool, bool, str | None]:
     """Download, wrap in MKA, and apply icon for one track.
 
@@ -84,7 +88,10 @@ def _process_track(
 
     Args:
         on_progress: Optional callback passed to _download_file for byte-level progress.
+        on_track_start: Optional callback invoked at the start of processing this track.
     """
+    if on_track_start:
+        on_track_start(job.title)
     safe_name = _sanitize_filename(job.title)
     mka_path = folder / job.filename
     raw_path = folder / f".{safe_name}.raw"
@@ -194,14 +201,9 @@ def pull_playlist(
     logger.debug("pull: %d tracks to download", len(jobs))
     cache_dir = ICON_CACHE_DIR
     future_to_job = {}
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    with ThreadPoolExecutor(max_workers=min(WORKERS, len(jobs)) if jobs else 1) as executor:
         for job in jobs:
-            if on_track_start:
-                on_track_start(job.title)
-
             # Build per-track progress callback
-            _title = job.title  # capture for closure
-
             def _make_progress_cb(title: str) -> Callable[[int, int | None], None] | None:
                 if on_download_progress is None:
                     return None
@@ -209,7 +211,10 @@ def pull_playlist(
                     on_download_progress(title, downloaded, total)
                 return _cb
 
-            future = executor.submit(_process_track, job, folder, cache_dir, _make_progress_cb(job.title))
+            future = executor.submit(
+                _process_track, job, folder, cache_dir,
+                _make_progress_cb(job.title), on_track_start,
+            )
             future_to_job[future] = job
 
         for future in as_completed(future_to_job):
