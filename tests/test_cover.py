@@ -173,9 +173,9 @@ class TestGenerateCoverIfMissing:
         # prompt builder was called
         mock_prompt.assert_called_once()
 
-        # provider.generate was called with the prompt at 3:4 aspect ratio
+        # provider.generate was called with the prompt at the tall portrait size
         mock_provider.generate.assert_called_once_with(
-            "test prompt", 768, 1024
+            "test prompt", 1024, 1536
         )
 
 
@@ -254,7 +254,7 @@ class TestTrySharedAlbumArt:
             result = try_shared_album_art(playlist)
 
         assert result is True
-        mock_reframe.assert_called_once_with(shared_art, cover_path, log=None)
+        mock_reframe.assert_called_once_with(shared_art, cover_path, log=None, on_step=None)
 
     def test_generate_cover_tries_shared_art_first(self):
         """generate_cover_if_missing tries shared art before AI generation."""
@@ -406,7 +406,7 @@ class TestTrySharedAlbumArtReframe:
             result = try_shared_album_art(playlist)
 
         assert result is True
-        mock_reframe.assert_called_once_with(shared_art, cover_path, log=None)
+        mock_reframe.assert_called_once_with(shared_art, cover_path, log=None, on_step=None)
         mock_resize.assert_not_called()
 
 
