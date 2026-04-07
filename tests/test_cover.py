@@ -176,7 +176,7 @@ class TestGenerateCoverIfMissing:
 
         # provider.generate was called with the prompt at the tall portrait size
         mock_provider.generate.assert_called_once_with(
-            "test prompt", 1024, 1536
+            "test prompt", 1024, 1536, quality="low"
         )
 
 
