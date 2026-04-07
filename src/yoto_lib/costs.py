@@ -85,6 +85,18 @@ class CostTracker:
 
         return lines
 
+    def records(self) -> dict[str, dict]:
+        """Return aggregated records: {key: {cost, calls, subscription}}."""
+        with self._lock:
+            raw = list(self._records)
+        result: dict[str, dict] = {}
+        for key, cost, is_sub in raw:
+            if key not in result:
+                result[key] = {"cost": 0.0, "calls": 0, "subscription": is_sub}
+            result[key]["cost"] += cost
+            result[key]["calls"] += 1
+        return result
+
 
 _tracker: CostTracker | None = None
 
