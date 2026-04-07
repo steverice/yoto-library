@@ -107,7 +107,15 @@ def ensure_srgb() -> list | None:
         await session.async_set_profile_properties(change)
 
     try:
-        iterm2.run_until_complete(_apply)
+        # Suppress iTerm2's "problem connecting" message on stderr
+        import io
+        import sys
+        old_stderr = sys.stderr
+        sys.stderr = io.StringIO()
+        try:
+            iterm2.run_until_complete(_apply)
+        finally:
+            sys.stderr = old_stderr
         logger.debug("iterm_colors: applied sRGB overrides (%d colors)", len(originals))
         return originals
     except SystemExit:
@@ -136,7 +144,14 @@ def restore_colors(originals: list) -> None:
         await session.async_set_profile_properties(change)
 
     try:
-        iterm2.run_until_complete(_restore)
+        import io
+        import sys
+        old_stderr = sys.stderr
+        sys.stderr = io.StringIO()
+        try:
+            iterm2.run_until_complete(_restore)
+        finally:
+            sys.stderr = old_stderr
         logger.debug("iterm_colors: restored original colors")
     except (SystemExit, Exception) as exc:
         logger.debug("iterm_colors: restore failed: %s", exc)
