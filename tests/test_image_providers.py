@@ -38,6 +38,25 @@ class TestOpenAIProvider:
         assert isinstance(result, bytes)
 
 
+def test_openai_generate_passes_quality(mock_openai_client):
+    """OpenAIProvider.generate() passes quality to the API."""
+    from yoto_lib.image_providers.openai_provider import OpenAIProvider
+
+    with patch("yoto_lib.image_providers.openai_provider.OpenAI", return_value=mock_openai_client), \
+         patch("yoto_lib.costs.COSTS", {
+             "openai_generate_low": {"cost": 0.016, "label": "OpenAI generation (low)"},
+         }):
+        provider = OpenAIProvider()
+        provider.generate("test prompt", 1024, 1536, quality="low")
+
+    mock_openai_client.images.generate.assert_called_once_with(
+        model="gpt-image-1",
+        prompt="test prompt",
+        size="1024x1536",
+        quality="low",
+    )
+
+
 class TestFluxProvider:
     def test_recompose_uploads_and_returns_bytes(self):
         """recompose() uploads padded image and returns FLUX result."""
