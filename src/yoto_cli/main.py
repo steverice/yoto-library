@@ -1111,10 +1111,12 @@ def cover(path, force, backup, ignore_album_art):
     cover_name = playlist.title or folder.name
     title_steps = 1 if playlist.title else 0
     # Worst case: all recompose attempts + generate + optional title + save
-    total_steps = RECOMPOSE_MAX_ATTEMPTS + 1 + title_steps + 1
+    recompose_steps = 0 if ignore_album_art else RECOMPOSE_MAX_ATTEMPTS
+    total_steps = recompose_steps + 1 + title_steps + 1
 
     with make_progress() as progress:
-        task = progress.add_task(cover_name, total=total_steps, status="checking album art")
+        initial_status = "generating cover art" if ignore_album_art else "checking album art"
+        task = progress.add_task(cover_name, total=total_steps, status=initial_status)
 
         # Tracks the current inner task for nested progress
         _inner_task: list[int | None] = [None]
@@ -1150,7 +1152,7 @@ def cover(path, force, backup, ignore_album_art):
             return
 
         # No shared art — generate from scratch
-        progress.update(task, completed=RECOMPOSE_MAX_ATTEMPTS, status="generating cover art")
+        progress.update(task, completed=recompose_steps, status="generating cover art")
 
         track_titles: list[str] = []
         artists: list[str] = []
@@ -1184,7 +1186,7 @@ def cover(path, force, backup, ignore_album_art):
             progress.remove_task(inner)
             progress.update(task, status="title added")
 
-        progress.update(task, advance=1, status="saving")
+        progress.update(task, status="saving")
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             tmp.write(image_bytes)
             tmp_path = Path(tmp.name)
