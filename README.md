@@ -235,9 +235,8 @@ Each AI task uses a specific provider chosen for best results at that task:
 If you use iTerm2, the `select-icon` command can improve pixel art rendering by fixing a color space issue in some iTerm2 color presets (notably "Dark Background"). To enable this:
 
 1. Enable iTerm2's Python API: **Preferences > General > Magic > "Enable Python API"**
-2. Install the optional dependency: `pip install yoto-library[iterm2]` or `pip install iterm2`
 
-Without this, icons display normally but may show faint horizontal banding. The CLI will suggest enabling the API the first time you select icons.
+The `iterm2` Python package will be installed automatically on first use. Without the API enabled, icons display normally but may show faint horizontal banding.
 
 ## Development
 

@@ -20,6 +20,7 @@ import os
 logger = logging.getLogger(__name__)
 
 _hint_shown = False
+_install_attempted = False
 
 # All color properties to convert: (getter_name, setter_name)
 _COLOR_PROPS = [
@@ -34,6 +35,34 @@ _COLOR_PROPS = [
 ] + [
     (f"ansi_{i}_color", f"set_ansi_{i}_color") for i in range(16)
 ]
+
+
+def _auto_install_iterm2() -> bool:
+    """Attempt to pip install iterm2. Returns True if successful."""
+    global _install_attempted
+    if _install_attempted:
+        return False
+    _install_attempted = True
+
+    from yoto_cli.progress import _console
+    _console.print("[dim]Installing iterm2 package for improved icon display...[/dim]")
+
+    import subprocess
+    import sys
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "iterm2", "-q"],
+            capture_output=True, text=True, timeout=60,
+        )
+        if result.returncode == 0:
+            logger.debug("iterm_colors: auto-installed iterm2 package")
+            return True
+        logger.debug("iterm_colors: pip install failed: %s", result.stderr)
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        logger.debug("iterm_colors: pip install error: %s", exc)
+
+    _console.print("[dim]Could not install iterm2 package. Run 'pip install iterm2' manually for improved icon display.[/dim]")
+    return False
 
 
 def _is_iterm2() -> bool:
@@ -52,8 +81,9 @@ def ensure_srgb() -> list | None:
     try:
         import iterm2
     except ImportError:
-        logger.debug("iterm_colors: iterm2 package not installed")
-        return None
+        if not _auto_install_iterm2():
+            return None
+        import iterm2
 
     originals = []
 
@@ -122,6 +152,5 @@ def show_hint_if_needed() -> None:
     from yoto_cli.progress import _console
     _console.print(
         "[dim]Tip: For improved icon display, enable iTerm2's Python API "
-        "(Preferences > General > Magic) and install iterm2 "
-        "(pip install iterm2)[/dim]"
+        "(Preferences > General > Magic > Enable Python API)[/dim]"
     )
