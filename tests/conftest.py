@@ -1,8 +1,28 @@
+import base64
 import subprocess
 import struct
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
+
+
+@pytest.fixture
+def mock_openai_client():
+    """A mock OpenAI client whose images.generate() returns fake PNG bytes."""
+    fake_png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
+    fake_b64 = base64.b64encode(fake_png).decode()
+
+    mock_image_data = MagicMock()
+    mock_image_data.b64_json = fake_b64
+
+    mock_response = MagicMock()
+    mock_response.data = [mock_image_data]
+
+    mock_client = MagicMock()
+    mock_client.images.generate.return_value = mock_response
+    mock_client.images.edit.return_value = mock_response
+    return mock_client
 
 
 @pytest.fixture

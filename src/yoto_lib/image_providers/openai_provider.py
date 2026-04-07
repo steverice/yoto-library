@@ -32,32 +32,32 @@ class OpenAIProvider:
     def __init__(self) -> None:
         self._client = OpenAI()
 
-    def generate(self, prompt: str, width: int, height: int) -> bytes:
+    def generate(self, prompt: str, width: int, height: int, quality: str = "medium") -> bytes:
         """Generate an image from a text prompt. Returns PNG bytes."""
         nearest_w, nearest_h = _nearest_size(width, height)
         size_str = f"{nearest_w}x{nearest_h}"
-        logger.debug("openai: generating %s, prompt=%.80s...", size_str, prompt)
+        logger.debug("openai: generating %s quality=%s, prompt=%.80s...", size_str, quality, prompt)
 
         response = self._client.images.generate(
             model="gpt-image-1",
             prompt=prompt,
             size=size_str,
-            quality="medium",
+            quality=quality,
         )
 
         b64_data = response.data[0].b64_json
         result = base64.b64decode(b64_data)
         logger.debug("openai: generated %d bytes", len(result))
         from yoto_lib.costs import get_tracker
-        get_tracker().record("openai_generate")
+        get_tracker().record(f"openai_generate_{quality}")
         return result
 
-    def edit(self, image_bytes: bytes, mask_bytes: bytes, prompt: str, width: int, height: int) -> bytes:
+    def edit(self, image_bytes: bytes, mask_bytes: bytes, prompt: str, width: int, height: int, quality: str = "medium") -> bytes:
         """Edit an image. Pass empty mask_bytes to let the model edit freely. Returns PNG bytes."""
         import io as _io
         nearest_w, nearest_h = _nearest_size(width, height)
         size_str = f"{nearest_w}x{nearest_h}"
-        logger.debug("openai: editing %s mask=%s prompt=%.80s...", size_str, bool(mask_bytes), prompt)
+        logger.debug("openai: editing %s quality=%s mask=%s prompt=%.80s...", size_str, quality, bool(mask_bytes), prompt)
 
         kwargs: dict = dict(
             model="gpt-image-1",
@@ -74,6 +74,6 @@ class OpenAIProvider:
         result = base64.b64decode(b64_data)
         logger.debug("openai: edited %d bytes", len(result))
         from yoto_lib.costs import get_tracker
-        get_tracker().record("openai_edit")
+        get_tracker().record(f"openai_edit_{quality}")
         return result
 
