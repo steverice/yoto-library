@@ -810,7 +810,7 @@ def select_icon(tracks):
         yoto_bytes: bytes | None = None
 
         with make_progress() as progress:
-            task = progress.add_task(title, total=7, status="matching Yoto icon")
+            task = progress.add_task(title, total=6, status="matching Yoto icon")
 
             inner = progress.add_task("Claude Haiku", total=None, status="")
             yoto_media_id, yoto_confidence = match_icon_llm(title, catalog)
@@ -871,7 +871,6 @@ def select_icon(tracks):
                     album_description=album_desc,
                 )
                 progress.remove_task(inner)
-                progress.update(task, advance=1)
         # progress bar closed — interactive prompt starts below
 
         if skipped:
@@ -924,7 +923,7 @@ def select_icon(tracks):
             raw = Prompt.ask(prompt_text, default=default_choice, console=_console)
             if raw.lower() == "r":
                 with make_progress() as progress:
-                    task = progress.add_task(title, total=6, status="describing icons")
+                    task = progress.add_task(title, total=5, status="describing icons")
 
                     inner = progress.add_task("Claude Haiku", total=None, status="")
                     descriptions = describe_icons_llm(title, album_description=album_desc)
@@ -967,7 +966,6 @@ def select_icon(tracks):
                             album_description=album_desc,
                         )
                         progress.remove_task(inner)
-                        progress.update(task, advance=1)
                 if skipped:
                     break
                 continue
