@@ -57,6 +57,26 @@ def test_openai_generate_passes_quality(mock_openai_client):
     )
 
 
+def test_openai_edit_passes_quality(mock_openai_client):
+    """OpenAIProvider.edit() passes quality to the API."""
+    from yoto_lib.image_providers.openai_provider import OpenAIProvider
+
+    fake_image = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
+    fake_mask = b""
+
+    with patch("yoto_lib.image_providers.openai_provider.OpenAI", return_value=mock_openai_client), \
+         patch("yoto_lib.costs.COSTS", {
+             "openai_edit_high": {"cost": 0.08, "label": "OpenAI edit (high)"},
+         }):
+        provider = OpenAIProvider()
+        provider.edit(fake_image, fake_mask, "test prompt", 1024, 1024, quality="high")
+
+    call_kwargs = mock_openai_client.images.edit.call_args[1]
+    assert call_kwargs.get("quality") == "high"
+    assert call_kwargs.get("model") == "gpt-image-1"
+    assert call_kwargs.get("size") == "1024x1024"
+
+
 class TestFluxProvider:
     def test_recompose_uploads_and_returns_bytes(self):
         """recompose() uploads padded image and returns FLUX result."""
