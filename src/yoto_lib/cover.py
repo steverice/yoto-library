@@ -119,14 +119,19 @@ def reframe_album_art(
     output_path: Path,
     log: "Callable[[str], None] | None" = None,
     on_step: "Callable[[], None] | None" = None,
+    on_inner: "Callable[[str | None, int | None, int | None], None] | None" = None,
 ) -> None:
     """Reframe square album art into a portrait cover via AI recomposition.
 
     Generates FLUX candidates, evaluates each with Claude, runs text repair
     if needed. If nothing passes quality checks, Claude picks the best
     candidate and warns the user.
+
+    on_inner fires with (status, step, total) to create/update/remove nested
+    progress tasks. Call with (None, None, None) to signal task completion.
     """
     _log = log or (lambda msg: None)
+    _inner = on_inner or (lambda s, st, t: None)
 
     candidates: list[bytes] = []
     max_attempts = RECOMPOSE_MAX_ATTEMPTS
@@ -138,6 +143,7 @@ def reframe_album_art(
 
         for attempt in range(1, max_attempts + 1):
             _log(f"Recomposing album art for cover (attempt {attempt}/{max_attempts})...")
+            _inner("recomposing", 0, 2)
             recomposed_raw = provider.recompose(art_bytes, _RECOMPOSE_PROMPT, COVER_WIDTH, COVER_HEIGHT)
             candidate = _crop_flux_result(recomposed_raw)
 
@@ -145,21 +151,26 @@ def reframe_album_art(
             debug_path.write_bytes(candidate)
             logger.debug("reframe_album_art: attempt %d -> %s", attempt, debug_path)
 
+            _inner("evaluating", 1, 2)
             if check_recompose_quality(art_bytes, candidate):
                 _log("Quality check passed")
+                _inner(None, None, None)
                 if on_step:
                     on_step()
                 output_path.write_bytes(candidate)
                 return
 
             _log("Quality check failed")
+            _inner(None, None, None)
             if on_step:
                 on_step()
             candidates.append(candidate)
 
         # All FLUX attempts failed — try text repair on last attempt
         _log("All attempts had issues — repairing text...")
-        repaired = repair_text(art_bytes, candidates[-1], log=log)
+        _inner("describing text", 0, 4)
+        repaired = repair_text(art_bytes, candidates[-1], log=log, on_inner=_inner)
+        _inner(None, None, None)
         repaired_path = debug_dir / "repaired.png"
         repaired_path.write_bytes(repaired)
         logger.debug("reframe_album_art: repaired -> %s", repaired_path)
@@ -177,7 +188,9 @@ def reframe_album_art(
     # Nothing passed — pick the best of what we have
     if candidates:
         _log("No candidate passed quality checks — picking best available...")
+        _inner("pick-best", None, None)
         best = pick_best_candidate(art_bytes, candidates, debug_dir)
+        _inner(None, None, None)
         output_path.write_bytes(best)
         _log(
             "WARNING: Could not generate a high-quality cover. "
@@ -254,6 +267,7 @@ def try_shared_album_art(
     playlist: "Playlist",
     log: "Callable[[str], None] | None" = None,
     on_step: "Callable[[], None] | None" = None,
+    on_inner: "Callable[[str | None, int | None, int | None], None] | None" = None,
 ) -> bool:
     """Check if all tracks share identical album art; if so, save it as the cover.
 
@@ -300,7 +314,7 @@ def try_shared_album_art(
     )
     _log("Reusing shared album art as cover")
 
-    reframe_album_art(first_art_bytes, playlist.cover_path, log=log, on_step=on_step)
+    reframe_album_art(first_art_bytes, playlist.cover_path, log=log, on_step=on_step, on_inner=on_inner)
     return True
 
 
@@ -592,6 +606,7 @@ def repair_text(
     original: bytes,
     recomposed: bytes,
     log: "Callable[[str], None] | None" = None,
+    on_inner: "Callable[[str | None, int | None, int | None], None] | None" = None,
 ) -> bytes:
     """Repair missing/mangled text on a recomposed cover.
 
@@ -600,8 +615,10 @@ def repair_text(
     Falls back to the recomposed image unchanged on any failure.
     """
     _log = log or (lambda msg: None)
+    _inner = on_inner or (lambda s, st, t: None)
 
     _log("Repairing text on cover...")
+    _inner("describing text", 0, 4)
     text_descriptions = describe_album_text(original)
     if not text_descriptions:
         logger.warning("repair_text: text description failed, keeping recomposed as-is")
@@ -609,11 +626,13 @@ def repair_text(
 
     logger.debug("repair_text: found %d text elements", len(text_descriptions))
 
+    _inner("rendering layer", 1, 4)
     text_layer = render_text_layer(original, text_descriptions)
     if not text_layer:
         logger.warning("repair_text: text rendering failed")
         return recomposed
 
+    _inner("getting placement", 2, 4)
     recomposed_img = Image.open(io.BytesIO(recomposed))
     placement = get_text_placement(
         original, recomposed, recomposed_img.width, recomposed_img.height,
@@ -622,6 +641,7 @@ def repair_text(
         logger.warning("repair_text: placement failed")
         return recomposed
 
+    _inner("compositing", 3, 4)
     result = composite_text(recomposed, text_layer, placement)
     _log("Text repaired on cover")
     return result

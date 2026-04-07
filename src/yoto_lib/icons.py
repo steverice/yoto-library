@@ -615,12 +615,18 @@ def generate_retrodiffusion_icon(track_title: str) -> tuple[bytes | None, bytes 
 def generate_retrodiffusion_icons(
     descriptions: list[str],
     on_progress: "Callable[[int], None] | None" = None,
+    on_icon_start: "Callable[[int, str], None] | None" = None,
+    on_icon_done: "Callable[[int], None] | None" = None,
 ) -> list[tuple[bytes, Image.Image]]:
     """Generate one 16x16 icon per visual description via Retro Diffusion.
 
     Calls the API in parallel (one request per description) and reports
     progress as each completes.
     Returns list of (raw_bytes, processed_Image) pairs in input order.
+
+    on_icon_start(i, description) is called before each icon's API call.
+    on_icon_done(i) is called after each icon's API call completes.
+    on_progress(done_count) is called after each icon completes (for backwards compat).
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -632,27 +638,33 @@ def generate_retrodiffusion_icons(
     except (OSError, ValueError):
         return []
 
-    def _generate_one(desc: str) -> tuple[bytes, Image.Image] | None:
+    def _generate_one(idx: int, desc: str) -> tuple[int, tuple[bytes, Image.Image] | None]:
+        if on_icon_start:
+            on_icon_start(idx, desc)
         prompt = _build_pixelart_prompt(desc)
         try:
             raw_bytes = provider.generate(prompt, ICON_SIZE, ICON_SIZE)
         except (OSError, httpx.HTTPError):
-            return None
+            if on_icon_done:
+                on_icon_done(idx)
+            return (idx, None)
         img = Image.open(io.BytesIO(raw_bytes))
         img = remove_solid_background(img)
-        return (raw_bytes, img)
+        if on_icon_done:
+            on_icon_done(idx)
+        return (idx, (raw_bytes, img))
 
     # Submit all in parallel, track completion for progress
     ordered: dict[int, tuple[bytes, Image.Image] | None] = {}
     done_count = 0
     with ThreadPoolExecutor(max_workers=len(descriptions)) as pool:
-        future_to_idx = {
-            pool.submit(_generate_one, desc): i
+        futures = [
+            pool.submit(_generate_one, i, desc)
             for i, desc in enumerate(descriptions)
-        }
-        for future in as_completed(future_to_idx):
-            idx = future_to_idx[future]
-            ordered[idx] = future.result()
+        ]
+        for future in as_completed(futures):
+            idx, result = future.result()
+            ordered[idx] = result
             done_count += 1
             if on_progress:
                 on_progress(done_count)
