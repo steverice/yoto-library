@@ -25,6 +25,9 @@ dev = [
     "pytest-mock>=3.0",
     "pytest-tmp-files>=0.0.2",
 ]
+iterm2 = [
+    "iterm2>=2.0",
+]
 
 [project.scripts]
 yoto = "yoto_cli.main:cli"

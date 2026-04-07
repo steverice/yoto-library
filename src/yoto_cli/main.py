@@ -882,6 +882,14 @@ def select_icon(tracks):
             tmpdir.rmdir()
             continue
 
+        # Fix iTerm2 color space for accurate icon rendering
+        from yoto_cli.iterm_colors import ensure_srgb, restore_colors, show_hint_if_needed
+        iterm_originals = ensure_srgb()
+        if not iterm_originals:
+            _iterm_hint_needed = True
+        else:
+            _iterm_hint_needed = False
+
         while True:
             icons_16: list[Image.Image] = [processed for _, processed in batch]
             images_to_show: list[Image.Image] = list(icons_16)
@@ -1000,6 +1008,12 @@ def select_icon(tracks):
                 chose_yoto=(choice == yoto_choice),
             )
             break
+
+        # Restore iTerm2 colors after icon display
+        if iterm_originals:
+            restore_colors(iterm_originals)
+        elif _iterm_hint_needed:
+            show_hint_if_needed()
 
         if skipped:
             tmpdir.rmdir()

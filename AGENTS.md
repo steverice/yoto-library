@@ -45,6 +45,8 @@ operations, use nested tasks (outer = command-level, inner = current operation).
 For parallel operations, add one inner task per concurrent job.
 Cost tracking is automatic — providers record costs via `get_tracker().record()`.
 
+**iTerm2 integration** — `src/yoto_cli/iterm_colors.py` uses iTerm2's Python API (optional dependency) to fix color space rendering for pixel art icons. Pattern: detect iTerm2 via `TERM_PROGRAM` env var, attempt API connection (catch `SystemExit` on failure), apply session-local overrides via `LocalWriteOnlyProfile` (doesn't modify the underlying profile), restore after. Silent graceful degradation — never fails the command.
+
 **HTTP client** — httpx (not requests).
 
 **LLM calls** — go through the `claude` CLI as a subprocess (`claude -p <prompt> --output-format json`). See `icon_llm.py` for the pattern. Do not use the Anthropic Python SDK for LLM calls in this project.
