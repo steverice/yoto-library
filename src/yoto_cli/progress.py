@@ -1,4 +1,5 @@
 from rich.console import Console
+from rich.panel import Panel
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
@@ -8,6 +9,8 @@ from rich.progress import (
     TextColumn,
     TimeElapsedColumn,
 )
+from rich.style import Style
+from rich.table import Table
 from rich.text import Text
 
 _console = Console(stderr=True)
@@ -64,80 +67,73 @@ def warning(msg: str) -> None:
     _console.print(f"[yellow]⚠ {msg}[/yellow]")
 
 
-# ── Icon panel rendering ──────────────────────────────────────────────────────
+# ── Icon rendering ───────────────────────────────────────────────────────────
 
 
-def _read_key() -> str:
-    """Read a single keypress from stdin. Returns 'left', 'right', 'enter', 'r', or the raw char."""
-    import sys
-    import tty
-    import termios
-    fd = sys.stdin.fileno()
-    old = termios.tcgetattr(fd)
-    try:
-        tty.setraw(fd)
-        ch = sys.stdin.read(1)
-        if ch == "\x1b":
-            ch2 = sys.stdin.read(1)
-            ch3 = sys.stdin.read(1)
-            if ch2 == "[":
-                if ch3 == "D":
-                    return "left"
-                if ch3 == "C":
-                    return "right"
-            return "escape"
-        if ch in ("\r", "\n"):
-            return "enter"
-        return ch
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+def _icon_to_rich_text(img: "object") -> Text:
+    """Render a 16x16 RGBA image as a rich Text using half-block characters."""
+    img = img.convert("RGBA")
+    w, h = img.size
+    result = Text(overflow="fold", no_wrap=True)
+    for y in range(0, h, 2):
+        if y > 0:
+            result.append("\n")
+        for x in range(w):
+            top = img.getpixel((x, y))
+            bot = img.getpixel((x, y + 1)) if y + 1 < h else (0, 0, 0, 0)
+            if top[3] == 0 and bot[3] == 0:
+                result.append(" ")
+            elif top[3] == 0:
+                result.append("▄", style=Style(
+                    color=f"rgb({bot[0]},{bot[1]},{bot[2]})",
+                    bgcolor=f"rgb({bot[0]},{bot[1]},{bot[2]})",
+                ))
+            elif bot[3] == 0:
+                result.append("▀", style=Style(
+                    color=f"rgb({top[0]},{top[1]},{top[2]})",
+                ))
+            else:
+                result.append("▀", style=Style(
+                    color=f"rgb({top[0]},{top[1]},{top[2]})",
+                    bgcolor=f"rgb({bot[0]},{bot[1]},{bot[2]})",
+                ))
+    return result
 
 
-def interactive_icon_select(
+def render_icon_panels(
     images: list,
     labels: list[str],
     scores: list[str],
     winner: int,
-    max_choice: int,
-    render_fn: "Callable" = None,
-) -> str:
-    """Interactive icon selector with arrow keys. Returns the user's choice as a string.
+) -> Table:
+    """Return a rich Table displaying icons side by side with labels and scores.
 
-    Arrow keys move the highlight, Enter confirms, 'r' regenerates.
-    render_fn(images, labels, scores, selected) -> str returns the ANSI display string.
-    Returns a string: "1"-"N" for a choice, or "r" for regenerate.
+    Args:
+        images: PIL Image objects (16×16 RGBA)
+        labels: Text labels for each column header
+        scores: Score strings for each icon (empty string = no score)
+        winner: 1-based index of the winning icon (gets ★ marker + cyan)
     """
-    from rich.live import Live
-    from rich.text import Text as RichText
+    from rich import box
 
-    selected = winner - 1  # 0-indexed, start on LLM winner
+    table = Table(box=box.SIMPLE, show_header=True, padding=(0, 2), expand=False, show_edge=False)
 
-    def _render():
-        ansi = render_fn(images, labels, scores, selected=selected)
-        return RichText.from_ansi(ansi + "\n← → to move, Enter to select, r to regenerate")
+    for i, label in enumerate(labels):
+        is_winner = (i + 1) == winner
+        marker = " ★" if is_winner else ""
+        table.add_column(
+            f"{label}{marker}",
+            no_wrap=True,
+            header_style="bold cyan" if is_winner else "",
+        )
 
-    import sys
-    if not sys.stdin.isatty():
-        _console.print(RichText.from_ansi(render_fn(images, labels, scores, selected=selected)))
-        return str(winner)
+    cells = []
+    for i, (img, score) in enumerate(zip(images, scores)):
+        body = _icon_to_rich_text(img)
+        if score:
+            is_winner = (i + 1) == winner
+            body.append(f"\n{score}", style="bold cyan" if is_winner else "dim")
+        cells.append(body)
 
-    with Live(_render(), console=_console, transient=True) as live:
-        while True:
-            key = _read_key()
-            if key == "left":
-                selected = max(0, selected - 1)
-                live.update(_render())
-            elif key == "right":
-                selected = min(max_choice - 1, selected + 1)
-                live.update(_render())
-            elif key == "enter":
-                break
-            elif key == "r":
-                selected = -1
-                break
-
-    # Print final state (non-transient)
-    if selected >= 0:
-        _console.print(RichText.from_ansi(render_fn(images, labels, scores, selected=selected)))
-        return str(selected + 1)
-    return "r"
+    table.add_row(*cells)
+    return table
