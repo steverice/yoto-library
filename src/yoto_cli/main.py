@@ -23,7 +23,7 @@ from yoto_lib.description import generate_description
 from yoto_lib.sync import sync_path
 from yoto_lib.pull import pull_playlist
 from yoto_lib.playlist import read_jsonl, write_jsonl, scan_audio_files, load_playlist, diff_playlists
-from yoto_lib.mka import wrap_in_mka, remove_attachment, set_attachment, read_source_tags, write_tags, generate_source_patch
+from yoto_lib.mka import wrap_in_mka, remove_attachment, set_attachment, read_source_tags, write_tags, generate_source_patch, extract_album_art, read_tags
 from yoto_lib.itunes import enrich_from_itunes
 from yoto_lib.sources import resolve_weblocs
 from yoto_lib.costs import get_tracker, reset_tracker
@@ -541,8 +541,17 @@ def import_cmd(source, output):
     write_jsonl(output_path / "playlist.jsonl", filenames)
     click.echo(f"Imported {len(filenames)} tracks into {output_path}")
 
-    # Generate description from track metadata
     playlist = load_playlist(output_path)
+
+    # Enrich tracks that are missing album art (e.g. re-import of existing MKAs)
+    if not playlist.has_cover:
+        for filename in playlist.track_files:
+            track_path = output_path / filename
+            if extract_album_art(track_path) is None:
+                tags = read_tags(track_path)
+                enrich_from_itunes(track_path, tags, album_cache)
+
+    # Generate description from track metadata
     generate_description(
         playlist,
         log=lambda msg: click.echo(msg),
