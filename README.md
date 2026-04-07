@@ -169,7 +169,7 @@ Open `playlist.jsonl` in `$EDITOR` to reorder tracks. Validates JSON on save. De
 
 ### `yoto select-icon <track>`
 
-Interactive icon selection for a single track. Generates 3 AI icon candidates, shows the best Yoto catalog match as a 4th option, and displays all four side-by-side in the terminal. Pick one or press `r` to regenerate.
+Interactive icon selection for a single track (or multiple tracks in sequence). Generates three pixel art icon options, finds the best match from Yoto's icon catalog, scores all candidates with an LLM, and displays them in bordered panels for selection. Pick one or press `r` to regenerate.
 
 ### `yoto reset-icon <tracks...>`
 
