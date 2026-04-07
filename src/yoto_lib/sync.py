@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
 import httpx
+
+WORKERS = int(os.environ.get("YOTO_WORKERS", "4"))
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +131,8 @@ def sync_playlist(
     trim: bool = True,
     on_track_done: Callable[[str], None] | None = None,
     log: Callable[[str], None] | None = None,
+    on_upload_start: Callable[[str], None] | None = None,
+    on_upload_done: Callable[[str], None] | None = None,
 ) -> SyncResult:
     """
     Sync a single playlist folder to the Yoto API.
@@ -239,31 +245,45 @@ def sync_playlist(
     logger.debug("sync: uploading %d tracks (%d reused from remote)",
                   len(tracks_to_upload), len(playlist.track_files) - len(tracks_to_upload))
 
-    # 9. Upload new tracks (and existing tracks with missing hashes)
-    total_new = len(tracks_to_upload)
-    for i, filename in enumerate(tracks_to_upload, 1):
+    # 9. Upload new tracks in parallel (and existing tracks with missing hashes)
+    def _upload_one(filename: str) -> tuple[str, dict[str, Any] | None, str | None]:
+        """Upload one track. Returns (filename, transcode_result_or_None, error_or_None)."""
         file_path = folder / filename
         if not file_path.exists():
-            result.errors.append(f"Track file not found: {filename}")
-            continue
+            return filename, None, f"Track file not found: {filename}"
+        stem = Path(filename).stem
+        _log(f"Uploading: {stem}")
+        if on_upload_start:
+            on_upload_start(filename)
         try:
-            _log(f"Uploading track {i}/{total_new}: {Path(filename).stem}")
             transcode_result = api.upload_and_transcode(file_path)
-            sha = transcode_result.get("transcodedSha256", "")
-            track_hashes[filename] = sha
-            # Extract format and channels from transcoded output for content schema
-            transcoded_info = transcode_result.get("transcodedInfo", {})
-            track_info[filename] = {
-                "format": transcoded_info.get("format", ""),
-                "channels": transcoded_info.get("channels", ""),
-            }
-            if on_track_done:
-                on_track_done(filename)
+            return filename, transcode_result, None
         except (OSError, httpx.HTTPError) as exc:
             logger.error("sync: upload failed for %s: %s", filename, exc)
-            result.errors.append(f"Upload failed for {filename}: {exc}")
-            if on_track_done:
-                on_track_done(filename)
+            return filename, None, f"Upload failed for {filename}: {exc}"
+
+    if tracks_to_upload:
+        with ThreadPoolExecutor(max_workers=min(WORKERS, len(tracks_to_upload))) as executor:
+            future_to_filename = {
+                executor.submit(_upload_one, fn): fn
+                for fn in tracks_to_upload
+            }
+            for future in as_completed(future_to_filename):
+                filename, transcode_result, error = future.result()
+                if error:
+                    result.errors.append(error)
+                else:
+                    sha = transcode_result.get("transcodedSha256", "")
+                    track_hashes[filename] = sha
+                    transcoded_info = transcode_result.get("transcodedInfo", {})
+                    track_info[filename] = {
+                        "format": transcoded_info.get("format", ""),
+                        "channels": transcoded_info.get("channels", ""),
+                    }
+                if on_upload_done:
+                    on_upload_done(filename)
+                if on_track_done:
+                    on_track_done(filename)
 
     # 10. Upload cover if changed, or preserve existing remote cover URL
     cover_url: str | None = None
@@ -322,6 +342,8 @@ def sync_path(
     trim: bool = True,
     on_track_done: Callable[[str], None] | None = None,
     log: Callable[[str], None] | None = None,
+    on_upload_start: Callable[[str], None] | None = None,
+    on_upload_done: Callable[[str], None] | None = None,
 ) -> list[SyncResult]:
     """
     Sync one or more playlists rooted at path.
@@ -334,12 +356,20 @@ def sync_path(
 
     if _has_audio_files(path):
         logger.debug("sync_path: %s is a playlist folder", path)
-        results.append(sync_playlist(path, dry_run=dry_run, trim=trim, on_track_done=on_track_done, log=log))
+        results.append(sync_playlist(
+            path, dry_run=dry_run, trim=trim,
+            on_track_done=on_track_done, log=log,
+            on_upload_start=on_upload_start, on_upload_done=on_upload_done,
+        ))
     else:
         subdirs = sorted(p for p in path.iterdir() if p.is_dir())
         playlist_dirs = [s for s in subdirs if _has_audio_files(s)]
         logger.debug("sync_path: %s contains %d playlist subdirs", path, len(playlist_dirs))
         for subdir in playlist_dirs:
-            results.append(sync_playlist(subdir, dry_run=dry_run, trim=trim, on_track_done=on_track_done, log=log))
+            results.append(sync_playlist(
+                subdir, dry_run=dry_run, trim=trim,
+                on_track_done=on_track_done, log=log,
+                on_upload_start=on_upload_start, on_upload_done=on_upload_done,
+            ))
 
     return results
