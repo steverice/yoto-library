@@ -138,7 +138,7 @@ Each AI-powered feature uses a hardcoded provider chosen for best results at tha
 
 All Claude CLI calls in the cover pipeline use Sonnet for better visual judgment and OCR accuracy.
 
-**Text-to-image cover generation** (when no shared album art exists): A two-step pipeline using OpenAI `gpt-image-1`:
+**Text-to-image cover generation** (when no shared album art exists): A two-step pipeline using OpenAI `gpt-image-1.5`:
 
 1. **Generate illustration** — creates a cover illustration from track metadata with no text in the image. The prompt explicitly requests clear space in the upper portion for a title.
 2. **Add title via edit** — a separate edit call adds the playlist title as a decorative banner. This is a deliberate two-step process because single-pass generation frequently crops title text at image boundaries.

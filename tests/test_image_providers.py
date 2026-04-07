@@ -50,7 +50,7 @@ def test_openai_generate_passes_quality(mock_openai_client):
         provider.generate("test prompt", 1024, 1536, quality="low")
 
     mock_openai_client.images.generate.assert_called_once_with(
-        model="gpt-image-1",
+        model="gpt-image-1.5",
         prompt="test prompt",
         size="1024x1536",
         quality="low",
@@ -73,7 +73,7 @@ def test_openai_edit_passes_quality(mock_openai_client):
 
     call_kwargs = mock_openai_client.images.edit.call_args[1]
     assert call_kwargs.get("quality") == "high"
-    assert call_kwargs.get("model") == "gpt-image-1"
+    assert call_kwargs.get("model") == "gpt-image-1.5"
     assert call_kwargs.get("size") == "1024x1024"
 
 
