@@ -92,6 +92,11 @@ def _icon_to_rich_text(img: "object") -> Text:
                 result.append("▀", style=Style(
                     color=f"rgb({top[0]},{top[1]},{top[2]})",
                 ))
+            elif top[:3] == bot[:3]:
+                # Same color — use full block to avoid fg/bg anti-aliasing seam
+                result.append("█", style=Style(
+                    color=f"rgb({top[0]},{top[1]},{top[2]})",
+                ))
             else:
                 result.append("▀", style=Style(
                     color=f"rgb({top[0]},{top[1]},{top[2]})",
