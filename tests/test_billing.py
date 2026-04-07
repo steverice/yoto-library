@@ -68,7 +68,7 @@ class TestPersistence:
         from yoto_lib.billing import persist_session, read_totals, reset_totals
         t = CostTracker()
         t.record("retrodiffusion", count=3)
-        t.record("openai_generate")
+        t.record("openai_generate_low")
         persist_session(t)
         reset_totals()
         assert read_totals() == {}
@@ -77,14 +77,14 @@ class TestPersistence:
         from yoto_lib.billing import persist_session, read_totals, reset_totals
         t = CostTracker()
         t.record("retrodiffusion", count=3)
-        t.record("openai_generate")
-        t.record("openai_edit")
+        t.record("openai_generate_low")
+        t.record("openai_edit_medium")
         persist_session(t)
         reset_totals("openai")
         totals = read_totals()
         assert "retrodiffusion" in totals
-        assert "openai_generate" not in totals
-        assert "openai_edit" not in totals
+        assert "openai_generate_low" not in totals
+        assert "openai_edit_medium" not in totals
 
 
 class TestFetchBalances:
@@ -162,7 +162,7 @@ class TestBillingCommand:
         # Simulate a session
         t = CostTracker()
         t.record("retrodiffusion", count=5)
-        t.record("openai_generate", count=2)
+        t.record("openai_generate_low", count=2)
         persist_session(t)
 
         runner = CliRunner()
@@ -192,7 +192,7 @@ class TestBillingCommand:
 
         t = CostTracker()
         t.record("retrodiffusion", count=3)
-        t.record("openai_generate")
+        t.record("openai_generate_low")
         persist_session(t)
 
         runner = CliRunner()
@@ -201,7 +201,7 @@ class TestBillingCommand:
         assert "Reset lifetime billing data for openai" in result.output
         totals = read_totals()
         assert "retrodiffusion" in totals
-        assert "openai_generate" not in totals
+        assert "openai_generate_low" not in totals
 
     def test_billing_reset_invalid_provider(self, billing_file):
         from yoto_cli.main import cli

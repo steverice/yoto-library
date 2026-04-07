@@ -20,7 +20,7 @@ BILLING_FILE = Path.home() / ".yoto" / "billing.json"
 # Provider group names -> cost keys
 PROVIDER_GROUPS: dict[str, list[str]] = {
     "retrodiffusion": ["retrodiffusion"],
-    "openai": ["openai_generate", "openai_edit"],
+    "openai": ["openai_generate_low", "openai_generate_medium", "openai_edit_low", "openai_edit_medium"],
     "flux": ["flux_generate", "flux_recompose"],
     "gemini": ["gemini_flash_image"],
     "claude": ["claude_haiku", "claude_sonnet"],

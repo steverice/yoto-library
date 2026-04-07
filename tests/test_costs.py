@@ -116,7 +116,7 @@ _README_TO_COSTS = {
     "Icon generation": "retrodiffusion",
     "Album art recomposition": "flux_recompose",
     "Text layer rendering": "gemini_flash_image",
-    "Text-to-image cover generation": "openai_generate",
+    "Text-to-image cover generation": "openai_generate_low",
 }
 
 
