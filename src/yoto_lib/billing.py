@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+
+import httpx
 
 from yoto_lib.costs import CostTracker
 
@@ -80,3 +85,102 @@ def _write_totals(totals: dict) -> None:
         json.dumps({"totals": totals}, indent=2) + "\n",
         encoding="utf-8",
     )
+
+
+def fetch_balances() -> dict[str, dict]:
+    """Fetch live balances from providers that support it. Runs in parallel.
+
+    Returns dict like:
+        {"RetroDiffusion": {"balance": 12.45}}
+        {"RetroDiffusion": {"error": "timeout"}}
+    Only includes providers whose API keys are configured.
+    """
+    tasks = {}
+    if os.environ.get("RETRODIFFUSION_API_KEY"):
+        tasks["RetroDiffusion"] = _fetch_retrodiffusion_balance
+
+    results = {}
+    if not tasks:
+        return results
+
+    with ThreadPoolExecutor(max_workers=len(tasks)) as pool:
+        futures = {pool.submit(fn): name for name, fn in tasks.items()}
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                results[name] = {"balance": future.result()}
+            except Exception as exc:
+                results[name] = {"error": str(exc)}
+
+    return results
+
+
+def _fetch_retrodiffusion_balance() -> float:
+    """Query RetroDiffusion balance without generating images."""
+    response = httpx.post(
+        "https://api.retrodiffusion.ai/v1/inferences",
+        headers={"X-RD-Token": os.environ["RETRODIFFUSION_API_KEY"]},
+        json={
+            "prompt": "test",
+            "width": 64,
+            "height": 64,
+            "num_images": 1,
+            "check_cost": True,
+        },
+        timeout=10,
+    )
+    response.raise_for_status()
+    return response.json()["remaining_balance"]
+
+
+def fetch_subscription_usage() -> dict | None:
+    """Fetch Claude subscription usage via OAuth. Returns None on failure.
+
+    Returns dict like:
+        {"session": {"utilization": 32.0, "resets_at": "..."},
+         "weekly": {"utilization": 30.0, "resets_at": "..."},
+         "weekly_sonnet": {"utilization": 3.0, "resets_at": "..."}}
+    """
+    token = _get_claude_oauth_token()
+    if token is None:
+        return None
+
+    try:
+        response = httpx.get(
+            "https://api.anthropic.com/api/oauth/usage",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "anthropic-beta": "oauth-2025-04-20",
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json()
+    except (httpx.HTTPError, OSError, ValueError) as exc:
+        logger.warning("billing: Claude OAuth usage request failed: %s", exc)
+        return None
+
+    result = {}
+    if data.get("five_hour"):
+        result["session"] = data["five_hour"]
+    if data.get("seven_day"):
+        result["weekly"] = data["seven_day"]
+    if data.get("seven_day_sonnet"):
+        result["weekly_sonnet"] = data["seven_day_sonnet"]
+
+    return result or None
+
+
+def _get_claude_oauth_token() -> str | None:
+    """Extract Claude OAuth token from macOS keychain."""
+    try:
+        result = subprocess.run(
+            ["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode != 0:
+            return None
+        creds = json.loads(result.stdout.strip())
+        return creds.get("claudeAiOauth", {}).get("accessToken")
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, OSError):
+        return None

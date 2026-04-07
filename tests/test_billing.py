@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -83,3 +84,70 @@ class TestPersistence:
         assert "retrodiffusion" in totals
         assert "openai_generate" not in totals
         assert "openai_edit" not in totals
+
+
+class TestFetchBalances:
+    def test_retrodiffusion_balance(self):
+        from yoto_lib.billing import fetch_balances
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "remaining_balance": 12.45,
+            "balance_cost": 0.25,
+            "output_images": [],
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        with patch.dict("os.environ", {"RETRODIFFUSION_API_KEY": "test-key"}), \
+             patch("yoto_lib.billing.httpx.post", return_value=mock_response):
+            balances = fetch_balances()
+
+        assert balances["RetroDiffusion"]["balance"] == 12.45
+
+    def test_retrodiffusion_not_configured(self):
+        from yoto_lib.billing import fetch_balances
+        with patch.dict("os.environ", {}, clear=True):
+            balances = fetch_balances()
+        assert "RetroDiffusion" not in balances
+
+    def test_retrodiffusion_api_error(self):
+        from yoto_lib.billing import fetch_balances
+        with patch.dict("os.environ", {"RETRODIFFUSION_API_KEY": "test-key"}), \
+             patch("yoto_lib.billing.httpx.post", side_effect=Exception("timeout")):
+            balances = fetch_balances()
+        assert balances["RetroDiffusion"]["error"] == "timeout"
+
+
+class TestSubscriptionUsage:
+    def test_claude_subscription_usage(self):
+        from yoto_lib.billing import fetch_subscription_usage
+        mock_keychain = MagicMock()
+        mock_keychain.stdout = json.dumps({
+            "claudeAiOauth": {"accessToken": "test-token"}
+        })
+        mock_keychain.returncode = 0
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "five_hour": {"utilization": 32.0, "resets_at": "2026-04-07T12:00:00Z"},
+            "seven_day": {"utilization": 30.0, "resets_at": "2026-04-11T20:00:00Z"},
+            "seven_day_sonnet": {"utilization": 3.0, "resets_at": "2026-04-11T20:00:00Z"},
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("yoto_lib.billing.subprocess.run", return_value=mock_keychain), \
+             patch("yoto_lib.billing.httpx.get", return_value=mock_response):
+            usage = fetch_subscription_usage()
+
+        assert usage["session"]["utilization"] == 32.0
+        assert usage["weekly"]["utilization"] == 30.0
+        assert usage["weekly_sonnet"]["utilization"] == 3.0
+
+    def test_claude_no_keychain(self):
+        from yoto_lib.billing import fetch_subscription_usage
+        mock_keychain = MagicMock()
+        mock_keychain.returncode = 44
+        mock_keychain.stdout = ""
+
+        with patch("yoto_lib.billing.subprocess.run", return_value=mock_keychain):
+            usage = fetch_subscription_usage()
+
+        assert usage is None
