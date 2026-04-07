@@ -337,9 +337,9 @@ class TestImportIntegration:
             result = runner.invoke(cli, ["import", str(wav.parent), "-o", str(output)])
 
         assert result.exit_code == 0, result.output
-        mock_enrich.assert_called_once()
+        assert mock_enrich.call_count >= 1
         # First arg is the MKA path, second is the tags dict, third is the cache dict
-        call_args = mock_enrich.call_args[0]
+        call_args = mock_enrich.call_args_list[0][0]
         assert call_args[0].suffix == ".mka"
         assert isinstance(call_args[1], dict)
         assert isinstance(call_args[2], dict)

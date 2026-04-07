@@ -6,8 +6,12 @@ import logging
 import os
 import re
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+
+WORKERS = int(os.environ.get("YOTO_WORKERS", "4"))
 
 import click
 from click.shell_completion import CompletionItem
@@ -30,11 +34,12 @@ from yoto_lib.costs import get_tracker, reset_tracker
 
 
 def _print_cost_summary():
+    from yoto_cli.progress import _console
     tracker = get_tracker()
     if not tracker.has_records():
         return
     for line in tracker.summary_lines():
-        click.echo(line)
+        _console.print(f"[dim]{line}[/dim]")
 
 
 # ── Logging setup ────────────────────────────────────────────────────────────
@@ -64,7 +69,14 @@ def _setup_logging(verbose: bool = False) -> None:
         ))
         log.addHandler(file_handler)
 
-        console_handler = logging.StreamHandler()
+        from rich.logging import RichHandler
+        from yoto_cli.progress import _console as rich_console
+        console_handler = RichHandler(
+            console=rich_console,
+            show_time=False,
+            show_path=False,
+            markup=False,
+        )
         env_level = os.environ.get("YOTO_LOG_LEVEL", "").upper()
         if verbose:
             console_handler.setLevel(logging.DEBUG)
@@ -72,7 +84,6 @@ def _setup_logging(verbose: bool = False) -> None:
             console_handler.setLevel(getattr(logging, env_level))
         else:
             console_handler.setLevel(logging.WARNING)
-        console_handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
         log.addHandler(console_handler)
 
 
@@ -218,13 +229,14 @@ def sync(path, dry_run, no_trim):
     logger.debug("command: sync path=%s dry_run=%s no_trim=%s", path, dry_run, no_trim)
     trim = not no_trim
     reset_tracker()
+    from yoto_cli.progress import _console, error as _error
     if dry_run:
         results = sync_path(Path(path), dry_run=True, trim=trim)
         for result in results:
             icon_msg = f", {result.icons_uploaded} icons" if result.icons_uploaded else ""
-            click.echo(f"[Dry run] Would upload {result.tracks_uploaded} tracks{icon_msg}")
-            for error in result.errors:
-                click.echo(f"Error: {error}", err=True)
+            _console.print(f"[Dry run] Would upload {result.tracks_uploaded} tracks{icon_msg}")
+            for err in result.errors:
+                _error(err)
         return
 
     from yoto_lib.playlist import load_playlist as _load
@@ -234,21 +246,35 @@ def sync(path, dry_run, no_trim):
 
     with make_progress() as progress:
         task = progress.add_task(playlist.title, total=total, status="starting")
+        upload_tasks: dict[str, int] = {}  # filename -> inner task id
 
-        def log(msg):
+        def log(msg: str) -> None:
             progress.update(task, advance=1, status=msg)
             progress.console.print(msg)
 
-        results = sync_path(Path(path), dry_run=False, trim=trim, log=log)
+        def on_upload_start(filename: str) -> None:
+            stem = Path(filename).stem
+            inner_task = progress.add_task(stem, total=None, status="uploading")
+            upload_tasks[filename] = inner_task
+
+        def on_upload_done(filename: str) -> None:
+            inner_task = upload_tasks.pop(filename, None)
+            if inner_task is not None:
+                progress.remove_task(inner_task)
+            progress.update(task, advance=1)
+
+        results = sync_path(
+            Path(path), dry_run=False, trim=trim, log=log,
+            on_upload_start=on_upload_start, on_upload_done=on_upload_done,
+        )
         progress.update(task, completed=total)
 
+    from yoto_cli.progress import success as _success, error as _error
     for result in results:
         icon_msg = f", {result.icons_uploaded} icons" if result.icons_uploaded else ""
-        click.echo(
-            f"Done! card {result.card_id}: {result.tracks_uploaded} tracks{icon_msg}"
-        )
-        for error in result.errors:
-            click.echo(f"Error: {error}", err=True)
+        _success(f"card {result.card_id}: {result.tracks_uploaded} tracks{icon_msg}")
+        for err in result.errors:
+            _error(err)
     _print_cost_summary()
 
 
@@ -269,21 +295,47 @@ def download(path, no_trim):
         from yoto_cli.progress import make_progress
         with make_progress() as progress:
             task = progress.add_task(folder.name, total=webloc_count, status="")
+            inner_tasks: dict[str, int] = {}
 
-            def on_track(name):
+            def on_track_start(name: str) -> None:
+                inner_task = progress.add_task(name, total=100, status="")
+                inner_tasks[name] = inner_task
+
+            def on_download_progress(name: str, pct: float, downloaded: int, total: int | None, speed: str) -> None:
+                inner_task = inner_tasks.get(name)
+                if inner_task is not None:
+                    status = speed if speed else ""
+                    progress.update(inner_task, completed=pct, status=status)
+
+            def on_track(name: str) -> None:
                 progress.update(task, advance=1, status=name)
+                inner_task = inner_tasks.pop(name.split(".mka")[0].split("/")[-1] if ".mka" in name else name, None)
+                # Also try by stem (mka name != webloc stem)
+                if inner_task is None:
+                    for key, tid in list(inner_tasks.items()):
+                        inner_tasks.pop(key)
+                        inner_task = tid
+                        break
+                if inner_task is not None:
+                    progress.remove_task(inner_task)
 
-            created = resolve_weblocs(folder, trim=trim, on_track_done=on_track)
+            created = resolve_weblocs(
+                folder, trim=trim,
+                on_track_done=on_track,
+                on_track_start=on_track_start,
+                on_download_progress=on_download_progress,
+            )
     else:
         created = resolve_weblocs(folder, trim=trim)
 
+    from yoto_cli.progress import _console, success as _success
     if not created:
-        click.echo("No .webloc files resolved.")
+        _console.print("[dim]No .webloc files resolved.[/dim]")
         return
 
     for mka_path in created:
-        click.echo(f"  Downloaded: {mka_path.name}")
-    click.echo(f"Downloaded {len(created)} tracks.")
+        _success(f"Downloaded: {mka_path.name}")
+    _success(f"Downloaded {len(created)} tracks.")
 
 
 # ── pull ──────────────────────────────────────────────────────────────────────
@@ -316,29 +368,50 @@ def _pull_one(folder: Path, card_id: str | None = None, dry_run: bool = False) -
         from yoto_cli.progress import make_progress
         with make_progress() as progress:
             task = progress.add_task(folder.name, total=None, status="fetching")
+            inner_tasks: dict[str, int] = {}  # title -> task id
 
-            def on_total(n):
+            def on_total(n: int) -> None:
                 progress.update(task, total=n, status="downloading")
 
-            def on_track(title):
-                progress.update(task, advance=1, status=title)
+            def on_track_start(title: str) -> None:
+                # total=None → indeterminate until we get content-length
+                inner_task = progress.add_task(title, total=None, status="")
+                inner_tasks[title] = inner_task
 
-            result = pull_playlist(folder, card_id=card_id, dry_run=dry_run,
-                                   on_track_done=on_track, on_total=on_total)
+            def on_download_progress(title: str, downloaded: int, total: int | None) -> None:
+                inner_task = inner_tasks.get(title)
+                if inner_task is not None:
+                    if total is not None:
+                        progress.update(inner_task, completed=downloaded, total=total, status="")
+                    else:
+                        progress.update(inner_task, completed=downloaded, status="")
+
+            def on_track(title: str) -> None:
+                progress.update(task, advance=1, status=title)
+                inner_task = inner_tasks.pop(title, None)
+                if inner_task is not None:
+                    progress.remove_task(inner_task)
+
+            result = pull_playlist(
+                folder, card_id=card_id, dry_run=dry_run,
+                on_track_done=on_track, on_total=on_total,
+                on_track_start=on_track_start,
+                on_download_progress=on_download_progress,
+            )
     else:
-        def on_track(title):
-            click.echo(f"  Downloaded: {title}")
+        from yoto_cli.progress import _console as _con
+        def on_track(title: str) -> None:
+            _con.print(f"  Downloaded: {title}")
         result = pull_playlist(folder, card_id=card_id, dry_run=dry_run, on_track_done=on_track)
 
+    from yoto_cli.progress import _console, success as _success, error as _error
     if dry_run:
-        click.echo(f"[Dry run] {result.card_id}")
+        _console.print(f"[Dry run] {result.card_id}")
     else:
         icon_msg = f", {result.icons_downloaded} icons" if result.icons_downloaded else ""
-        click.echo(
-            f"Done! {result.card_id}: {result.tracks_downloaded} tracks{icon_msg}"
-        )
-    for error in result.errors:
-        click.echo(f"Error: {error}", err=True)
+        _success(f"{result.card_id}: {result.tracks_downloaded} tracks{icon_msg}")
+    for err in result.errors:
+        _error(err)
 
 
 def _read_card_id(folder: Path) -> str | None:
@@ -353,14 +426,15 @@ def _pull_all(dry_run: bool = False) -> None:
     api = YotoAPI()
     cards = api.get_my_content()
 
+    from yoto_cli.progress import _console
     if not cards:
-        click.echo("No cards found.")
+        _console.print("[dim]No cards found.[/dim]")
         return
 
     for card in cards:
         card_id = card.get("cardId", "")
         title = card.get("title", card_id)
-        click.echo(f"Pulling {title}...")
+        _console.print(f"Pulling {title}...")
         folder = Path(".") / title
         folder.mkdir(exist_ok=True)
         _pull_one(folder, card_id=card_id, dry_run=dry_run)
@@ -379,6 +453,7 @@ def status(path):
         raise click.ClickException("Not a playlist folder (no playlist.jsonl or audio files)")
     playlist = load_playlist(folder)
 
+    from yoto_cli.progress import _console, warning as _warning
     remote_state = None
     if playlist.card_id:
         try:
@@ -387,27 +462,27 @@ def status(path):
             from yoto_lib.sync import _parse_remote_state
             remote_state = _parse_remote_state(remote_content)
         except Exception as exc:
-            click.echo(f"Warning: could not fetch remote state: {exc}", err=True)
+            _warning(f"could not fetch remote state: {exc}")
 
     diff = diff_playlists(playlist, remote_state)
 
     if not any([diff.new_tracks, diff.removed_tracks, diff.order_changed,
                 diff.cover_changed, diff.metadata_changed]):
-        click.echo("No changes.")
+        _console.print("[dim]No changes.[/dim]")
         return
 
     if diff.new_tracks:
         for t in diff.new_tracks:
-            click.echo(f"  + {t}")
+            _console.print(f"  [green]+[/green] {t}")
     if diff.removed_tracks:
         for t in diff.removed_tracks:
-            click.echo(f"  - {t}")
+            _console.print(f"  [red]-[/red] {t}")
     if diff.order_changed:
-        click.echo("  ~ track order changed")
+        _console.print("  [yellow]~[/yellow] track order changed")
     if diff.cover_changed:
-        click.echo("  ~ cover changed")
+        _console.print("  [yellow]~[/yellow] cover changed")
     if diff.metadata_changed:
-        click.echo("  ~ metadata changed")
+        _console.print("  [yellow]~[/yellow] metadata changed")
 
 
 # ── reorder ───────────────────────────────────────────────────────────────────
@@ -423,8 +498,9 @@ def reorder(playlist):
 
     edited = click.edit(original)
 
+    from yoto_cli.progress import _console, success as _success
     if edited is None or edited == original:
-        click.echo("No changes made.")
+        _console.print("[dim]No changes made.[/dim]")
         return
 
     # Validate the edited content is valid JSONL
@@ -445,7 +521,7 @@ def reorder(playlist):
         filenames.append(value)
 
     write_jsonl(playlist_path, filenames)
-    click.echo(f"Saved {len(filenames)} tracks.")
+    _success(f"Saved {len(filenames)} tracks.")
 
 
 # ── init ──────────────────────────────────────────────────────────────────────
@@ -457,14 +533,15 @@ def init(path):
     """Scaffold a new playlist folder."""
     logger.debug("command: init path=%s", path)
     folder = Path(path)
+    from yoto_cli.progress import success as _success, warning as _warning
     folder.mkdir(parents=True, exist_ok=True)
     jsonl_path = folder / "playlist.jsonl"
     if not jsonl_path.exists():
         write_jsonl(jsonl_path, [])
-        click.echo(f"Created {jsonl_path}")
+        _success(f"Created {jsonl_path}")
     else:
-        click.echo(f"Already exists: {jsonl_path}")
-    click.echo(f"Initialized playlist folder: {folder}")
+        _warning(f"Already exists: {jsonl_path}")
+    _success(f"Initialized playlist folder: {folder}")
 
 
 # ── import ────────────────────────────────────────────────────────────────────
@@ -496,51 +573,93 @@ def import_cmd(source, output):
     output_path.mkdir(parents=True, exist_ok=True)
     reset_tracker()
 
+    from yoto_cli.progress import _console, success as _success, error as _error
     audio_files = scan_audio_files(source_path)
     if not audio_files:
-        click.echo("No audio files found.")
+        _console.print("[dim]No audio files found.[/dim]")
         return
 
     album_cache: dict = {}
-    filenames = []
+    album_cache_lock = threading.Lock()
+    # results_by_index preserves original order: index -> mka_name or None
+    results_by_index: dict[int, str | None] = {}
 
     from contextlib import nullcontext
     from yoto_cli.progress import make_progress
     progress_ctx = make_progress() if sys.stderr.isatty() else nullcontext()
     with progress_ctx as progress:
         task = progress.add_task(source_path.name, total=len(audio_files), status="") if progress else None
-        for audio in audio_files:
-            if progress and task is not None:
-                progress.update(task, status=audio.name)
+
+        def _import_one(idx: int, audio: Path) -> str | None:
+            """Process one audio file. Returns mka_name on success, None on failure."""
             clean_stem = _strip_track_number(audio.stem)
             mka_name = clean_stem + ".mka"
             mka_dest = output_path / mka_name
+
             if audio.suffix.lower() == ".mka" and source_path == output_path:
                 # Already MKA in place — just record it
-                filenames.append(mka_name)
-            else:
-                try:
-                    wrap_in_mka(audio, mka_dest)
-                    # Copy metadata from source file to MKA
-                    source_tags = read_source_tags(audio)
-                    source_tags["source_format"] = audio.suffix.lstrip(".").lower()
-                    write_tags(mka_dest, source_tags)
-                    # Fetch album art from iTunes if missing
+                if progress and task is not None:
+                    progress.update(task, advance=1, status=audio.name)
+                return mka_name
+
+            inner_task = progress.add_task(audio.name, total=4, status="wrapping") if progress else None
+            try:
+                wrap_in_mka(audio, mka_dest)
+                if progress and inner_task is not None:
+                    progress.update(inner_task, advance=1, status="metadata")
+                # Copy metadata from source file to MKA
+                source_tags = read_source_tags(audio)
+                source_tags["source_format"] = audio.suffix.lstrip(".").lower()
+                write_tags(mka_dest, source_tags)
+                if progress and inner_task is not None:
+                    progress.update(inner_task, advance=1, status="fetching art")
+                # Fetch album art from iTunes (serialized to avoid duplicate API calls)
+                with album_cache_lock:
                     enrich_from_itunes(mka_dest, source_tags, album_cache)
-                    # Generate bsdiff patch for byte-perfect export
-                    generate_source_patch(audio, mka_dest)
-                    filenames.append(mka_name)
-                    click.echo(f"  Wrapped {audio.name} -> {mka_name}")
-                    if source_path == output_path:
-                        audio.unlink()
+                if progress and inner_task is not None:
+                    progress.update(inner_task, advance=1, status="patching")
+                # Generate bsdiff patch for byte-perfect export
+                generate_source_patch(audio, mka_dest)
+                if progress and inner_task is not None:
+                    progress.update(inner_task, advance=1)
+                    progress.remove_task(inner_task)
+                if source_path == output_path:
+                    audio.unlink()
+                if progress and task is not None:
+                    progress.update(task, advance=1, status=audio.name)
+                return mka_name
+            except Exception as exc:
+                if progress and inner_task is not None:
+                    progress.remove_task(inner_task)
+                _pcon = progress.console.print if progress else _console.print
+                _pcon(f"  [red]✗[/red] Error wrapping {audio.name}: {exc}")
+                if progress and task is not None:
+                    progress.update(task, advance=1, status=audio.name)
+                return None
+
+        with ThreadPoolExecutor(max_workers=WORKERS) as executor:
+            future_to_idx = {
+                executor.submit(_import_one, idx, audio): idx
+                for idx, audio in enumerate(audio_files)
+            }
+            for future in as_completed(future_to_idx):
+                idx = future_to_idx[future]
+                try:
+                    results_by_index[idx] = future.result()
                 except Exception as exc:
-                    click.echo(f"  Error wrapping {audio.name}: {exc}", err=True)
-            if progress and task is not None:
-                progress.update(task, advance=1)
+                    _console.print(f"  [red]✗[/red] Unexpected error: {exc}")
+                    results_by_index[idx] = None
+
+    filenames = [
+        name for i in range(len(audio_files))
+        if (name := results_by_index.get(i)) is not None
+    ]
 
     write_jsonl(output_path / "playlist.jsonl", filenames)
-    click.echo(f"Imported {len(filenames)} tracks into {output_path}")
+    _success(f"Imported {len(filenames)} tracks into {output_path}")
 
+    # Generate description from track metadata
+    from rich.prompt import Prompt
     playlist = load_playlist(output_path)
 
     # Enrich tracks that are missing album art (e.g. re-import of existing MKAs)
@@ -554,8 +673,8 @@ def import_cmd(source, output):
     # Generate description from track metadata
     generate_description(
         playlist,
-        log=lambda msg: click.echo(msg),
-        ask_user=lambda q: click.prompt(q),
+        log=lambda msg: _console.print(msg),
+        ask_user=lambda q: Prompt.ask(q, console=_console),
     )
     _print_cost_summary()
 
@@ -580,11 +699,13 @@ def export(playlist, output):
     output_path = Path(output) if output else playlist_path.parent / f"{playlist_path.name}-exported"
     output_path.mkdir(parents=True, exist_ok=True)
 
+    from yoto_cli.progress import _console, success as _success
     mka_files = sorted(playlist_path.glob("*.mka"))
     if not mka_files:
-        click.echo("No .mka files found.")
+        _console.print("[dim]No .mka files found.[/dim]")
         return
 
+    import shutil
     import tempfile
     from yoto_lib.mka import get_attachment, PATCH_ATTACHMENT_NAME
     from contextlib import nullcontext
@@ -593,9 +714,10 @@ def export(playlist, output):
     progress_ctx = make_progress() if sys.stderr.isatty() else nullcontext()
     with progress_ctx as progress:
         task = progress.add_task(playlist_path.name, total=len(mka_files), status="") if progress else None
-        for mka in mka_files:
-            if progress and task is not None:
-                progress.update(task, status=mka.name)
+        _pcon = progress.console.print if progress else _console.print
+
+        def _export_one(mka: Path) -> None:
+            inner_task = progress.add_task(mka.name, total=2, status="extracting") if progress else None
             try:
                 has_patch = get_attachment(mka, PATCH_ATTACHMENT_NAME) is not None
 
@@ -603,99 +725,41 @@ def export(playlist, output):
                     # Extract to temp dir, then apply patch to final location
                     with tempfile.TemporaryDirectory(prefix="yoto-export-") as tmpdir:
                         extracted = extract_audio(mka, Path(tmpdir))
+                        if progress and inner_task is not None:
+                            progress.update(inner_task, advance=1, status="applying patch")
                         final_path = output_path / (mka.stem + extracted.suffix)
                         if apply_source_patch(extracted, mka, final_path):
-                            click.echo(f"  {mka.name} -> {final_path.name} (byte-perfect)")
+                            _pcon(f"  {mka.name} -> {final_path.name} (byte-perfect)")
                         else:
                             # Patch failed — copy the extraction as fallback
-                            import shutil
                             shutil.copy2(extracted, final_path)
-                            click.echo(f"  {mka.name} -> {final_path.name}")
+                            _pcon(f"  {mka.name} -> {final_path.name}")
                 else:
                     # No patch — extract directly to output
                     extracted = extract_audio(mka, output_path)
-                    click.echo(f"  {mka.name} -> {extracted.name}")
+                    _pcon(f"  {mka.name} -> {extracted.name}")
+                if progress and inner_task is not None:
+                    progress.update(inner_task, advance=1)
+                    progress.remove_task(inner_task)
             except Exception as exc:
-                click.echo(f"  Error exporting {mka.name}: {exc}", err=True)
+                if progress and inner_task is not None:
+                    progress.remove_task(inner_task)
+                _pcon(f"  [red]✗[/red] Error exporting {mka.name}: {exc}")
             if progress and task is not None:
-                progress.update(task, advance=1)
+                progress.update(task, advance=1, status=mka.name)
 
-    click.echo(f"Exported {len(mka_files)} tracks to {output_path}")
+        with ThreadPoolExecutor(max_workers=WORKERS) as executor:
+            futures = [executor.submit(_export_one, mka) for mka in mka_files]
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception as exc:
+                    _pcon(f"  [red]✗[/red] Unexpected export error: {exc}")
+
+    _success(f"Exported {len(mka_files)} tracks to {output_path}")
 
 
 # ── select-icon ──────────────────────────────────────────────────────────
-
-
-def _icon_to_ansi_rows(img: "Image.Image") -> list[str]:
-    """Render a 16x16 RGBA image as ANSI rows using half-block characters.
-
-    Each row encodes 2 vertical pixels using ▀ with
-    foreground = top pixel, background = bottom pixel.
-    """
-    img = img.convert("RGBA")
-    w, h = img.size
-    rows = []
-    for y in range(0, h, 2):
-        row = ""
-        for x in range(w):
-            top = img.getpixel((x, y))
-            bot = img.getpixel((x, y + 1)) if y + 1 < h else (0, 0, 0, 0)
-            if top[3] == 0 and bot[3] == 0:
-                row += " "
-            elif top[3] == 0:
-                row += f"\033[48;2;{bot[0]};{bot[1]};{bot[2]}m\033[38;2;{bot[0]};{bot[1]};{bot[2]}m▄\033[0m"
-            elif bot[3] == 0:
-                row += f"\033[38;2;{top[0]};{top[1]};{top[2]}m▀\033[0m"
-            else:
-                row += f"\033[38;2;{top[0]};{top[1]};{top[2]}m\033[48;2;{bot[0]};{bot[1]};{bot[2]}m▀\033[0m"
-        rows.append(row)
-    return rows
-
-
-def _render_icons_side_by_side(
-    images: list["Image.Image"],
-    labels: list[str],
-    footers: list[str] | None = None,
-    gap: int = 3,
-) -> str:
-    """Render multiple icons side-by-side with labels above and optional footers below."""
-    import re
-
-    import textwrap
-
-    def _pad(text: str, width: int) -> str:
-        visible_len = len(re.sub(r"\033\[[^m]*m", "", text))
-        return text + " " * max(0, width - visible_len)
-
-    all_rows = [_icon_to_ansi_rows(img) for img in images]
-    max_height = max(len(r) for r in all_rows) if all_rows else 0
-    icon_width = images[0].size[0] if images else 16
-    for rows in all_rows:
-        while len(rows) < max_height:
-            rows.append(" " * icon_width)
-
-    spacer = " " * gap
-    lines = []
-
-    # Label rows (word-wrapped to icon width)
-    wrapped = [textwrap.wrap(l, icon_width) or [""] for l in labels]
-    max_label_rows = max(len(w) for w in wrapped)
-    for row_idx in range(max_label_rows):
-        line_parts = []
-        for w in wrapped:
-            text = w[row_idx] if row_idx < len(w) else ""
-            line_parts.append(_pad(text, icon_width))
-        lines.append(spacer.join(line_parts))
-
-    # Image rows
-    for y in range(max_height):
-        lines.append(spacer.join(_pad(all_rows[i][y], icon_width) for i in range(len(all_rows))))
-
-    # Footer row
-    if footers:
-        lines.append(spacer.join(_pad(f, icon_width) for f in footers))
-
-    return "\n".join(lines)
 
 
 @cli.command(name="select-icon")
@@ -711,14 +775,16 @@ def select_icon(tracks):
     from yoto_lib.icon_catalog import get_catalog
     from yoto_lib.icon_llm import match_icon_llm, compare_icons_llm, describe_icons_llm, log_icon_feedback
 
-    from yoto_cli.progress import make_progress
+    from yoto_cli.progress import make_progress, _console, success as _success, warning as _warning
+    from rich.rule import Rule
+    from rich.prompt import Prompt
     reset_tracker()
 
     # Shared resources — loaded once
     api = YotoAPI()
     catalog = get_catalog(api)
 
-    for track in tracks:
+    for i, track in enumerate(tracks):
         track_path = Path(track)
         title = track_path.stem
         album_desc = None
@@ -727,7 +793,7 @@ def select_icon(tracks):
             album_desc = desc_path.read_text(encoding="utf-8")
 
         if len(tracks) > 1:
-            click.echo(f"\n── {track_path.name} ──")
+            _console.print(Rule(title=f"{track_path.name} ({i + 1}/{len(tracks)})"))
 
         # Check for existing icon
         existing_img: "Image.Image | None" = None
@@ -746,7 +812,9 @@ def select_icon(tracks):
         with make_progress() as progress:
             task = progress.add_task(title, total=7, status="matching Yoto icon")
 
+            inner = progress.add_task("Claude Haiku", total=None)
             yoto_media_id, yoto_confidence = match_icon_llm(title, catalog)
+            progress.remove_task(inner)
 
             if yoto_media_id:
                 yoto_bytes = download_icon(yoto_media_id)
@@ -761,30 +829,48 @@ def select_icon(tracks):
             tmpdir = Path(tempfile.mkdtemp(prefix="yoto-icon-"))
             skipped = False
 
+            inner = progress.add_task("Claude Haiku", total=None)
             descriptions = describe_icons_llm(title, album_description=album_desc)
+            progress.remove_task(inner)
             if not descriptions:
                 descriptions = [title, title, title]  # fallback to raw title
 
             progress.update(task, advance=1, status="generating icon 1/3")
 
-            def on_gen_progress(i):
-                if i < 3:
-                    progress.update(task, advance=1, status=f"generating icon {i + 1}/3")
+            icon_tasks: dict[int, int] = {}
+
+            def on_icon_start(i: int, desc: str) -> None:
+                icon_tasks[i] = progress.add_task(f"Icon {i + 1}: {desc}", total=None)
+
+            def on_icon_done(i: int) -> None:
+                if i in icon_tasks:
+                    progress.remove_task(icon_tasks.pop(i))
+
+            def on_gen_progress(done_n: int) -> None:
+                if done_n < 3:
+                    progress.update(task, advance=1, status=f"generating icon {done_n + 1}/3")
                 else:
                     progress.update(task, advance=1, status="evaluating icons")
 
-            batch = generate_retrodiffusion_icons(descriptions, on_progress=on_gen_progress)
+            batch = generate_retrodiffusion_icons(
+                descriptions,
+                on_progress=on_gen_progress,
+                on_icon_start=on_icon_start,
+                on_icon_done=on_icon_done,
+            )
             if not batch:
-                click.echo(f"Icon generation failed for {track_path.name}", err=True)
+                progress.console.print(f"[red]✗[/red] Icon generation failed for {track_path.name}")
                 skipped = True
             else:
                 raw_bytes_list: list[bytes] = [rb for rb, _ in batch]
+                inner = progress.add_task("Claude Sonnet", total=None)
                 winner, scores = compare_icons_llm(
                     title, raw_bytes_list,
                     yoto_icon=yoto_bytes if yoto_img is not None else None,
                     descriptions=descriptions,
                     album_description=album_desc,
                 )
+                progress.remove_task(inner)
                 progress.update(task, advance=1)
         # progress bar closed — interactive prompt starts below
 
@@ -822,46 +908,65 @@ def select_icon(tracks):
             prompt_text = f"Pick an icon (1-{max_choice}, or 'r' to regenerate)"
 
             # Build score labels (existing icon gets no score)
+            from yoto_cli.progress import render_icon_panels
             score_labels = []
-            for i in range(len(images_to_show)):
-                if (i + 1) == existing_choice:
+            for j in range(len(images_to_show)):
+                if (j + 1) == existing_choice:
                     score_labels.append("")
                 else:
-                    score = f"{scores[i]:.1f}" if i < len(scores) else "?"
-                    marker = " *" if (i + 1) == winner else ""
+                    score = f"{scores[j]:.1f}" if j < len(scores) else "?"
+                    marker = " ★" if (j + 1) == winner else ""
                     score_labels.append(f"score: {score}{marker}")
 
-            click.echo(_render_icons_side_by_side(images_to_show, labels_to_show, score_labels))
-            click.echo()
+            _console.print(render_icon_panels(images_to_show, labels_to_show, score_labels, winner))
 
             default_choice = str(winner) if 1 <= winner <= max_choice else "1"
-            raw = click.prompt(prompt_text, default=default_choice)
+            raw = Prompt.ask(prompt_text, default=default_choice, console=_console)
             if raw.lower() == "r":
                 with make_progress() as progress:
                     task = progress.add_task(title, total=6, status="describing icons")
+
+                    inner = progress.add_task("Claude Haiku", total=None)
                     descriptions = describe_icons_llm(title, album_description=album_desc)
+                    progress.remove_task(inner)
                     if not descriptions:
                         descriptions = [title, title, title]
                     progress.update(task, advance=1, status="generating icon 1/3")
 
-                    def on_gen_progress(i):
-                        if i < 3:
-                            progress.update(task, advance=1, status=f"generating icon {i + 1}/3")
+                    regen_icon_tasks: dict[int, int] = {}
+
+                    def on_icon_start_r(i: int, desc: str) -> None:
+                        regen_icon_tasks[i] = progress.add_task(f"Icon {i + 1}: {desc}", total=None)
+
+                    def on_icon_done_r(i: int) -> None:
+                        if i in regen_icon_tasks:
+                            progress.remove_task(regen_icon_tasks.pop(i))
+
+                    def on_gen_progress_r(done_n: int) -> None:
+                        if done_n < 3:
+                            progress.update(task, advance=1, status=f"generating icon {done_n + 1}/3")
                         else:
                             progress.update(task, advance=1, status="evaluating icons")
 
-                    batch = generate_retrodiffusion_icons(descriptions, on_progress=on_gen_progress)
+                    batch = generate_retrodiffusion_icons(
+                        descriptions,
+                        on_progress=on_gen_progress_r,
+                        on_icon_start=on_icon_start_r,
+                        on_icon_done=on_icon_done_r,
+                    )
                     if not batch:
-                        click.echo(f"Icon generation failed for {track_path.name}", err=True)
+                        progress.console.print(f"[red]✗[/red] Icon generation failed for {track_path.name}")
                         skipped = True
                     else:
                         raw_bytes_list = [rb for rb, _ in batch]
+                        inner = progress.add_task("Claude Sonnet", total=None)
                         winner, scores = compare_icons_llm(
                             title, raw_bytes_list,
                             yoto_icon=yoto_bytes if yoto_img is not None else None,
                             descriptions=descriptions,
                             album_description=album_desc,
                         )
+                        progress.remove_task(inner)
                         progress.update(task, advance=1)
                 if skipped:
                     break
@@ -872,11 +977,11 @@ def select_icon(tracks):
                 if not 1 <= choice <= max_choice:
                     raise ValueError
             except ValueError:
-                click.echo("Invalid choice.")
+                _warning("Invalid choice.")
                 continue
 
             if choice == existing_choice:
-                click.echo(f"Keeping current icon for {track_path.name}")
+                _console.print(f"[dim]Keeping current icon for {track_path.name}[/dim]")
                 skipped = True
                 break
             elif choice == yoto_choice:
@@ -909,7 +1014,7 @@ def select_icon(tracks):
         set_attachment(track_path, icon_tmp, name="icon", mime_type="image/png")
 
         set_macos_file_icon(track_path, chosen)
-        click.echo(f"Attached icon to {track_path.name}")
+        _success(f"Attached icon to {track_path.name}")
 
         icon_tmp.unlink(missing_ok=True)
         tmpdir.rmdir()
@@ -927,14 +1032,15 @@ def reset_icon(tracks):
     logger.debug("command: reset-icon tracks=%s", tracks)
     from yoto_lib.icons import clear_macos_file_icon
 
+    from yoto_cli.progress import success as _success, error as _error
     for track in tracks:
         path = Path(track)
         try:
             remove_attachment(path, "icon")
             clear_macos_file_icon(path)
-            click.echo(f"  Cleared icon: {path.name}")
+            _success(f"Cleared icon: {path.name}")
         except Exception as exc:
-            click.echo(f"  Error ({path.name}): {exc}", err=True)
+            _error(f"Error ({path.name}): {exc}")
 
 
 # ── cover ────────────────────────────────────────────────────────────────
@@ -955,6 +1061,8 @@ def cover(path, force, backup):
     from yoto_lib import mka
     import tempfile
 
+    from yoto_cli.progress import _console as rich_console
+
     folder = Path(path)
     playlist = load_playlist(folder)
     cover_path = playlist.cover_path
@@ -965,65 +1073,101 @@ def cover(path, force, backup):
         while (backup_path := cover_path.with_name(f"cover.{n}.png")).exists():
             n += 1
         cover_path.rename(backup_path)
-        click.echo(f"Backed up existing cover to {backup_path.name}")
+        rich_console.print(f"Backed up existing cover to {backup_path.name}")
     elif cover_path.exists() and not force:
-        click.echo(f"Cover already exists: {cover_path}")
-        click.echo("Use --force to regenerate, or --backup to keep the old one.")
+        rich_console.print(f"Cover already exists: {cover_path}")
+        rich_console.print("Use --force to regenerate, or --backup to keep the old one.")
         return
 
     # Generate description if missing (interactive)
     if not playlist.description_path.exists():
+        from rich.prompt import Prompt as _Prompt
         generate_description(
             playlist,
-            log=lambda msg: click.echo(msg),
-            ask_user=lambda q: click.prompt(q),
+            log=lambda msg: rich_console.print(msg),
+            ask_user=lambda q: _Prompt.ask(q, console=rich_console),
         )
 
-    # Try reusing shared album art first
-    def _cover_log(msg: str) -> None:
-        if msg.startswith("WARNING:"):
-            click.echo(click.style(msg, fg="yellow"))
-        else:
-            click.echo(msg)
+    from yoto_cli.progress import make_progress, success as _success
+    from yoto_lib.cover import RECOMPOSE_MAX_ATTEMPTS
 
-    if try_shared_album_art(playlist, log=_cover_log):
-        click.echo(f"Reused album art as cover: {cover_path}")
-        _print_cost_summary()
-        return
+    cover_name = playlist.title or folder.name
+    title_steps = 1 if playlist.title else 0
+    # Worst case: all recompose attempts + generate + optional title + save
+    total_steps = RECOMPOSE_MAX_ATTEMPTS + 1 + title_steps + 1
 
-    # Build prompt from track metadata
-    track_titles: list[str] = []
-    artists: list[str] = []
-    for filename in playlist.track_files:
-        track_path = folder / filename
-        try:
-            tags = mka.read_tags(track_path)
-            title = tags.get("title") or Path(filename).stem
-            artist = tags.get("artist", "")
-        except Exception:
-            title = Path(filename).stem
-            artist = ""
-        track_titles.append(title)
-        if artist:
-            artists.append(artist)
-
-    prompt = build_cover_prompt(playlist.description, track_titles, artists, playlist.title)
-
-    provider = get_provider()
-    from yoto_cli.progress import make_progress
-    total_steps = 3 if playlist.title else 2
     with make_progress() as progress:
-        task = progress.add_task(playlist.title or folder.name, total=total_steps, status="generating cover art")
+        task = progress.add_task(cover_name, total=total_steps, status="checking album art")
+
+        # Tracks the current inner task for nested progress
+        _inner_task: list[int | None] = [None]
+
+        def _cover_log(msg: str) -> None:
+            if msg.startswith("WARNING:"):
+                progress.console.print(f"[yellow]⚠[/yellow] {msg}")
+            else:
+                progress.update(task, status=msg)
+
+        def _cover_step() -> None:
+            progress.update(task, advance=1)
+
+        def _cover_inner(status: "str | None", step: "int | None", total: "int | None") -> None:
+            if status is None:
+                # Remove the inner task
+                if _inner_task[0] is not None:
+                    progress.remove_task(_inner_task[0])
+                    _inner_task[0] = None
+            elif _inner_task[0] is None:
+                # Create a new inner task
+                _inner_task[0] = progress.add_task(status, total=total)
+            else:
+                # Update the existing inner task
+                progress.update(_inner_task[0], description=status, completed=step if step is not None else 0, total=total)
+
+        # Try reusing shared album art first
+        if try_shared_album_art(playlist, log=_cover_log, on_step=_cover_step, on_inner=_cover_inner):
+            progress.update(task, completed=total_steps)
+            progress.stop()
+            _success(f"Reused album art as cover: {cover_path}")
+            _print_cost_summary()
+            return
+
+        # No shared art — generate from scratch
+        progress.update(task, completed=RECOMPOSE_MAX_ATTEMPTS, status="generating cover art")
+
+        track_titles: list[str] = []
+        artists: list[str] = []
+        for filename in playlist.track_files:
+            track_path = folder / filename
+            try:
+                tags = mka.read_tags(track_path)
+                title = tags.get("title") or Path(filename).stem
+                artist = tags.get("artist", "")
+            except Exception:
+                title = Path(filename).stem
+                artist = ""
+            track_titles.append(title)
+            if artist:
+                artists.append(artist)
+
+        prompt = build_cover_prompt(playlist.description, track_titles, artists, playlist.title)
+
+        provider = get_provider()
         # Request 1024×1536 — maps exactly to that OpenAI size (~0.667),
         # only ~28px cropped per side to reach 638:1011 (~0.631) target.
+        inner = progress.add_task("Generating", total=None)
         image_bytes = provider.generate(prompt, 1024, 1536)
-        progress.update(task, advance=1, status="adding title" if playlist.title else "saving")
+        progress.remove_task(inner)
+        progress.update(task, advance=1, status="generated cover art")
 
-        # Add title via AI inpainting before resize (edit API needs supported dimensions).
         if playlist.title:
+            progress.update(task, advance=1, status="adding title")
+            inner = progress.add_task("Adding title", total=None)
             image_bytes = add_title_to_illustration(image_bytes, playlist.title, 1024, 1536)
-            progress.update(task, advance=1, status="saving")
+            progress.remove_task(inner)
+            progress.update(task, status="title added")
 
+        progress.update(task, advance=1, status="saving")
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             tmp.write(image_bytes)
             tmp_path = Path(tmp.name)
@@ -1034,7 +1178,7 @@ def cover(path, force, backup):
             tmp_path.unlink(missing_ok=True)
         progress.update(task, advance=1)
 
-    click.echo(f"Saved cover to {cover_path}")
+    _success(f"Saved cover to {cover_path}")
     _print_cost_summary()
 
 
@@ -1065,9 +1209,10 @@ def completions(shell):
         line = f"eval ({env_var} yoto)"
         config = Path.home() / ".config" / "fish" / "completions" / "yoto.fish"
 
+    from yoto_cli.progress import _console, success as _success
     # Check if already installed
     if config.exists() and marker in config.read_text(encoding="utf-8"):
-        click.echo(f"Completions already installed in {config}")
+        _console.print(f"[dim]Completions already installed in {config}[/dim]")
         return
 
     # Append to config
@@ -1075,8 +1220,8 @@ def completions(shell):
     with open(config, "a", encoding="utf-8") as f:
         f.write(f"\n{marker}\n{line}\n")
 
-    click.echo(f"Installed completions in {config}")
-    click.echo(f"Run this to activate now:  source {config}")
+    _success(f"Installed completions in {config}")
+    _console.print(f"[dim]Run this to activate now:  source {config}[/dim]")
 
 
 # ── list ──────────────────────────────────────────────────────────────────────
@@ -1089,19 +1234,16 @@ def list_cmd():
     api = YotoAPI()
     cards = api.get_my_content()
 
+    from yoto_cli.progress import _console
+    from rich.table import Table
     if not cards:
-        click.echo("No cards found.")
+        _console.print("[dim]No cards found.[/dim]")
         return
 
-    # Print a simple table
-    col_id = max(len(c.get("cardId", "")) for c in cards)
-    col_id = max(col_id, 6)
-    col_title = max(len(c.get("title", "")) for c in cards)
-    col_title = max(col_title, 5)
-
-    header = f"{'Card ID':<{col_id}}  {'Title':<{col_title}}  Tracks"
-    click.echo(header)
-    click.echo("-" * len(header))
+    table = Table()
+    table.add_column("Card ID", style="dim")
+    table.add_column("Title")
+    table.add_column("Tracks", justify="right")
 
     for card in cards:
         card_id = card.get("cardId", "")
@@ -1109,7 +1251,9 @@ def list_cmd():
         try:
             detail = api.get_content(card_id)
             chapters = detail.get("content", {}).get("chapters", [])
-            num_tracks = len(chapters)
+            num_tracks = str(len(chapters))
         except Exception:
             num_tracks = "?"
-        click.echo(f"{card_id:<{col_id}}  {title:<{col_title}}  {num_tracks}")
+        table.add_row(card_id, title, num_tracks)
+
+    _console.print(table)
