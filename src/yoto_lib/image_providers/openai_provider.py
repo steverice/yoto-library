@@ -67,6 +67,7 @@ class OpenAIProvider:
         )
         if mask_bytes:
             kwargs["mask"] = ("mask.png", _io.BytesIO(mask_bytes), "image/png")
+        kwargs["quality"] = quality
 
         response = self._client.images.edit(**kwargs)
 
