@@ -31,6 +31,10 @@ from yoto_lib.mka import wrap_in_mka, remove_attachment, set_attachment, read_so
 from yoto_lib.itunes import enrich_from_itunes
 from yoto_lib.sources import resolve_weblocs
 from yoto_lib.costs import get_tracker, reset_tracker
+from yoto_lib.billing import (
+    fetch_balances, fetch_subscription_usage, read_totals, reset_totals,
+    PROVIDER_GROUPS, DASHBOARD_URLS,
+)
 
 
 def _print_cost_summary():
@@ -1179,6 +1183,161 @@ def cover(path, force, backup):
 
     _success(f"Saved cover to {cover_path}")
     _print_cost_summary()
+
+
+# ── billing ──────────────────────────────────────────────────────────────────
+
+
+@cli.command()
+@click.option(
+    "--reset",
+    "reset_group",
+    is_flag=False,
+    flag_value="__all__",
+    default=None,
+    help="Reset lifetime cost data. Optionally specify a provider group.",
+)
+def billing(reset_group):
+    """Show provider balances, subscription usage, and lifetime costs."""
+    logger.debug("command: billing reset=%s", reset_group)
+    from yoto_lib.costs import COSTS, is_subscription
+
+    # Handle --reset
+    if reset_group is not None:
+        if reset_group == "__all__":
+            if not click.confirm("This will reset all lifetime cost tracking. Continue?"):
+                return
+            reset_totals()
+            click.echo("Reset all lifetime billing data.")
+        else:
+            if reset_group not in PROVIDER_GROUPS:
+                valid = ", ".join(sorted(PROVIDER_GROUPS))
+                raise click.UsageError(f"Unknown provider group '{reset_group}'. Valid: {valid}")
+            reset_totals(reset_group)
+            click.echo(f"Reset lifetime billing data for {reset_group}.")
+        return
+
+    # Fetch live data in parallel
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    balance_future = None
+    usage_future = None
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        balance_future = pool.submit(fetch_balances)
+        if is_subscription("claude_haiku"):
+            usage_future = pool.submit(fetch_subscription_usage)
+
+    balances = balance_future.result()
+    subscription_usage = usage_future.result() if usage_future else None
+
+    # Section 1: Balances
+    _print_balances(balances)
+
+    # Section 2: Subscription
+    if subscription_usage:
+        _print_subscription_usage(subscription_usage)
+
+    # Section 3: Lifetime spend
+    _print_lifetime_spend()
+
+
+def _print_balances(balances: dict) -> None:
+    """Print the Balances section."""
+    import os
+
+    # Determine which providers are active (have env vars set)
+    active_providers = []
+    if os.environ.get("RETRODIFFUSION_API_KEY"):
+        active_providers.append("RetroDiffusion")
+    if os.environ.get("OPENAI_API_KEY"):
+        active_providers.append("OpenAI")
+    if os.environ.get("TOGETHER_AI_KEY") or os.environ.get("TOGETHER_API_KEY"):
+        active_providers.append("Together AI")
+    if os.environ.get("GOOGLE_API_KEY"):
+        active_providers.append("Google Gemini")
+
+    if not active_providers:
+        return
+
+    click.echo("Balances:")
+    for name in active_providers:
+        if name in balances:
+            info = balances[name]
+            if "balance" in info:
+                click.echo(f"  {name:<24}${info['balance']:.2f} remaining")
+            elif "error" in info:
+                click.echo(click.style(f"  {name:<24}error: {info['error']}", fg="yellow"))
+        elif name in DASHBOARD_URLS:
+            click.echo(click.style(
+                f"  {name:<24}check dashboard \u2192 {DASHBOARD_URLS[name]}", dim=True,
+            ))
+    click.echo()
+
+
+def _print_subscription_usage(usage: dict) -> None:
+    """Print the Subscription section."""
+    from datetime import datetime, timezone
+
+    click.echo("Subscription:")
+
+    for key, label in [("session", "Claude (session)"), ("weekly", "Claude (weekly)"), ("weekly_sonnet", "Claude (weekly Sonnet)")]:
+        if key not in usage:
+            continue
+        info = usage[key]
+        pct = info["utilization"]
+        resets_at = info.get("resets_at", "")
+
+        # Format reset time as relative
+        reset_str = ""
+        if resets_at:
+            try:
+                reset_dt = datetime.fromisoformat(resets_at)
+                now = datetime.now(timezone.utc)
+                delta = reset_dt - now
+                if delta.total_seconds() > 0:
+                    hours = int(delta.total_seconds() // 3600)
+                    if hours >= 24:
+                        reset_str = f"resets {reset_dt.strftime('%b %d')}"
+                    else:
+                        reset_str = f"resets in {hours}h"
+            except ValueError:
+                pass
+
+        click.echo(f"  {label:<24}{pct:>3.0f}% used    {reset_str}")
+
+    click.echo()
+
+
+def _print_lifetime_spend() -> None:
+    """Print the Lifetime spend section."""
+    from yoto_lib.costs import COSTS
+
+    totals = read_totals()
+    if not totals:
+        click.echo("Lifetime spend:")
+        click.echo("  No data yet. Run some commands first.")
+        return
+
+    click.echo("Lifetime spend:")
+
+    billable_total = 0.0
+    for key in COSTS:
+        if key not in totals:
+            continue
+        entry = totals[key]
+        label = COSTS[key]["label"]
+        calls = entry["calls"]
+
+        if key.startswith("claude_"):
+            click.echo(f"  {label:<20}    \u2014   ({calls} calls, subscription)")
+        else:
+            cost = entry["cost"]
+            billable_total += cost
+            click.echo(f"  {label:<20}${cost:<7.2f} ({calls} calls)")
+
+    divider = "\u2500" * 25
+    click.echo(f"  {divider}")
+    click.echo(f"  {'Total':<20}${billable_total:.2f}")
 
 
 # ── completions ──────────────────────────────────────────────────────────────
