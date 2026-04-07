@@ -119,8 +119,9 @@ def render_icon_panels(
             body.append(f"\n{score}", style="dim")
         marker = " ★" if (i + 1) == winner else ""
         border = "bold cyan" if i == selected else "dim"
-        panels.append(Panel(body, title=f"{label}{marker}", border_style=border))
-    return Columns(panels, padding=(0, 1))
+        # Icon is 16 chars wide; panel adds 2 border + 2 padding = 20
+        panels.append(Panel(body, title=f"{label}{marker}", border_style=border, width=20))
+    return Columns(panels, expand=False, padding=(0, 1))
 
 
 def _read_key() -> str:
