@@ -152,6 +152,7 @@ class TestGenerateCoverIfMissing:
 
         with patch("yoto_lib.cover.get_provider", return_value=mock_provider), \
              patch("yoto_lib.cover.build_cover_prompt", return_value="test prompt") as mock_prompt, \
+             patch("yoto_lib.cover.add_title_to_illustration", return_value=fake_png_bytes), \
              patch("yoto_lib.cover.mka.read_tags") as mock_read_tags:
 
             mock_read_tags.side_effect = [
