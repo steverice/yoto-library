@@ -1104,7 +1104,7 @@ def cover(path, force, backup):
 
         def _cover_log(msg: str) -> None:
             if msg.startswith("WARNING:"):
-                progress.console.print(f"[yellow]⚠[/yellow] {msg}")
+                progress.console.print(f"[yellow]⚠ {msg}[/yellow]")
             else:
                 progress.update(task, status=msg)
 

@@ -63,7 +63,7 @@ def error(msg: str) -> None:
 
 def warning(msg: str) -> None:
     """Print a yellow ⚠ warning message to stderr."""
-    _console.print(f"[yellow]⚠[/yellow] {msg}")
+    _console.print(f"[yellow]⚠ {msg}[/yellow]")
 
 
 # ── Icon panel rendering ──────────────────────────────────────────────────────
