@@ -69,30 +69,41 @@ def warning(msg: str) -> None:
 # ── Icon panel rendering ──────────────────────────────────────────────────────
 
 
-def _icon_to_ansi_rows(img: "object") -> list[str]:
-    """Render a 16x16 RGBA image as ANSI rows using half-block characters.
+def _icon_to_rich_text(img: "object") -> Text:
+    """Render a 16x16 RGBA image as a rich Text using half-block characters.
 
     Each row encodes 2 vertical pixels using ▀ with
     foreground = top pixel, background = bottom pixel.
+    Uses rich Style objects so width calculation is correct inside Panels.
     """
+    from rich.style import Style
+
     img = img.convert("RGBA")
     w, h = img.size
-    rows = []
+    result = Text()
     for y in range(0, h, 2):
-        row = ""
+        if y > 0:
+            result.append("\n")
         for x in range(w):
             top = img.getpixel((x, y))
             bot = img.getpixel((x, y + 1)) if y + 1 < h else (0, 0, 0, 0)
             if top[3] == 0 and bot[3] == 0:
-                row += " "
+                result.append(" ")
             elif top[3] == 0:
-                row += f"\033[48;2;{bot[0]};{bot[1]};{bot[2]}m\033[38;2;{bot[0]};{bot[1]};{bot[2]}m▄\033[0m"
+                result.append("▄", style=Style(
+                    color=f"rgb({bot[0]},{bot[1]},{bot[2]})",
+                    bgcolor=f"rgb({bot[0]},{bot[1]},{bot[2]})",
+                ))
             elif bot[3] == 0:
-                row += f"\033[38;2;{top[0]};{top[1]};{top[2]}m▀\033[0m"
+                result.append("▀", style=Style(
+                    color=f"rgb({top[0]},{top[1]},{top[2]})",
+                ))
             else:
-                row += f"\033[38;2;{top[0]};{top[1]};{top[2]}m\033[48;2;{bot[0]};{bot[1]};{bot[2]}m▀\033[0m"
-        rows.append(row)
-    return rows
+                result.append("▀", style=Style(
+                    color=f"rgb({top[0]},{top[1]},{top[2]})",
+                    bgcolor=f"rgb({bot[0]},{bot[1]},{bot[2]})",
+                ))
+    return result
 
 
 def render_icon_panels(
@@ -113,8 +124,7 @@ def render_icon_panels(
     """
     panels = []
     for i, (img, label, score) in enumerate(zip(images, labels, scores)):
-        ansi_rows = _icon_to_ansi_rows(img)
-        body = Text.from_ansi("\n".join(ansi_rows))
+        body = _icon_to_rich_text(img)
         if score:
             body.append(f"\n{score}", style="dim")
         marker = " ★" if (i + 1) == winner else ""
