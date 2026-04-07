@@ -321,6 +321,7 @@ def try_shared_album_art(
 def generate_cover_if_missing(
     playlist: "Playlist",
     log: "Callable[[str], None] | None" = None,
+    ignore_album_art: bool = False,
 ) -> None:
     """Generate a cover image for the playlist if one doesn't already exist."""
     if playlist.has_cover:
@@ -328,7 +329,7 @@ def generate_cover_if_missing(
         return
     logger.debug("generate_cover: generating for '%s'", playlist.title)
 
-    if try_shared_album_art(playlist, log=log):
+    if not ignore_album_art and try_shared_album_art(playlist, log=log):
         return
 
     track_titles: list[str] = []
@@ -355,7 +356,7 @@ def generate_cover_if_missing(
     logger.debug("generate_cover: using provider %s", type(provider).__name__)
     # Request 1024×1536 (2:3, ~0.667) — maps exactly to that OpenAI size,
     # only ~28px cropped per side to reach our 638:1011 (~0.631) target.
-    image_bytes = provider.generate(prompt, 1024, 1536)
+    image_bytes = provider.generate(prompt, 1024, 1536, quality="low")
     logger.debug("generate_cover: generated %d bytes", len(image_bytes))
 
     # Add title via AI inpainting before resize (edit API needs supported dimensions).
