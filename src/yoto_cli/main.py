@@ -6,8 +6,12 @@ import logging
 import os
 import re
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+
+WORKERS = int(os.environ.get("YOTO_WORKERS", "4"))
 
 import click
 from click.shell_completion import CompletionItem
@@ -242,12 +246,27 @@ def sync(path, dry_run, no_trim):
 
     with make_progress() as progress:
         task = progress.add_task(playlist.title, total=total, status="starting")
+        upload_tasks: dict[str, int] = {}  # filename -> inner task id
 
-        def log(msg):
+        def log(msg: str) -> None:
             progress.update(task, advance=1, status=msg)
             progress.console.print(msg)
 
-        results = sync_path(Path(path), dry_run=False, trim=trim, log=log)
+        def on_upload_start(filename: str) -> None:
+            stem = Path(filename).stem
+            inner_task = progress.add_task(stem, total=None, status="uploading")
+            upload_tasks[filename] = inner_task
+
+        def on_upload_done(filename: str) -> None:
+            inner_task = upload_tasks.pop(filename, None)
+            if inner_task is not None:
+                progress.remove_task(inner_task)
+            progress.update(task, advance=1)
+
+        results = sync_path(
+            Path(path), dry_run=False, trim=trim, log=log,
+            on_upload_start=on_upload_start, on_upload_done=on_upload_done,
+        )
         progress.update(task, completed=total)
 
     from yoto_cli.progress import success as _success, error as _error
@@ -276,11 +295,36 @@ def download(path, no_trim):
         from yoto_cli.progress import make_progress
         with make_progress() as progress:
             task = progress.add_task(folder.name, total=webloc_count, status="")
+            inner_tasks: dict[str, int] = {}
 
-            def on_track(name):
+            def on_track_start(name: str) -> None:
+                inner_task = progress.add_task(name, total=100, status="")
+                inner_tasks[name] = inner_task
+
+            def on_download_progress(name: str, pct: float, downloaded: int, total: int | None, speed: str) -> None:
+                inner_task = inner_tasks.get(name)
+                if inner_task is not None:
+                    status = speed if speed else ""
+                    progress.update(inner_task, completed=pct, status=status)
+
+            def on_track(name: str) -> None:
                 progress.update(task, advance=1, status=name)
+                inner_task = inner_tasks.pop(name.split(".mka")[0].split("/")[-1] if ".mka" in name else name, None)
+                # Also try by stem (mka name != webloc stem)
+                if inner_task is None:
+                    for key, tid in list(inner_tasks.items()):
+                        inner_tasks.pop(key)
+                        inner_task = tid
+                        break
+                if inner_task is not None:
+                    progress.remove_task(inner_task)
 
-            created = resolve_weblocs(folder, trim=trim, on_track_done=on_track)
+            created = resolve_weblocs(
+                folder, trim=trim,
+                on_track_done=on_track,
+                on_track_start=on_track_start,
+                on_download_progress=on_download_progress,
+            )
     else:
         created = resolve_weblocs(folder, trim=trim)
 
@@ -326,25 +370,37 @@ def _pull_one(folder: Path, card_id: str | None = None, dry_run: bool = False) -
             task = progress.add_task(folder.name, total=None, status="fetching")
             inner_tasks: dict[str, int] = {}  # title -> task id
 
-            def on_total(n):
+            def on_total(n: int) -> None:
                 progress.update(task, total=n, status="downloading")
 
-            def on_track_start(title):
+            def on_track_start(title: str) -> None:
+                # total=None → indeterminate until we get content-length
                 inner_task = progress.add_task(title, total=None, status="")
                 inner_tasks[title] = inner_task
 
-            def on_track(title):
+            def on_download_progress(title: str, downloaded: int, total: int | None) -> None:
+                inner_task = inner_tasks.get(title)
+                if inner_task is not None:
+                    if total is not None:
+                        progress.update(inner_task, completed=downloaded, total=total, status="")
+                    else:
+                        progress.update(inner_task, completed=downloaded, status="")
+
+            def on_track(title: str) -> None:
                 progress.update(task, advance=1, status=title)
                 inner_task = inner_tasks.pop(title, None)
                 if inner_task is not None:
                     progress.remove_task(inner_task)
 
-            result = pull_playlist(folder, card_id=card_id, dry_run=dry_run,
-                                   on_track_done=on_track, on_total=on_total,
-                                   on_track_start=on_track_start)
+            result = pull_playlist(
+                folder, card_id=card_id, dry_run=dry_run,
+                on_track_done=on_track, on_total=on_total,
+                on_track_start=on_track_start,
+                on_download_progress=on_download_progress,
+            )
     else:
         from yoto_cli.progress import _console as _con
-        def on_track(title):
+        def on_track(title: str) -> None:
             _con.print(f"  Downloaded: {title}")
         result = pull_playlist(folder, card_id=card_id, dry_run=dry_run, on_track_done=on_track)
 
@@ -524,53 +580,83 @@ def import_cmd(source, output):
         return
 
     album_cache: dict = {}
-    filenames = []
+    album_cache_lock = threading.Lock()
+    # results_by_index preserves original order: index -> mka_name or None
+    results_by_index: dict[int, str | None] = {}
 
     from contextlib import nullcontext
     from yoto_cli.progress import make_progress
     progress_ctx = make_progress() if sys.stderr.isatty() else nullcontext()
     with progress_ctx as progress:
         task = progress.add_task(source_path.name, total=len(audio_files), status="") if progress else None
-        for audio in audio_files:
+
+        def _import_one(idx: int, audio: Path) -> str | None:
+            """Process one audio file. Returns mka_name on success, None on failure."""
             clean_stem = _strip_track_number(audio.stem)
             mka_name = clean_stem + ".mka"
             mka_dest = output_path / mka_name
+
             if audio.suffix.lower() == ".mka" and source_path == output_path:
                 # Already MKA in place — just record it
-                filenames.append(mka_name)
                 if progress and task is not None:
                     progress.update(task, advance=1, status=audio.name)
-            else:
-                inner_task = progress.add_task(audio.name, total=4, status="wrapping") if progress else None
+                return mka_name
+
+            inner_task = progress.add_task(audio.name, total=4, status="wrapping") if progress else None
+            try:
+                wrap_in_mka(audio, mka_dest)
+                if progress and inner_task is not None:
+                    progress.update(inner_task, advance=1, status="metadata")
+                # Copy metadata from source file to MKA
+                source_tags = read_source_tags(audio)
+                source_tags["source_format"] = audio.suffix.lstrip(".").lower()
+                write_tags(mka_dest, source_tags)
+                if progress and inner_task is not None:
+                    progress.update(inner_task, advance=1, status="fetching art")
+                # Fetch album art from iTunes (album_cache needs a lock)
+                with album_cache_lock:
+                    cache_snapshot = dict(album_cache)
+                enrich_from_itunes(mka_dest, source_tags, cache_snapshot)
+                with album_cache_lock:
+                    album_cache.update(cache_snapshot)
+                if progress and inner_task is not None:
+                    progress.update(inner_task, advance=1, status="patching")
+                # Generate bsdiff patch for byte-perfect export
+                generate_source_patch(audio, mka_dest)
+                if progress and inner_task is not None:
+                    progress.update(inner_task, advance=1)
+                    progress.remove_task(inner_task)
+                if source_path == output_path:
+                    audio.unlink()
+                if progress and task is not None:
+                    progress.update(task, advance=1, status=audio.name)
+                return mka_name
+            except Exception as exc:
+                if progress and inner_task is not None:
+                    progress.remove_task(inner_task)
+                _pcon = progress.console.print if progress else _console.print
+                _pcon(f"  [red]✗[/red] Error wrapping {audio.name}: {exc}")
+                if progress and task is not None:
+                    progress.update(task, advance=1, status=audio.name)
+                return None
+
+        with ThreadPoolExecutor(max_workers=WORKERS) as executor:
+            future_to_idx = {
+                executor.submit(_import_one, idx, audio): idx
+                for idx, audio in enumerate(audio_files)
+            }
+            for future in as_completed(future_to_idx):
+                idx = future_to_idx[future]
                 try:
-                    wrap_in_mka(audio, mka_dest)
-                    if progress and inner_task is not None:
-                        progress.update(inner_task, advance=1, status="metadata")
-                    # Copy metadata from source file to MKA
-                    source_tags = read_source_tags(audio)
-                    source_tags["source_format"] = audio.suffix.lstrip(".").lower()
-                    write_tags(mka_dest, source_tags)
-                    if progress and inner_task is not None:
-                        progress.update(inner_task, advance=1, status="fetching art")
-                    # Fetch album art from iTunes if missing
-                    enrich_from_itunes(mka_dest, source_tags, album_cache)
-                    if progress and inner_task is not None:
-                        progress.update(inner_task, advance=1, status="patching")
-                    # Generate bsdiff patch for byte-perfect export
-                    generate_source_patch(audio, mka_dest)
-                    filenames.append(mka_name)
-                    if progress and inner_task is not None:
-                        progress.update(inner_task, advance=1)
-                        progress.remove_task(inner_task)
-                    if source_path == output_path:
-                        audio.unlink()
+                    results_by_index[idx] = future.result()
                 except Exception as exc:
-                    if progress and inner_task is not None:
-                        progress.remove_task(inner_task)
-                    _pcon = progress.console.print if progress else _console.print
-                    _pcon(f"  [red]✗[/red] Error wrapping {audio.name}: {exc}")
-                if progress and task is not None:
-                    progress.update(task, advance=1, status=audio.name)
+                    _console.print(f"  [red]✗[/red] Unexpected error: {exc}")
+                    results_by_index[idx] = None
+
+    filenames = [
+        name for i in range(len(audio_files))
+        if (name := results_by_index.get(i)) is not None
+    ]
 
     write_jsonl(output_path / "playlist.jsonl", filenames)
     _success(f"Imported {len(filenames)} tracks into {output_path}")
@@ -612,6 +698,7 @@ def export(playlist, output):
         _console.print("[dim]No .mka files found.[/dim]")
         return
 
+    import shutil
     import tempfile
     from yoto_lib.mka import get_attachment, PATCH_ATTACHMENT_NAME
     from contextlib import nullcontext
@@ -620,9 +707,10 @@ def export(playlist, output):
     progress_ctx = make_progress() if sys.stderr.isatty() else nullcontext()
     with progress_ctx as progress:
         task = progress.add_task(playlist_path.name, total=len(mka_files), status="") if progress else None
-        for mka in mka_files:
+        _pcon = progress.console.print if progress else _console.print
+
+        def _export_one(mka: Path) -> None:
             inner_task = progress.add_task(mka.name, total=2, status="extracting") if progress else None
-            _pcon = progress.console.print if progress else _console.print
             try:
                 has_patch = get_attachment(mka, PATCH_ATTACHMENT_NAME) is not None
 
@@ -637,7 +725,6 @@ def export(playlist, output):
                             _pcon(f"  {mka.name} -> {final_path.name} (byte-perfect)")
                         else:
                             # Patch failed — copy the extraction as fallback
-                            import shutil
                             shutil.copy2(extracted, final_path)
                             _pcon(f"  {mka.name} -> {final_path.name}")
                 else:
@@ -653,6 +740,14 @@ def export(playlist, output):
                 _pcon(f"  [red]✗[/red] Error exporting {mka.name}: {exc}")
             if progress and task is not None:
                 progress.update(task, advance=1, status=mka.name)
+
+        with ThreadPoolExecutor(max_workers=WORKERS) as executor:
+            futures = [executor.submit(_export_one, mka) for mka in mka_files]
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception as exc:
+                    _pcon(f"  [red]✗[/red] Unexpected export error: {exc}")
 
     _success(f"Exported {len(mka_files)} tracks to {output_path}")
 
