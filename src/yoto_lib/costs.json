@@ -1,10 +1,12 @@
 {
-  "retrodiffusion":     {"cost": 0.003, "label": "RetroDiffusion icon"},
-  "openai_generate":    {"cost": 0.05,  "label": "OpenAI generation"},
-  "openai_edit":        {"cost": 0.05,  "label": "OpenAI edit"},
-  "flux_generate":      {"cost": 0.04,  "label": "FLUX generation"},
-  "flux_recompose":     {"cost": 0.04,  "label": "FLUX recompose"},
-  "gemini_flash_image": {"cost": 0.07,  "label": "Gemini Flash image"},
-  "claude_haiku":       {"cost": 0.001, "label": "Claude Haiku"},
-  "claude_sonnet":      {"cost": 0.005, "label": "Claude Sonnet"}
+  "retrodiffusion":           {"cost": 0.003, "label": "RetroDiffusion icon"},
+  "openai_generate_low":      {"cost": 0.016, "label": "OpenAI generation (low)"},
+  "openai_generate_medium":   {"cost": 0.063, "label": "OpenAI generation (medium)"},
+  "openai_edit_low":          {"cost": 0.016, "label": "OpenAI edit (low)"},
+  "openai_edit_medium":       {"cost": 0.063, "label": "OpenAI edit (medium)"},
+  "flux_generate":            {"cost": 0.04,  "label": "FLUX generation"},
+  "flux_recompose":           {"cost": 0.04,  "label": "FLUX recompose"},
+  "gemini_flash_image":       {"cost": 0.07,  "label": "Gemini Flash image"},
+  "claude_haiku":             {"cost": 0.001, "label": "Claude Haiku"},
+  "claude_sonnet":            {"cost": 0.005, "label": "Claude Sonnet"}
 }
