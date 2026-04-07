@@ -33,7 +33,7 @@ from yoto_lib.sources import resolve_weblocs
 from yoto_lib.costs import get_tracker, reset_tracker
 from yoto_lib.billing import (
     fetch_balances, fetch_subscription_usage, read_totals, reset_totals,
-    PROVIDER_GROUPS, DASHBOARD_URLS,
+    persist_session, PROVIDER_GROUPS, DASHBOARD_URLS,
 )
 
 
@@ -42,6 +42,7 @@ def _print_cost_summary():
     tracker = get_tracker()
     if not tracker.has_records():
         return
+    persist_session(tracker)
     for line in tracker.summary_lines():
         _console.print(f"[dim]{line}[/dim]")
 
