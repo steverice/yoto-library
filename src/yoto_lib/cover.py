@@ -118,6 +118,7 @@ def reframe_album_art(
     art_bytes: bytes,
     output_path: Path,
     log: "Callable[[str], None] | None" = None,
+    on_step: "Callable[[], None] | None" = None,
 ) -> None:
     """Reframe square album art into a portrait cover via AI recomposition.
 
@@ -146,10 +147,14 @@ def reframe_album_art(
 
             if check_recompose_quality(art_bytes, candidate):
                 _log("Quality check passed")
+                if on_step:
+                    on_step()
                 output_path.write_bytes(candidate)
                 return
 
             _log("Quality check failed")
+            if on_step:
+                on_step()
             candidates.append(candidate)
 
         # All FLUX attempts failed — try text repair on last attempt
@@ -248,6 +253,7 @@ def add_title_to_illustration(image_bytes: bytes, title: str, width: int, height
 def try_shared_album_art(
     playlist: "Playlist",
     log: "Callable[[str], None] | None" = None,
+    on_step: "Callable[[], None] | None" = None,
 ) -> bool:
     """Check if all tracks share identical album art; if so, save it as the cover.
 
@@ -294,7 +300,7 @@ def try_shared_album_art(
     )
     _log("Reusing shared album art as cover")
 
-    reframe_album_art(first_art_bytes, playlist.cover_path, log=log)
+    reframe_album_art(first_art_bytes, playlist.cover_path, log=log, on_step=on_step)
     return True
 
 

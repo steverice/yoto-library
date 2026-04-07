@@ -64,7 +64,14 @@ def _setup_logging(verbose: bool = False) -> None:
         ))
         log.addHandler(file_handler)
 
-        console_handler = logging.StreamHandler()
+        from rich.logging import RichHandler
+        from yoto_cli.progress import _console as rich_console
+        console_handler = RichHandler(
+            console=rich_console,
+            show_time=False,
+            show_path=False,
+            markup=False,
+        )
         env_level = os.environ.get("YOTO_LOG_LEVEL", "").upper()
         if verbose:
             console_handler.setLevel(logging.DEBUG)
@@ -72,7 +79,6 @@ def _setup_logging(verbose: bool = False) -> None:
             console_handler.setLevel(getattr(logging, env_level))
         else:
             console_handler.setLevel(logging.WARNING)
-        console_handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
         log.addHandler(console_handler)
 
 
@@ -530,11 +536,13 @@ def import_cmd(source, output):
                     # Generate bsdiff patch for byte-perfect export
                     generate_source_patch(audio, mka_dest)
                     filenames.append(mka_name)
-                    click.echo(f"  Wrapped {audio.name} -> {mka_name}")
+                    _out = progress.console.print if progress else click.echo
+                    _out(f"  Wrapped {audio.name} -> {mka_name}")
                     if source_path == output_path:
                         audio.unlink()
                 except Exception as exc:
-                    click.echo(f"  Error wrapping {audio.name}: {exc}", err=True)
+                    _out = progress.console.print if progress else click.echo
+                    _out(f"  Error wrapping {audio.name}: {exc}")
             if progress and task is not None:
                 progress.update(task, advance=1)
 
@@ -587,6 +595,7 @@ def export(playlist, output):
         for mka in mka_files:
             if progress and task is not None:
                 progress.update(task, status=mka.name)
+            _out = progress.console.print if progress else click.echo
             try:
                 has_patch = get_attachment(mka, PATCH_ATTACHMENT_NAME) is not None
 
@@ -596,18 +605,18 @@ def export(playlist, output):
                         extracted = extract_audio(mka, Path(tmpdir))
                         final_path = output_path / (mka.stem + extracted.suffix)
                         if apply_source_patch(extracted, mka, final_path):
-                            click.echo(f"  {mka.name} -> {final_path.name} (byte-perfect)")
+                            _out(f"  {mka.name} -> {final_path.name} (byte-perfect)")
                         else:
                             # Patch failed — copy the extraction as fallback
                             import shutil
                             shutil.copy2(extracted, final_path)
-                            click.echo(f"  {mka.name} -> {final_path.name}")
+                            _out(f"  {mka.name} -> {final_path.name}")
                 else:
                     # No patch — extract directly to output
                     extracted = extract_audio(mka, output_path)
-                    click.echo(f"  {mka.name} -> {extracted.name}")
+                    _out(f"  {mka.name} -> {extracted.name}")
             except Exception as exc:
-                click.echo(f"  Error exporting {mka.name}: {exc}", err=True)
+                _out(f"  Error exporting {mka.name}: {exc}")
             if progress and task is not None:
                 progress.update(task, advance=1)
 
@@ -766,7 +775,7 @@ def select_icon(tracks):
 
             batch = generate_retrodiffusion_icons(descriptions, on_progress=on_gen_progress)
             if not batch:
-                click.echo(f"Icon generation failed for {track_path.name}", err=True)
+                progress.console.print(f"Icon generation failed for {track_path.name}")
                 skipped = True
             else:
                 raw_bytes_list: list[bytes] = [rb for rb, _ in batch]
@@ -843,7 +852,7 @@ def select_icon(tracks):
 
                     batch = generate_retrodiffusion_icons(descriptions, on_progress=on_gen_progress)
                     if not batch:
-                        click.echo(f"Icon generation failed for {track_path.name}", err=True)
+                        progress.console.print(f"Icon generation failed for {track_path.name}")
                         skipped = True
                     else:
                         raw_bytes_list = [rb for rb, _ in batch]
@@ -946,6 +955,8 @@ def cover(path, force, backup):
     from yoto_lib import mka
     import tempfile
 
+    from yoto_cli.progress import _console as rich_console
+
     folder = Path(path)
     playlist = load_playlist(folder)
     cover_path = playlist.cover_path
@@ -956,66 +967,90 @@ def cover(path, force, backup):
         while (backup_path := cover_path.with_name(f"cover.{n}.png")).exists():
             n += 1
         cover_path.rename(backup_path)
-        click.echo(f"Backed up existing cover to {backup_path.name}")
+        rich_console.print(f"Backed up existing cover to {backup_path.name}")
     elif cover_path.exists() and not force:
-        click.echo(f"Cover already exists: {cover_path}")
-        click.echo("Use --force to regenerate, or --backup to keep the old one.")
+        rich_console.print(f"Cover already exists: {cover_path}")
+        rich_console.print("Use --force to regenerate, or --backup to keep the old one.")
         return
 
     # Generate description if missing (interactive)
     if not playlist.description_path.exists():
         generate_description(
             playlist,
-            log=lambda msg: click.echo(msg),
+            log=lambda msg: rich_console.print(msg),
             ask_user=lambda q: click.prompt(q),
         )
 
-    # Try reusing shared album art first
-    if try_shared_album_art(playlist):
-        click.echo(f"Reused album art as cover: {cover_path}")
-        _print_cost_summary()
-        return
+    from yoto_cli.progress import make_progress
+    from yoto_lib.cover import RECOMPOSE_MAX_ATTEMPTS
 
-    # Build prompt from track metadata
-    track_titles: list[str] = []
-    artists: list[str] = []
-    for filename in playlist.track_files:
-        track_path = folder / filename
-        try:
-            tags = mka.read_tags(track_path)
-            title = tags.get("title") or Path(filename).stem
-            artist = tags.get("artist", "")
-        except Exception:
-            title = Path(filename).stem
-            artist = ""
-        track_titles.append(title)
-        if artist:
-            artists.append(artist)
+    cover_name = playlist.title or folder.name
+    title_steps = 1 if playlist.title else 0
+    # Worst case: all recompose attempts + generate + optional title + save
+    total_steps = RECOMPOSE_MAX_ATTEMPTS + 1 + title_steps + 1
 
-    prompt = build_cover_prompt(playlist.description, track_titles, artists, playlist.title)
+    with make_progress() as progress:
+        task = progress.add_task(cover_name, total=total_steps, status="checking album art")
 
-    provider = get_provider()
-    from yoto_cli.progress import spinner_status
-    # Request 1024×1536 — maps exactly to that OpenAI size (~0.667),
-    # only ~28px cropped per side to reach 638:1011 (~0.631) target.
-    with spinner_status("Generating cover art..."):
+        def _cover_log(msg: str) -> None:
+            if msg.startswith("WARNING:"):
+                progress.console.print(f"[yellow]⚠[/yellow] {msg}")
+            else:
+                progress.update(task, status=msg)
+
+        def _cover_step() -> None:
+            progress.update(task, advance=1)
+
+        # Try reusing shared album art first
+        if try_shared_album_art(playlist, log=_cover_log, on_step=_cover_step):
+            progress.update(task, completed=total_steps)
+            progress.stop()
+            rich_console.print(f"[green]✓[/green] Reused album art as cover: {cover_path}")
+            _print_cost_summary()
+            return
+
+        # No shared art — generate from scratch
+        progress.update(task, completed=RECOMPOSE_MAX_ATTEMPTS, status="generating cover art")
+
+        track_titles: list[str] = []
+        artists: list[str] = []
+        for filename in playlist.track_files:
+            track_path = folder / filename
+            try:
+                tags = mka.read_tags(track_path)
+                title = tags.get("title") or Path(filename).stem
+                artist = tags.get("artist", "")
+            except Exception:
+                title = Path(filename).stem
+                artist = ""
+            track_titles.append(title)
+            if artist:
+                artists.append(artist)
+
+        prompt = build_cover_prompt(playlist.description, track_titles, artists, playlist.title)
+
+        provider = get_provider()
+        # Request 1024×1536 — maps exactly to that OpenAI size (~0.667),
+        # only ~28px cropped per side to reach 638:1011 (~0.631) target.
         image_bytes = provider.generate(prompt, 1024, 1536)
 
-    # Add title via AI inpainting before resize (edit API needs supported dimensions).
-    if playlist.title:
-        with spinner_status("Adding title..."):
+        if playlist.title:
+            progress.update(task, advance=1, status="adding title")
             image_bytes = add_title_to_illustration(image_bytes, playlist.title, 1024, 1536)
 
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-        tmp.write(image_bytes)
-        tmp_path = Path(tmp.name)
+        progress.update(task, advance=1, status="saving")
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            tmp.write(image_bytes)
+            tmp_path = Path(tmp.name)
 
-    try:
-        resize_cover(tmp_path, cover_path)
-    finally:
-        tmp_path.unlink(missing_ok=True)
+        try:
+            resize_cover(tmp_path, cover_path)
+        finally:
+            tmp_path.unlink(missing_ok=True)
 
-    click.echo(f"Saved cover to {cover_path}")
+        progress.update(task, advance=1)
+
+    rich_console.print(f"[green]✓[/green] Saved cover to {cover_path}")
     _print_cost_summary()
 
 
