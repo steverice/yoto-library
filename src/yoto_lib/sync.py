@@ -133,6 +133,7 @@ def sync_playlist(
     log: Callable[[str], None] | None = None,
     on_upload_start: Callable[[str], None] | None = None,
     on_upload_done: Callable[[str], None] | None = None,
+    ignore_album_art: bool = False,
 ) -> SyncResult:
     """
     Sync a single playlist folder to the Yoto API.
@@ -201,7 +202,7 @@ def sync_playlist(
     # 5. Generate cover if missing
     if not playlist.has_cover:
         _log("Generating cover image...")
-    generate_cover_if_missing(playlist, log=_log)
+    generate_cover_if_missing(playlist, log=_log, ignore_album_art=ignore_album_art)
 
     # Reload has_cover after potential generation
     playlist.has_cover = playlist.cover_path.exists()
@@ -344,6 +345,7 @@ def sync_path(
     log: Callable[[str], None] | None = None,
     on_upload_start: Callable[[str], None] | None = None,
     on_upload_done: Callable[[str], None] | None = None,
+    ignore_album_art: bool = False,
 ) -> list[SyncResult]:
     """
     Sync one or more playlists rooted at path.
@@ -360,6 +362,7 @@ def sync_path(
             path, dry_run=dry_run, trim=trim,
             on_track_done=on_track_done, log=log,
             on_upload_start=on_upload_start, on_upload_done=on_upload_done,
+            ignore_album_art=ignore_album_art,
         ))
     else:
         subdirs = sorted(p for p in path.iterdir() if p.is_dir())
@@ -370,6 +373,7 @@ def sync_path(
                 subdir, dry_run=dry_run, trim=trim,
                 on_track_done=on_track_done, log=log,
                 on_upload_start=on_upload_start, on_upload_done=on_upload_done,
+                ignore_album_art=ignore_album_art,
             ))
 
     return results
