@@ -912,7 +912,7 @@ def select_icon(tracks):
             prompt_text = f"Pick an icon (1-{max_choice}, or 'r' to regenerate)"
 
             # Build score labels (existing icon gets no score)
-            from yoto_cli.progress import render_icon_panels
+            from yoto_cli.progress import interactive_icon_select
             score_labels = []
             for j in range(len(images_to_show)):
                 if (j + 1) == existing_choice:
@@ -922,11 +922,7 @@ def select_icon(tracks):
                     marker = " ★" if (j + 1) == winner else ""
                     score_labels.append(f"score: {score}{marker}")
 
-            _console.print(render_icon_panels(images_to_show, labels_to_show, score_labels, winner))
-
-            prompt_text = f"Pick an icon (1-{max_choice}, or 'r' to regenerate)"
-            default_choice = str(winner) if 1 <= winner <= max_choice else "1"
-            raw = Prompt.ask(prompt_text, default=default_choice, console=_console)
+            raw = interactive_icon_select(images_to_show, labels_to_show, score_labels, winner, max_choice)
             if raw.lower() == "r":
                 with make_progress() as progress:
                     task = progress.add_task(title, total=5, status="describing icons")
