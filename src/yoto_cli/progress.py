@@ -1,6 +1,4 @@
-from rich.columns import Columns
 from rich.console import Console
-from rich.panel import Panel
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
@@ -112,26 +110,41 @@ def render_icon_panels(
     scores: list[str],
     winner: int,
     selected: int = 0,
-) -> Columns:
-    """Return a rich Columns of Panel objects, one per icon.
+):
+    """Return a rich Table with icons side by side.
 
     Args:
         images: PIL Image objects (16×16 RGBA)
-        labels: Text labels for each panel title
-        scores: Score strings for each panel subtitle (empty string = no score)
+        labels: Text labels for each column header
+        scores: Score strings for each icon (empty string = no score)
         winner: 1-based index of the winning icon (gets ★ marker)
-        selected: 0-based index of the currently highlighted icon (gets cyan border)
+        selected: 0-based index of the currently highlighted icon (gets cyan header)
     """
-    panels = []
-    for i, (img, label, score) in enumerate(zip(images, labels, scores)):
+    from rich.table import Table
+    from rich import box
+
+    table = Table(box=box.ROUNDED, show_header=True, padding=(0, 1), expand=False)
+
+    for i, label in enumerate(labels):
+        marker = " ★" if (i + 1) == winner else ""
+        is_selected = i == selected
+        table.add_column(
+            f"{label}{marker}",
+            width=16,
+            no_wrap=True,
+            header_style="bold cyan" if is_selected else "dim",
+            style="bold cyan" if is_selected else "",
+        )
+
+    cells = []
+    for i, (img, score) in enumerate(zip(images, scores)):
         body = _icon_to_rich_text(img)
         if score:
             body.append(f"\n{score}", style="dim")
-        marker = " ★" if (i + 1) == winner else ""
-        border = "bold cyan" if i == selected else "dim"
-        # Icon is 16 chars wide; panel adds 2 border + 2 padding = 20
-        panels.append(Panel(body, title=f"{label}{marker}", border_style=border, width=20))
-    return Columns(panels, expand=False, padding=(0, 1))
+        cells.append(body)
+
+    table.add_row(*cells)
+    return table
 
 
 def _read_key() -> str:
