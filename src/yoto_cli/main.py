@@ -812,7 +812,7 @@ def select_icon(tracks):
         with make_progress() as progress:
             task = progress.add_task(title, total=7, status="matching Yoto icon")
 
-            inner = progress.add_task("Claude Haiku", total=None)
+            inner = progress.add_task("Claude Haiku", total=None, status="")
             yoto_media_id, yoto_confidence = match_icon_llm(title, catalog)
             progress.remove_task(inner)
 
@@ -829,7 +829,7 @@ def select_icon(tracks):
             tmpdir = Path(tempfile.mkdtemp(prefix="yoto-icon-"))
             skipped = False
 
-            inner = progress.add_task("Claude Haiku", total=None)
+            inner = progress.add_task("Claude Haiku", total=None, status="")
             descriptions = describe_icons_llm(title, album_description=album_desc)
             progress.remove_task(inner)
             if not descriptions:
@@ -840,7 +840,7 @@ def select_icon(tracks):
             icon_tasks: dict[int, int] = {}
 
             def on_icon_start(i: int, desc: str) -> None:
-                icon_tasks[i] = progress.add_task(f"Icon {i + 1}: {desc}", total=None)
+                icon_tasks[i] = progress.add_task(f"Icon {i + 1}: {desc}", total=None, status="")
 
             def on_icon_done(i: int) -> None:
                 if i in icon_tasks:
@@ -863,7 +863,7 @@ def select_icon(tracks):
                 skipped = True
             else:
                 raw_bytes_list: list[bytes] = [rb for rb, _ in batch]
-                inner = progress.add_task("Claude Sonnet", total=None)
+                inner = progress.add_task("Claude Sonnet", total=None, status="")
                 winner, scores = compare_icons_llm(
                     title, raw_bytes_list,
                     yoto_icon=yoto_bytes if yoto_img is not None else None,
@@ -926,7 +926,7 @@ def select_icon(tracks):
                 with make_progress() as progress:
                     task = progress.add_task(title, total=6, status="describing icons")
 
-                    inner = progress.add_task("Claude Haiku", total=None)
+                    inner = progress.add_task("Claude Haiku", total=None, status="")
                     descriptions = describe_icons_llm(title, album_description=album_desc)
                     progress.remove_task(inner)
                     if not descriptions:
@@ -936,7 +936,7 @@ def select_icon(tracks):
                     regen_icon_tasks: dict[int, int] = {}
 
                     def on_icon_start_r(i: int, desc: str) -> None:
-                        regen_icon_tasks[i] = progress.add_task(f"Icon {i + 1}: {desc}", total=None)
+                        regen_icon_tasks[i] = progress.add_task(f"Icon {i + 1}: {desc}", total=None, status="")
 
                     def on_icon_done_r(i: int) -> None:
                         if i in regen_icon_tasks:
@@ -959,7 +959,7 @@ def select_icon(tracks):
                         skipped = True
                     else:
                         raw_bytes_list = [rb for rb, _ in batch]
-                        inner = progress.add_task("Claude Sonnet", total=None)
+                        inner = progress.add_task("Claude Sonnet", total=None, status="")
                         winner, scores = compare_icons_llm(
                             title, raw_bytes_list,
                             yoto_icon=yoto_bytes if yoto_img is not None else None,
@@ -1119,7 +1119,7 @@ def cover(path, force, backup):
                     _inner_task[0] = None
             elif _inner_task[0] is None:
                 # Create a new inner task
-                _inner_task[0] = progress.add_task(status, total=total)
+                _inner_task[0] = progress.add_task(status, total=total, status="")
             else:
                 # Update the existing inner task
                 progress.update(_inner_task[0], description=status, completed=step if step is not None else 0, total=total)
@@ -1155,14 +1155,14 @@ def cover(path, force, backup):
         provider = get_provider()
         # Request 1024×1536 — maps exactly to that OpenAI size (~0.667),
         # only ~28px cropped per side to reach 638:1011 (~0.631) target.
-        inner = progress.add_task("Generating", total=None)
+        inner = progress.add_task("Generating", total=None, status="")
         image_bytes = provider.generate(prompt, 1024, 1536)
         progress.remove_task(inner)
         progress.update(task, advance=1, status="generated cover art")
 
         if playlist.title:
             progress.update(task, advance=1, status="adding title")
-            inner = progress.add_task("Adding title", total=None)
+            inner = progress.add_task("Adding title", total=None, status="")
             image_bytes = add_title_to_illustration(image_bytes, playlist.title, 1024, 1536)
             progress.remove_task(inner)
             progress.update(task, status="title added")
