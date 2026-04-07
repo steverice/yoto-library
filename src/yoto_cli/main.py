@@ -229,14 +229,15 @@ def auth():
 @click.argument("path", default=".", type=click.Path(exists=True))
 @click.option("--dry-run", is_flag=True, help="Preview changes without executing")
 @click.option("--no-trim", is_flag=True, help="Skip silence trimming on YouTube downloads")
-def sync(path, dry_run, no_trim):
+@click.option("--ignore-album-art", is_flag=True, help="Skip album art reuse; generate cover purely from prompt")
+def sync(path, dry_run, no_trim, ignore_album_art):
     """Push local playlist state to Yoto."""
-    logger.debug("command: sync path=%s dry_run=%s no_trim=%s", path, dry_run, no_trim)
+    logger.debug("command: sync path=%s dry_run=%s no_trim=%s ignore_album_art=%s", path, dry_run, no_trim, ignore_album_art)
     trim = not no_trim
     reset_tracker()
     from yoto_cli.progress import _console, error as _error
     if dry_run:
-        results = sync_path(Path(path), dry_run=True, trim=trim)
+        results = sync_path(Path(path), dry_run=True, trim=trim, ignore_album_art=ignore_album_art)
         for result in results:
             icon_msg = f", {result.icons_uploaded} icons" if result.icons_uploaded else ""
             _console.print(f"[Dry run] Would upload {result.tracks_uploaded} tracks{icon_msg}")
@@ -271,6 +272,7 @@ def sync(path, dry_run, no_trim):
         results = sync_path(
             Path(path), dry_run=False, trim=trim, log=log,
             on_upload_start=on_upload_start, on_upload_done=on_upload_done,
+            ignore_album_art=ignore_album_art,
         )
         progress.update(task, completed=total)
 
@@ -1064,11 +1066,12 @@ def reset_icon(tracks):
 @click.argument("path", default=".", type=click.Path(exists=True), shell_complete=_complete_dirs)
 @click.option("--force", is_flag=True, help="Regenerate even if cover.png exists")
 @click.option("--backup", is_flag=True, help="Like --force, but rename existing cover.png first")
-def cover(path, force, backup):
+@click.option("--ignore-album-art", is_flag=True, help="Skip album art reuse; generate cover purely from prompt")
+def cover(path, force, backup, ignore_album_art):
     """Generate cover art for a playlist folder."""
     if force and backup:
         raise click.UsageError("--force and --backup are mutually exclusive")
-    logger.debug("command: cover path=%s force=%s backup=%s", path, force, backup)
+    logger.debug("command: cover path=%s force=%s backup=%s ignore_album_art=%s", path, force, backup, ignore_album_art)
     reset_tracker()
     from yoto_lib.cover import build_cover_prompt, resize_cover, try_shared_album_art, add_title_to_illustration
     from yoto_lib.image_providers import get_provider
@@ -1139,7 +1142,7 @@ def cover(path, force, backup):
                 progress.update(_inner_task[0], description=status, completed=step if step is not None else 0, total=total)
 
         # Try reusing shared album art first
-        if try_shared_album_art(playlist, log=_cover_log, on_step=_cover_step, on_inner=_cover_inner):
+        if not ignore_album_art and try_shared_album_art(playlist, log=_cover_log, on_step=_cover_step, on_inner=_cover_inner):
             progress.update(task, completed=total_steps)
             progress.stop()
             _success(f"Reused album art as cover: {cover_path}")
@@ -1170,7 +1173,7 @@ def cover(path, force, backup):
         # Request 1024×1536 — maps exactly to that OpenAI size (~0.667),
         # only ~28px cropped per side to reach 638:1011 (~0.631) target.
         inner = progress.add_task("Generating", total=None, status="")
-        image_bytes = provider.generate(prompt, 1024, 1536)
+        image_bytes = provider.generate(prompt, 1024, 1536, quality="low")
         progress.remove_task(inner)
         progress.update(task, advance=1, status="generated cover art")
 
