@@ -26,6 +26,25 @@ data/                  # sample playlists (gitignored)
 
 **CLI framework** — Click. All commands live in `src/yoto_cli/main.py`.
 
+### CLI output
+
+All terminal output goes through the shared rich `Console` in `src/yoto_cli/progress.py`.
+Never use `click.echo()` or `print()` directly.
+
+- **Success**: `success(msg)` — green ✓ prefix
+- **Error**: `error(msg)` — red ✗ prefix
+- **Warning**: `warning(msg)` — yellow ⚠ prefix
+- **Info**: `_console.print(msg)` — no prefix
+- **During progress bars**: use `progress.console.print()` (same console, coordinates with Live display)
+- **Prompts**: `rich.prompt.Prompt.ask(question, console=_console)`
+- **Tables**: `rich.table.Table` printed via `_console.print(table)`
+- **Separators**: `rich.rule.Rule(title=name)` printed via `_console.print(rule)`
+
+Progress bars use `make_progress()` from `progress.py`. For commands with multi-step
+operations, use nested tasks (outer = command-level, inner = current operation).
+For parallel operations, add one inner task per concurrent job.
+Cost tracking is automatic — providers record costs via `get_tracker().record()`.
+
 **HTTP client** — httpx (not requests).
 
 **LLM calls** — go through the `claude` CLI as a subprocess (`claude -p <prompt> --output-format json`). See `icon_llm.py` for the pattern. Do not use the Anthropic Python SDK for LLM calls in this project.

@@ -145,3 +145,20 @@ All Claude CLI calls in the cover pipeline use Sonnet for better visual judgment
 Yoto's transcode API accepts any audio format — including MKA — and transcodes to Opus/OGG for playback. MKA files are uploaded directly without extraction; the transcoder handles the Matroska container and finds the audio stream inside.
 
 The content schema's `format` field must match the **transcoded output** format (`"opus"`), not the input format. Yoto hardware firmware v2.21.4+ supports Opus playback.
+
+## CLI presentation layer
+
+The CLI uses [rich](https://rich.readthedocs.io/) for all terminal output. The shared
+`Console(stderr=True)` in `src/yoto_cli/progress.py` is the single output channel —
+progress bars, log messages, status updates, and errors all route through it so rich
+can coordinate live displays (progress bars) with printed output (messages scroll above
+the bar).
+
+Key rich features used:
+- **Progress** — animated bars with SpinnerColumn, CostColumn, nested/parallel tasks
+- **Panel + Columns** — icon selection display (ANSI pixel art wrapped in panels)
+- **Table** — card listing (`yoto list`)
+- **Rule** — track separators in multi-track `select-icon`
+- **Prompt** — interactive input replacing `click.prompt()`
+- **RichHandler** — Python logging integration (stderr, no formatter)
+- **Markup** — `[green]✓[/green]` style inline coloring for messages

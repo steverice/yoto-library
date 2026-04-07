@@ -92,6 +92,7 @@ def pull_playlist(
     dry_run: bool = False,
     on_track_done: Callable[[str], None] | None = None,
     on_total: Callable[[int], None] | None = None,
+    on_track_start: Callable[[str], None] | None = None,
 ) -> PullResult:
     """Download a remote Yoto playlist into a local folder."""
     folder = Path(folder)
@@ -163,6 +164,8 @@ def pull_playlist(
     future_to_job = {}
     with ThreadPoolExecutor(max_workers=4) as executor:
         for job in jobs:
+            if on_track_start:
+                on_track_start(job.title)
             future = executor.submit(_process_track, job, folder, cache_dir)
             future_to_job[future] = job
 
