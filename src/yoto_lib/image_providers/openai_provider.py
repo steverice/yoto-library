@@ -9,7 +9,7 @@ from openai import OpenAI
 logger = logging.getLogger(__name__)
 
 
-# Supported sizes for gpt-image-1
+# Supported sizes for GPT Image models
 _SUPPORTED_SIZES = [
     (1024, 1024),
     (1024, 1536),
@@ -27,7 +27,7 @@ def _nearest_size(width: int, height: int) -> tuple[int, int]:
 
 
 class OpenAIProvider:
-    """Generates images using the OpenAI images API (gpt-image-1)."""
+    """Generates images using the OpenAI images API (gpt-image-1.5)."""
 
     def __init__(self) -> None:
         self._client = OpenAI()
@@ -39,7 +39,7 @@ class OpenAIProvider:
         logger.debug("openai: generating %s quality=%s, prompt=%.80s...", size_str, quality, prompt)
 
         response = self._client.images.generate(
-            model="gpt-image-1",
+            model="gpt-image-1.5",
             prompt=prompt,
             size=size_str,
             quality=quality,
@@ -60,7 +60,7 @@ class OpenAIProvider:
         logger.debug("openai: editing %s quality=%s mask=%s prompt=%.80s...", size_str, quality, bool(mask_bytes), prompt)
 
         kwargs: dict = dict(
-            model="gpt-image-1",
+            model="gpt-image-1.5",
             image=("image.png", _io.BytesIO(image_bytes), "image/png"),
             prompt=prompt,
             size=size_str,

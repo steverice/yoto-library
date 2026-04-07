@@ -219,7 +219,7 @@ Each AI task uses a specific provider chosen for best results at that task:
 | Icon generation (16x16 pixel art) | [RetroDiffusion](https://www.retrodiffusion.ai/) | `RETRODIFFUSION_API_KEY` | ~$0.003/image |
 | Album art recomposition | [FLUX Kontext Pro](https://www.together.ai/) via Together AI | `TOGETHER_API_KEY` | ~$0.04/image |
 | Text layer rendering (cover repair) | [Gemini 2.5 Flash](https://aistudio.google.com/) | `GEMINI_API_KEY` | ~$0.07/image |
-| Text-to-image cover generation | [OpenAI gpt-image-1](https://platform.openai.com/) | `OPENAI_API_KEY` | ~$0.016/image |
+| Text-to-image cover generation | [OpenAI gpt-image-1.5](https://platform.openai.com/) | `OPENAI_API_KEY` | ~$0.013/image |
 | Descriptions, icon matching, cover evaluation (Sonnet) | [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) | Subscription | Included with Claude subscription |
 
 **Getting API keys:**
