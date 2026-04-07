@@ -206,6 +206,8 @@ Each service handles a specific part of the pipeline — see [AI providers](#ai-
 
 Use `--force` to regenerate an existing cover. Set `YOTO_RECOMPOSE_ATTEMPTS` (default 3) to control how many FLUX attempts before falling back to the text repair pipeline.
 
+- `YOTO_WORKERS` — max parallel workers for downloads, uploads, imports, exports (default: 4)
+
 **YouTube downloads** — drop a `.webloc` file (Safari bookmark) into a playlist folder. On `yoto sync` or `yoto download`, the URL is resolved via yt-dlp, silence is trimmed from pre/post-roll, and the audio is wrapped in MKA. The `.webloc` is deleted after successful download.
 
 ## AI providers

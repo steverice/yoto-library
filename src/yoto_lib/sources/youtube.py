@@ -108,6 +108,7 @@ def _parse_and_call_progress(
 
         downloaded = int(float(downloaded_raw)) if downloaded_raw not in ("NA", "N/A", "None") else 0
         total: int | None = int(float(total_raw)) if total_raw not in ("NA", "N/A", "None") else None
+        pct_raw = pct_raw.rstrip('%')
         pct = float(pct_raw) if pct_raw not in ("NA", "N/A", "None") else 0.0
         speed = speed_raw if speed_raw not in ("NA", "N/A", "None") else ""
         on_progress(pct, downloaded, total, speed)

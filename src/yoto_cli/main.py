@@ -613,12 +613,9 @@ def import_cmd(source, output):
                 write_tags(mka_dest, source_tags)
                 if progress and inner_task is not None:
                     progress.update(inner_task, advance=1, status="fetching art")
-                # Fetch album art from iTunes (album_cache needs a lock)
+                # Fetch album art from iTunes (serialized to avoid duplicate API calls)
                 with album_cache_lock:
-                    cache_snapshot = dict(album_cache)
-                enrich_from_itunes(mka_dest, source_tags, cache_snapshot)
-                with album_cache_lock:
-                    album_cache.update(cache_snapshot)
+                    enrich_from_itunes(mka_dest, source_tags, album_cache)
                 if progress and inner_task is not None:
                     progress.update(inner_task, advance=1, status="patching")
                 # Generate bsdiff patch for byte-perfect export
