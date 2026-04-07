@@ -100,6 +100,7 @@ def render_icon_panels(
     labels: list[str],
     scores: list[str],
     winner: int,
+    selected: int = 0,
 ) -> Columns:
     """Return a rich Columns of Panel objects, one per icon.
 
@@ -107,7 +108,8 @@ def render_icon_panels(
         images: PIL Image objects (16×16 RGBA)
         labels: Text labels for each panel title
         scores: Score strings for each panel subtitle (empty string = no score)
-        winner: 1-based index of the winning icon (gets cyan border + ★)
+        winner: 1-based index of the winning icon (gets ★ marker)
+        selected: 0-based index of the currently highlighted icon (gets cyan border)
     """
     panels = []
     for i, (img, label, score) in enumerate(zip(images, labels, scores)):
@@ -115,8 +117,84 @@ def render_icon_panels(
         body = Text.from_ansi("\n".join(ansi_rows))
         if score:
             body.append(f"\n{score}", style="dim")
-        is_winner = (i + 1) == winner
-        border = "bold cyan" if is_winner else "dim"
-        marker = " ★" if is_winner else ""
+        marker = " ★" if (i + 1) == winner else ""
+        border = "bold cyan" if i == selected else "dim"
         panels.append(Panel(body, title=f"{label}{marker}", border_style=border))
     return Columns(panels, padding=(0, 1))
+
+
+def _read_key() -> str:
+    """Read a single keypress from stdin. Returns 'left', 'right', 'enter', 'r', or the raw char."""
+    import sys
+    import tty
+    import termios
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        ch = sys.stdin.read(1)
+        if ch == "\x1b":
+            ch2 = sys.stdin.read(1)
+            ch3 = sys.stdin.read(1)
+            if ch2 == "[":
+                if ch3 == "D":
+                    return "left"
+                if ch3 == "C":
+                    return "right"
+            return "escape"
+        if ch in ("\r", "\n"):
+            return "enter"
+        return ch
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+
+def interactive_icon_select(
+    images: list,
+    labels: list[str],
+    scores: list[str],
+    winner: int,
+    max_choice: int,
+) -> str:
+    """Interactive icon selector with arrow keys. Returns the user's choice as a string.
+
+    Arrow keys move the highlight, Enter confirms, 'r' regenerates.
+    Returns a string: "1"-"N" for a choice, or "r" for regenerate.
+    """
+    from rich.live import Live
+    from rich.text import Text as RichText
+
+    selected = winner - 1  # 0-indexed, start on LLM winner
+    hint = RichText("← → to move, Enter to select, r to regenerate", style="dim")
+
+    def _render():
+        panels = render_icon_panels(images, labels, scores, winner, selected)
+        from rich.console import Group
+        return Group(panels, RichText(""), hint)
+
+    import sys
+    if not sys.stdin.isatty():
+        # Non-interactive: fall back to returning the winner
+        _console.print(render_icon_panels(images, labels, scores, winner, selected))
+        return str(winner)
+
+    with Live(_render(), console=_console, transient=True) as live:
+        while True:
+            key = _read_key()
+            if key == "left":
+                selected = max(0, selected - 1)
+                live.update(_render())
+            elif key == "right":
+                selected = min(max_choice - 1, selected + 1)
+                live.update(_render())
+            elif key == "enter":
+                break
+            elif key == "r":
+                selected = -1
+                break
+
+    # Print final state (non-transient)
+    if selected >= 0:
+        _console.print(render_icon_panels(images, labels, scores, winner, selected))
+        return str(selected + 1)
+    return "r"
