@@ -660,78 +660,6 @@ def export(playlist, output):
 # ── select-icon ──────────────────────────────────────────────────────────
 
 
-def _icon_to_ansi_rows(img: "Image.Image") -> list[str]:
-    """Render a 16x16 RGBA image as ANSI rows using half-block characters.
-
-    Each row encodes 2 vertical pixels using ▀ with
-    foreground = top pixel, background = bottom pixel.
-    """
-    img = img.convert("RGBA")
-    w, h = img.size
-    rows = []
-    for y in range(0, h, 2):
-        row = ""
-        for x in range(w):
-            top = img.getpixel((x, y))
-            bot = img.getpixel((x, y + 1)) if y + 1 < h else (0, 0, 0, 0)
-            if top[3] == 0 and bot[3] == 0:
-                row += " "
-            elif top[3] == 0:
-                row += f"\033[48;2;{bot[0]};{bot[1]};{bot[2]}m\033[38;2;{bot[0]};{bot[1]};{bot[2]}m▄\033[0m"
-            elif bot[3] == 0:
-                row += f"\033[38;2;{top[0]};{top[1]};{top[2]}m▀\033[0m"
-            else:
-                row += f"\033[38;2;{top[0]};{top[1]};{top[2]}m\033[48;2;{bot[0]};{bot[1]};{bot[2]}m▀\033[0m"
-        rows.append(row)
-    return rows
-
-
-def _render_icons_side_by_side(
-    images: list["Image.Image"],
-    labels: list[str],
-    footers: list[str] | None = None,
-    gap: int = 3,
-) -> str:
-    """Render multiple icons side-by-side with labels above and optional footers below."""
-    import re
-
-    import textwrap
-
-    def _pad(text: str, width: int) -> str:
-        visible_len = len(re.sub(r"\033\[[^m]*m", "", text))
-        return text + " " * max(0, width - visible_len)
-
-    all_rows = [_icon_to_ansi_rows(img) for img in images]
-    max_height = max(len(r) for r in all_rows) if all_rows else 0
-    icon_width = images[0].size[0] if images else 16
-    for rows in all_rows:
-        while len(rows) < max_height:
-            rows.append(" " * icon_width)
-
-    spacer = " " * gap
-    lines = []
-
-    # Label rows (word-wrapped to icon width)
-    wrapped = [textwrap.wrap(l, icon_width) or [""] for l in labels]
-    max_label_rows = max(len(w) for w in wrapped)
-    for row_idx in range(max_label_rows):
-        line_parts = []
-        for w in wrapped:
-            text = w[row_idx] if row_idx < len(w) else ""
-            line_parts.append(_pad(text, icon_width))
-        lines.append(spacer.join(line_parts))
-
-    # Image rows
-    for y in range(max_height):
-        lines.append(spacer.join(_pad(all_rows[i][y], icon_width) for i in range(len(all_rows))))
-
-    # Footer row
-    if footers:
-        lines.append(spacer.join(_pad(f, icon_width) for f in footers))
-
-    return "\n".join(lines)
-
-
 @cli.command(name="select-icon")
 @click.argument("tracks", nargs=-1, required=True, type=click.Path(exists=True), shell_complete=_complete_mka_without_icon)
 def select_icon(tracks):
@@ -782,7 +710,9 @@ def select_icon(tracks):
         with make_progress() as progress:
             task = progress.add_task(title, total=7, status="matching Yoto icon")
 
+            inner = progress.add_task("Claude Haiku", total=None)
             yoto_media_id, yoto_confidence = match_icon_llm(title, catalog)
+            progress.remove_task(inner)
 
             if yoto_media_id:
                 yoto_bytes = download_icon(yoto_media_id)
@@ -797,30 +727,48 @@ def select_icon(tracks):
             tmpdir = Path(tempfile.mkdtemp(prefix="yoto-icon-"))
             skipped = False
 
+            inner = progress.add_task("Claude Haiku", total=None)
             descriptions = describe_icons_llm(title, album_description=album_desc)
+            progress.remove_task(inner)
             if not descriptions:
                 descriptions = [title, title, title]  # fallback to raw title
 
             progress.update(task, advance=1, status="generating icon 1/3")
 
-            def on_gen_progress(done_n):
+            icon_tasks: dict[int, int] = {}
+
+            def on_icon_start(i: int, desc: str) -> None:
+                icon_tasks[i] = progress.add_task(f"Icon {i + 1}: {desc}", total=None)
+
+            def on_icon_done(i: int) -> None:
+                if i in icon_tasks:
+                    progress.remove_task(icon_tasks.pop(i))
+
+            def on_gen_progress(done_n: int) -> None:
                 if done_n < 3:
                     progress.update(task, advance=1, status=f"generating icon {done_n + 1}/3")
                 else:
                     progress.update(task, advance=1, status="evaluating icons")
 
-            batch = generate_retrodiffusion_icons(descriptions, on_progress=on_gen_progress)
+            batch = generate_retrodiffusion_icons(
+                descriptions,
+                on_progress=on_gen_progress,
+                on_icon_start=on_icon_start,
+                on_icon_done=on_icon_done,
+            )
             if not batch:
                 progress.console.print(f"[red]✗[/red] Icon generation failed for {track_path.name}")
                 skipped = True
             else:
                 raw_bytes_list: list[bytes] = [rb for rb, _ in batch]
+                inner = progress.add_task("Claude Sonnet", total=None)
                 winner, scores = compare_icons_llm(
                     title, raw_bytes_list,
                     yoto_icon=yoto_bytes if yoto_img is not None else None,
                     descriptions=descriptions,
                     album_description=album_desc,
                 )
+                progress.remove_task(inner)
                 progress.update(task, advance=1)
         # progress bar closed — interactive prompt starts below
 
@@ -875,29 +823,48 @@ def select_icon(tracks):
             if raw.lower() == "r":
                 with make_progress() as progress:
                     task = progress.add_task(title, total=6, status="describing icons")
+
+                    inner = progress.add_task("Claude Haiku", total=None)
                     descriptions = describe_icons_llm(title, album_description=album_desc)
+                    progress.remove_task(inner)
                     if not descriptions:
                         descriptions = [title, title, title]
                     progress.update(task, advance=1, status="generating icon 1/3")
 
-                    def on_gen_progress(done_n):
+                    regen_icon_tasks: dict[int, int] = {}
+
+                    def on_icon_start_r(i: int, desc: str) -> None:
+                        regen_icon_tasks[i] = progress.add_task(f"Icon {i + 1}: {desc}", total=None)
+
+                    def on_icon_done_r(i: int) -> None:
+                        if i in regen_icon_tasks:
+                            progress.remove_task(regen_icon_tasks.pop(i))
+
+                    def on_gen_progress_r(done_n: int) -> None:
                         if done_n < 3:
                             progress.update(task, advance=1, status=f"generating icon {done_n + 1}/3")
                         else:
                             progress.update(task, advance=1, status="evaluating icons")
 
-                    batch = generate_retrodiffusion_icons(descriptions, on_progress=on_gen_progress)
+                    batch = generate_retrodiffusion_icons(
+                        descriptions,
+                        on_progress=on_gen_progress_r,
+                        on_icon_start=on_icon_start_r,
+                        on_icon_done=on_icon_done_r,
+                    )
                     if not batch:
                         progress.console.print(f"[red]✗[/red] Icon generation failed for {track_path.name}")
                         skipped = True
                     else:
                         raw_bytes_list = [rb for rb, _ in batch]
+                        inner = progress.add_task("Claude Sonnet", total=None)
                         winner, scores = compare_icons_llm(
                             title, raw_bytes_list,
                             yoto_icon=yoto_bytes if yoto_img is not None else None,
                             descriptions=descriptions,
                             album_description=album_desc,
                         )
+                        progress.remove_task(inner)
                         progress.update(task, advance=1)
                 if skipped:
                     break
@@ -1019,7 +986,7 @@ def cover(path, force, backup):
             ask_user=lambda q: _Prompt.ask(q, console=rich_console),
         )
 
-    from yoto_cli.progress import make_progress
+    from yoto_cli.progress import make_progress, success as _success
     from yoto_lib.cover import RECOMPOSE_MAX_ATTEMPTS
 
     cover_name = playlist.title or folder.name
@@ -1030,6 +997,9 @@ def cover(path, force, backup):
     with make_progress() as progress:
         task = progress.add_task(cover_name, total=total_steps, status="checking album art")
 
+        # Tracks the current inner task for nested progress
+        _inner_task: list[int | None] = [None]
+
         def _cover_log(msg: str) -> None:
             if msg.startswith("WARNING:"):
                 progress.console.print(f"[yellow]⚠[/yellow] {msg}")
@@ -1039,11 +1009,24 @@ def cover(path, force, backup):
         def _cover_step() -> None:
             progress.update(task, advance=1)
 
+        def _cover_inner(status: "str | None", step: "int | None", total: "int | None") -> None:
+            if status is None:
+                # Remove the inner task
+                if _inner_task[0] is not None:
+                    progress.remove_task(_inner_task[0])
+                    _inner_task[0] = None
+            elif _inner_task[0] is None:
+                # Create a new inner task
+                _inner_task[0] = progress.add_task(status, total=total)
+            else:
+                # Update the existing inner task
+                progress.update(_inner_task[0], description=status, completed=step if step is not None else 0, total=total)
+
         # Try reusing shared album art first
-        if try_shared_album_art(playlist, log=_cover_log, on_step=_cover_step):
+        if try_shared_album_art(playlist, log=_cover_log, on_step=_cover_step, on_inner=_cover_inner):
             progress.update(task, completed=total_steps)
             progress.stop()
-            rich_console.print(f"[green]✓[/green] Reused album art as cover: {cover_path}")
+            _success(f"Reused album art as cover: {cover_path}")
             _print_cost_summary()
             return
 
@@ -1070,11 +1053,17 @@ def cover(path, force, backup):
         provider = get_provider()
         # Request 1024×1536 — maps exactly to that OpenAI size (~0.667),
         # only ~28px cropped per side to reach 638:1011 (~0.631) target.
+        inner = progress.add_task("Generating", total=None)
         image_bytes = provider.generate(prompt, 1024, 1536)
+        progress.remove_task(inner)
+        progress.update(task, advance=1, status="generated cover art")
 
         if playlist.title:
             progress.update(task, advance=1, status="adding title")
+            inner = progress.add_task("Adding title", total=None)
             image_bytes = add_title_to_illustration(image_bytes, playlist.title, 1024, 1536)
+            progress.remove_task(inner)
+            progress.update(task, status="title added")
 
         progress.update(task, advance=1, status="saving")
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
@@ -1088,7 +1077,7 @@ def cover(path, force, backup):
 
         progress.update(task, advance=1)
 
-    rich_console.print(f"[green]✓[/green] Saved cover to {cover_path}")
+    _success(f"Saved cover to {cover_path}")
     _print_cost_summary()
 
 

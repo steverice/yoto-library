@@ -254,7 +254,7 @@ class TestTrySharedAlbumArt:
             result = try_shared_album_art(playlist)
 
         assert result is True
-        mock_reframe.assert_called_once_with(shared_art, cover_path, log=None, on_step=None)
+        mock_reframe.assert_called_once_with(shared_art, cover_path, log=None, on_step=None, on_inner=None)
 
     def test_generate_cover_tries_shared_art_first(self):
         """generate_cover_if_missing tries shared art before AI generation."""
@@ -406,7 +406,7 @@ class TestTrySharedAlbumArtReframe:
             result = try_shared_album_art(playlist)
 
         assert result is True
-        mock_reframe.assert_called_once_with(shared_art, cover_path, log=None, on_step=None)
+        mock_reframe.assert_called_once_with(shared_art, cover_path, log=None, on_step=None, on_inner=None)
         mock_resize.assert_not_called()
 
 
