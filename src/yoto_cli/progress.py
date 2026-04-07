@@ -53,12 +53,12 @@ def spinner_status(msg: str):
 
 def success(msg: str) -> None:
     """Print a green ✓ success message to stderr."""
-    _console.print(f"[green]✓[/green] {msg}")
+    _console.print(f"[green]✓ {msg}[/green]")
 
 
 def error(msg: str) -> None:
     """Print a red ✗ error message to stderr."""
-    _console.print(f"[red]✗[/red] {msg}")
+    _console.print(f"[red]✗ {msg}[/red]")
 
 
 def warning(msg: str) -> None:
