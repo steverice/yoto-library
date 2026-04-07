@@ -67,86 +67,6 @@ def warning(msg: str) -> None:
 # ── Icon panel rendering ──────────────────────────────────────────────────────
 
 
-def _icon_to_rich_text(img: "object") -> Text:
-    """Render a 16x16 RGBA image as a rich Text using half-block characters.
-
-    Each row encodes 2 vertical pixels using ▀ with
-    foreground = top pixel, background = bottom pixel.
-    Uses rich Style objects so width calculation is correct inside Panels.
-    """
-    from rich.style import Style
-
-    img = img.convert("RGBA")
-    w, h = img.size
-    result = Text()
-    for y in range(0, h, 2):
-        if y > 0:
-            result.append("\n")
-        for x in range(w):
-            top = img.getpixel((x, y))
-            bot = img.getpixel((x, y + 1)) if y + 1 < h else (0, 0, 0, 0)
-            if top[3] == 0 and bot[3] == 0:
-                result.append(" ")
-            elif top[3] == 0:
-                result.append("▄", style=Style(
-                    color=f"rgb({bot[0]},{bot[1]},{bot[2]})",
-                    bgcolor=f"rgb({bot[0]},{bot[1]},{bot[2]})",
-                ))
-            elif bot[3] == 0:
-                result.append("▀", style=Style(
-                    color=f"rgb({top[0]},{top[1]},{top[2]})",
-                ))
-            else:
-                result.append("▀", style=Style(
-                    color=f"rgb({top[0]},{top[1]},{top[2]})",
-                    bgcolor=f"rgb({bot[0]},{bot[1]},{bot[2]})",
-                ))
-    return result
-
-
-def render_icon_panels(
-    images: list,
-    labels: list[str],
-    scores: list[str],
-    winner: int,
-    selected: int = 0,
-):
-    """Return a rich Table with icons side by side.
-
-    Args:
-        images: PIL Image objects (16×16 RGBA)
-        labels: Text labels for each column header
-        scores: Score strings for each icon (empty string = no score)
-        winner: 1-based index of the winning icon (gets ★ marker)
-        selected: 0-based index of the currently highlighted icon (gets cyan header)
-    """
-    from rich.table import Table
-    from rich import box
-
-    table = Table(box=box.ROUNDED, show_header=True, padding=(0, 1), expand=False)
-
-    for i, label in enumerate(labels):
-        marker = " ★" if (i + 1) == winner else ""
-        is_selected = i == selected
-        table.add_column(
-            f"{label}{marker}",
-            width=16,
-            no_wrap=True,
-            header_style="bold cyan" if is_selected else "dim",
-            style="bold cyan" if is_selected else "",
-        )
-
-    cells = []
-    for i, (img, score) in enumerate(zip(images, scores)):
-        body = _icon_to_rich_text(img)
-        if score:
-            body.append(f"\n{score}", style="dim")
-        cells.append(body)
-
-    table.add_row(*cells)
-    return table
-
-
 def _read_key() -> str:
     """Read a single keypress from stdin. Returns 'left', 'right', 'enter', 'r', or the raw char."""
     import sys
@@ -179,27 +99,26 @@ def interactive_icon_select(
     scores: list[str],
     winner: int,
     max_choice: int,
+    render_fn: "Callable" = None,
 ) -> str:
     """Interactive icon selector with arrow keys. Returns the user's choice as a string.
 
     Arrow keys move the highlight, Enter confirms, 'r' regenerates.
+    render_fn(images, labels, scores, selected) -> str returns the ANSI display string.
     Returns a string: "1"-"N" for a choice, or "r" for regenerate.
     """
     from rich.live import Live
     from rich.text import Text as RichText
 
     selected = winner - 1  # 0-indexed, start on LLM winner
-    hint = RichText("← → to move, Enter to select, r to regenerate", style="dim")
 
     def _render():
-        panels = render_icon_panels(images, labels, scores, winner, selected)
-        from rich.console import Group
-        return Group(panels, RichText(""), hint)
+        ansi = render_fn(images, labels, scores, selected=selected)
+        return RichText.from_ansi(ansi + "\n← → to move, Enter to select, r to regenerate")
 
     import sys
     if not sys.stdin.isatty():
-        # Non-interactive: fall back to returning the winner
-        _console.print(render_icon_panels(images, labels, scores, winner, selected))
+        _console.print(RichText.from_ansi(render_fn(images, labels, scores, selected=selected)))
         return str(winner)
 
     with Live(_render(), console=_console, transient=True) as live:
@@ -219,6 +138,6 @@ def interactive_icon_select(
 
     # Print final state (non-transient)
     if selected >= 0:
-        _console.print(render_icon_panels(images, labels, scores, winner, selected))
+        _console.print(RichText.from_ansi(render_fn(images, labels, scores, selected=selected)))
         return str(selected + 1)
     return "r"

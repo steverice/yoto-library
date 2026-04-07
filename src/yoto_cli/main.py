@@ -759,6 +759,81 @@ def export(playlist, output):
     _success(f"Exported {len(mka_files)} tracks to {output_path}")
 
 
+def _icon_to_ansi_rows(img: "Image.Image") -> list[str]:
+    """Render a 16x16 RGBA image as ANSI rows using half-block characters."""
+    img = img.convert("RGBA")
+    w, h = img.size
+    rows = []
+    for y in range(0, h, 2):
+        row = ""
+        for x in range(w):
+            top = img.getpixel((x, y))
+            bot = img.getpixel((x, y + 1)) if y + 1 < h else (0, 0, 0, 0)
+            if top[3] == 0 and bot[3] == 0:
+                row += " "
+            elif top[3] == 0:
+                row += f"\033[48;2;{bot[0]};{bot[1]};{bot[2]}m\033[38;2;{bot[0]};{bot[1]};{bot[2]}m▄\033[0m"
+            elif bot[3] == 0:
+                row += f"\033[38;2;{top[0]};{top[1]};{top[2]}m▀\033[0m"
+            else:
+                row += f"\033[38;2;{top[0]};{top[1]};{top[2]}m\033[48;2;{bot[0]};{bot[1]};{bot[2]}m▀\033[0m"
+        rows.append(row)
+    return rows
+
+
+def _render_icons_side_by_side(
+    images: list["Image.Image"],
+    labels: list[str],
+    footers: list[str] | None = None,
+    gap: int = 3,
+    selected: int = -1,
+) -> str:
+    """Render multiple icons side-by-side with labels above and optional footers below."""
+    import re
+    import textwrap
+
+    def _pad(text: str, width: int) -> str:
+        visible_len = len(re.sub(r"\033\[[^m]*m", "", text))
+        return text + " " * max(0, width - visible_len)
+
+    all_rows = [_icon_to_ansi_rows(img) for img in images]
+    max_height = max(len(r) for r in all_rows) if all_rows else 0
+    icon_width = images[0].size[0] if images else 16
+    for rows in all_rows:
+        while len(rows) < max_height:
+            rows.append(" " * icon_width)
+
+    spacer = " " * gap
+    lines = []
+
+    # Label rows (word-wrapped to icon width)
+    wrapped = [textwrap.wrap(l, icon_width) or [""] for l in labels]
+    max_label_rows = max(len(w) for w in wrapped)
+    for row_idx in range(max_label_rows):
+        line_parts = []
+        for i, w in enumerate(wrapped):
+            text = w[row_idx] if row_idx < len(w) else ""
+            if i == selected:
+                text = f"\033[1;36m{text}\033[0m"
+            line_parts.append(_pad(text, icon_width))
+        lines.append(spacer.join(line_parts))
+
+    # Image rows
+    for y in range(max_height):
+        lines.append(spacer.join(_pad(all_rows[i][y], icon_width) for i in range(len(all_rows))))
+
+    # Footer row
+    if footers:
+        line_parts = []
+        for i, f in enumerate(footers):
+            if i == selected:
+                f = f"\033[1;36m{f}\033[0m"
+            line_parts.append(_pad(f, icon_width))
+        lines.append(spacer.join(line_parts))
+
+    return "\n".join(lines)
+
+
 # ── select-icon ──────────────────────────────────────────────────────────
 
 
@@ -917,7 +992,10 @@ def select_icon(tracks):
                     marker = " ★" if (j + 1) == winner else ""
                     score_labels.append(f"score: {score}{marker}")
 
-            raw = interactive_icon_select(images_to_show, labels_to_show, score_labels, winner, max_choice)
+            raw = interactive_icon_select(
+                images_to_show, labels_to_show, score_labels, winner, max_choice,
+                render_fn=_render_icons_side_by_side,
+            )
             if raw.lower() == "r":
                 with make_progress() as progress:
                     task = progress.add_task(title, total=5, status="describing icons")
