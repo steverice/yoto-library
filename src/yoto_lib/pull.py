@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -12,6 +13,8 @@ from typing import Callable
 import httpx
 
 logger = logging.getLogger(__name__)
+
+WORKERS = int(os.environ.get("YOTO_WORKERS", "4"))
 
 from yoto_lib.api import YotoAPI
 from yoto_lib.icons import ICON_CACHE_DIR, apply_icon_to_mka, download_icon
@@ -29,10 +32,33 @@ class PullResult:
     errors: list[str] = field(default_factory=list)
 
 
-def _download_file(url: str) -> bytes:
-    response = httpx.get(url, follow_redirects=True, timeout=300.0)
-    response.raise_for_status()
-    return response.content
+def _download_file(
+    url: str,
+    on_progress: Callable[[int, int | None], None] | None = None,
+) -> bytes:
+    """Download url and return content as bytes.
+
+    Args:
+        on_progress: Optional callback invoked with (downloaded_bytes, total_bytes_or_None)
+            after each chunk is received.
+    """
+    chunks: list[bytes] = []
+    with httpx.stream("GET", url, follow_redirects=True, timeout=300.0) as response:
+        response.raise_for_status()
+        total: int | None = None
+        content_length = response.headers.get("content-length")
+        if content_length is not None:
+            try:
+                total = int(content_length)
+            except ValueError:
+                pass
+        downloaded = 0
+        for chunk in response.iter_bytes(chunk_size=65536):
+            chunks.append(chunk)
+            downloaded += len(chunk)
+            if on_progress:
+                on_progress(downloaded, total)
+    return b"".join(chunks)
 
 
 def _sanitize_filename(name: str) -> str:
@@ -49,11 +75,23 @@ class _TrackJob:
     icon_ref: str
 
 
-def _process_track(job: _TrackJob, folder: Path, cache_dir: Path) -> tuple[bool, bool, str | None]:
+def _process_track(
+    job: _TrackJob,
+    folder: Path,
+    cache_dir: Path,
+    on_progress: Callable[[int, int | None], None] | None = None,
+    on_track_start: Callable[[str], None] | None = None,
+) -> tuple[bool, bool, str | None]:
     """Download, wrap in MKA, and apply icon for one track.
 
     Returns (track_ok, icon_ok, error_message).
+
+    Args:
+        on_progress: Optional callback passed to _download_file for byte-level progress.
+        on_track_start: Optional callback invoked at the start of processing this track.
     """
+    if on_track_start:
+        on_track_start(job.title)
     safe_name = _sanitize_filename(job.title)
     mka_path = folder / job.filename
     raw_path = folder / f".{safe_name}.raw"
@@ -63,7 +101,7 @@ def _process_track(job: _TrackJob, folder: Path, cache_dir: Path) -> tuple[bool,
 
     try:
         logger.debug("pull: downloading track '%s'", job.title)
-        audio_data = _download_file(job.track_url)
+        audio_data = _download_file(job.track_url, on_progress=on_progress)
         logger.debug("pull: downloaded '%s' (%d bytes)", job.title, len(audio_data))
         raw_path.write_bytes(audio_data)
         wrap_in_mka(raw_path, mka_path)
@@ -92,6 +130,8 @@ def pull_playlist(
     dry_run: bool = False,
     on_track_done: Callable[[str], None] | None = None,
     on_total: Callable[[int], None] | None = None,
+    on_track_start: Callable[[str], None] | None = None,
+    on_download_progress: Callable[[str, int, int | None], None] | None = None,
 ) -> PullResult:
     """Download a remote Yoto playlist into a local folder."""
     folder = Path(folder)
@@ -161,9 +201,20 @@ def pull_playlist(
     logger.debug("pull: %d tracks to download", len(jobs))
     cache_dir = ICON_CACHE_DIR
     future_to_job = {}
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    with ThreadPoolExecutor(max_workers=min(WORKERS, len(jobs)) if jobs else 1) as executor:
         for job in jobs:
-            future = executor.submit(_process_track, job, folder, cache_dir)
+            # Build per-track progress callback
+            def _make_progress_cb(title: str) -> Callable[[int, int | None], None] | None:
+                if on_download_progress is None:
+                    return None
+                def _cb(downloaded: int, total: int | None) -> None:
+                    on_download_progress(title, downloaded, total)
+                return _cb
+
+            future = executor.submit(
+                _process_track, job, folder, cache_dir,
+                _make_progress_cb(job.title), on_track_start,
+            )
             future_to_job[future] = job
 
         for future in as_completed(future_to_job):

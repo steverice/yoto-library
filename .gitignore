@@ -35,3 +35,4 @@ htmlcov/
 
 # Data
 data
+.claude/worktrees/

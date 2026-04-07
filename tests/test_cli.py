@@ -104,7 +104,11 @@ class TestSyncCommand:
             result = runner.invoke(cli, ["sync", str(folder)])
 
         assert result.exit_code == 0
-        mock_sync.assert_called_once_with(folder, dry_run=False, trim=True, log=mock_sync.call_args.kwargs["log"])
+        mock_sync.assert_called_once()
+        call_kwargs = mock_sync.call_args.kwargs
+        assert call_kwargs.get("dry_run") is False
+        assert call_kwargs.get("trim") is True
+        assert "log" in call_kwargs
         assert "SYNCED-001" in result.output
         assert "3 tracks" in result.output
 

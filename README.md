@@ -169,7 +169,7 @@ Open `playlist.jsonl` in `$EDITOR` to reorder tracks. Validates JSON on save. De
 
 ### `yoto select-icon <track>`
 
-Interactive icon selection for a single track. Generates 3 AI icon candidates, shows the best Yoto catalog match as a 4th option, and displays all four side-by-side in the terminal. Pick one or press `r` to regenerate.
+Interactive icon selection for a single track (or multiple tracks in sequence). Generates three pixel art icon options, finds the best match from Yoto's icon catalog, scores all candidates with an LLM, and displays them in bordered panels for selection. Pick one or press `r` to regenerate.
 
 ### `yoto reset-icon <tracks...>`
 
@@ -205,6 +205,8 @@ Each service handles a specific part of the pipeline — see [AI providers](#ai-
 **Cover art** — if `cover.png` is missing, the tool first checks whether all tracks share identical embedded album art (e.g., from a ripped CD or tagged album). If so, FLUX Kontext recomposes the square art into a 638x1011 portrait layout. Claude checks the result for text quality — if text is mangled after 3 attempts, a repair pipeline kicks in: Claude OCRs the original text, Gemini renders a styled text layer, Claude picks placement coordinates, and PIL composites the text onto the artwork. If no shared album art exists, OpenAI generates a cover from scratch using track metadata. Delete `cover.png` to regenerate.
 
 Use `--force` to regenerate an existing cover. Set `YOTO_RECOMPOSE_ATTEMPTS` (default 3) to control how many FLUX attempts before falling back to the text repair pipeline.
+
+- `YOTO_WORKERS` — max parallel workers for downloads, uploads, imports, exports (default: 4)
 
 **YouTube downloads** — drop a `.webloc` file (Safari bookmark) into a playlist folder. On `yoto sync` or `yoto download`, the URL is resolved via yt-dlp, silence is trimmed from pre/post-roll, and the audio is wrapped in MKA. The `.webloc` is deleted after successful download.
 
