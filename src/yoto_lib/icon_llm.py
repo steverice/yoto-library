@@ -80,8 +80,11 @@ def describe_icons_llm(
         f'Pairs are fine (fishing rod + fish, baseball + bat) but avoid hands, '
         f'faces, fine detail, or anything needing more than a few bold shapes.\n'
         f'Do NOT describe characters from the show.\n\n'
+        f'Make the 3 concepts genuinely different from each other — explore '
+        f'literal, metaphorical, and mood-based angles rather than 3 variations '
+        f'of the same idea.\n\n'
         f'Return ONLY a JSON array of 3 short image prompts (under 8 words each). '
-        f'Example: ["red heart", "fishing rod and fish", "bright yellow star"]\n'
+        f'Example: ["fishing rod and fish", "compass on a map", "sunset over calm water"]\n'
         f'No explanation, no markdown, just the JSON array.'
     )
 
