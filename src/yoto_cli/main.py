@@ -1201,7 +1201,7 @@ def cover(path, force, backup):
 def billing(reset_group):
     """Show provider balances, subscription usage, and lifetime costs."""
     logger.debug("command: billing reset=%s", reset_group)
-    from yoto_lib.costs import COSTS, is_subscription
+    from yoto_lib.costs import is_subscription
 
     # Handle --reset
     if reset_group is not None:
@@ -1219,7 +1219,7 @@ def billing(reset_group):
         return
 
     # Fetch live data in parallel
-    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from concurrent.futures import ThreadPoolExecutor
 
     balance_future = None
     usage_future = None
@@ -1244,8 +1244,6 @@ def billing(reset_group):
 
 def _print_balances(balances: dict) -> None:
     """Print the Balances section."""
-    import os
-
     # Determine which providers are active (have env vars set)
     active_providers = []
     if os.environ.get("RETRODIFFUSION_API_KEY"):
@@ -1311,7 +1309,7 @@ def _print_subscription_usage(usage: dict) -> None:
 
 def _print_lifetime_spend() -> None:
     """Print the Lifetime spend section."""
-    from yoto_lib.costs import COSTS
+    from yoto_lib.costs import COSTS, is_subscription
 
     totals = read_totals()
     if not totals:
@@ -1329,7 +1327,7 @@ def _print_lifetime_spend() -> None:
         label = COSTS[key]["label"]
         calls = entry["calls"]
 
-        if key.startswith("claude_"):
+        if is_subscription(key):
             click.echo(f"  {label:<20}    \u2014   ({calls} calls, subscription)")
         else:
             cost = entry["cost"]
