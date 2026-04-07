@@ -87,6 +87,17 @@ def test_tracker_summary_billable():
     assert "$0.009" in lines[0]
 
 
+def test_tracker_records():
+    t = CostTracker()
+    t.record("retrodiffusion", count=3)
+    t.record("claude_haiku", subscription=True)
+    records = t.records()
+    assert records == {
+        "retrodiffusion": {"cost": pytest.approx(0.009), "calls": 3, "subscription": False},
+        "claude_haiku": {"cost": 0.0, "calls": 1, "subscription": True},
+    }
+
+
 def test_tracker_summary_with_subscription():
     t = CostTracker()
     t.record("retrodiffusion", count=3)
