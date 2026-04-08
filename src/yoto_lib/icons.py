@@ -21,11 +21,11 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from yoto_lib.api import YotoAPI
-    from yoto_lib.image_providers import ImageProvider
+    from yoto_lib.providers import ImageProvider
     from yoto_lib.playlist import Playlist
 
 try:
-    from yoto_lib.image_providers.retrodiffusion_provider import RetroDiffusionProvider
+    from yoto_lib.providers.retrodiffusion_provider import RetroDiffusionProvider
 except ImportError:
     RetroDiffusionProvider = None  # type: ignore[assignment,misc]
 
@@ -401,7 +401,7 @@ def generate_raw_grid(track_title: str) -> bytes | None:
     Also saves the raw image to ~/.cache/yoto/icons/raw/ for inspection.
     """
     try:
-        from yoto_lib.image_providers import get_provider
+        from yoto_lib.providers import get_provider
         provider = get_provider()
     except (ImportError, ValueError):
         return None
@@ -475,7 +475,7 @@ def generate_pixelart_icon(track_title: str) -> tuple[bytes | None, bytes | None
     Returns (raw_1024_bytes, icon_16_bytes) — either may be None on failure.
     """
     try:
-        from yoto_lib.image_providers import get_provider
+        from yoto_lib.providers import get_provider
         provider = get_provider()
     except (ImportError, ValueError):
         return None, None
@@ -544,13 +544,13 @@ def _generate_small_icon(
 
 def generate_dalle2_icon(track_title: str) -> tuple[bytes | None, bytes | None]:
     """Generate via DALL-E 2 at 256x256. Returns (raw_bytes, icon_16_bytes)."""
-    from yoto_lib.image_providers.dalle2_provider import DallE2Provider
+    from yoto_lib.providers.dalle2_provider import DallE2Provider
     return _generate_small_icon(DallE2Provider(), track_title, 256, 256, "dalle2")
 
 
 def generate_flux_icon(track_title: str) -> tuple[bytes | None, bytes | None]:
     """Generate via FLUX.1-schnell at 256x256. Returns (raw_bytes, icon_16_bytes)."""
-    from yoto_lib.image_providers.together_provider import TogetherProvider
+    from yoto_lib.providers.together_provider import TogetherProvider
     return _generate_small_icon(
         TogetherProvider("black-forest-labs/FLUX.1-schnell"),
         track_title, 256, 256, "flux",
@@ -559,7 +559,7 @@ def generate_flux_icon(track_title: str) -> tuple[bytes | None, bytes | None]:
 
 def generate_sd3_icon(track_title: str) -> tuple[bytes | None, bytes | None]:
     """Generate via Stable Diffusion 3 at 256x256. Returns (raw_bytes, icon_16_bytes)."""
-    from yoto_lib.image_providers.together_provider import TogetherProvider
+    from yoto_lib.providers.together_provider import TogetherProvider
     return _generate_small_icon(
         TogetherProvider("stabilityai/stable-diffusion-3-medium"),
         track_title, 256, 256, "sd3",
@@ -568,7 +568,7 @@ def generate_sd3_icon(track_title: str) -> tuple[bytes | None, bytes | None]:
 
 def generate_gemini_icon(track_title: str) -> tuple[bytes | None, bytes | None]:
     """Generate via Gemini Imagen 4.0 (1024x1024). Returns (raw_bytes, icon_16_bytes)."""
-    from yoto_lib.image_providers.gemini_provider import GeminiProvider
+    from yoto_lib.providers.gemini_provider import GeminiProvider
     return _generate_small_icon(GeminiProvider(), track_title, 1024, 1024, "gemini")
 
 
@@ -588,7 +588,7 @@ def generate_retrodiffusion_icon(track_title: str) -> tuple[bytes | None, bytes 
         image_bytes = cache_path.read_bytes()
     else:
         logger.debug("generate_retrodiffusion_icon: generating for '%s'", track_title)
-        from yoto_lib.image_providers.retrodiffusion_provider import RetroDiffusionProvider
+        from yoto_lib.providers.retrodiffusion_provider import RetroDiffusionProvider
         provider = RetroDiffusionProvider()
         prompt = _build_pixelart_prompt(track_title)
 

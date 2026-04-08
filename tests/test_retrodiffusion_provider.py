@@ -28,7 +28,7 @@ def _fake_response(num_images: int):
 class TestGenerateBatch:
     def test_returns_requested_count(self):
         """generate_batch returns a list of PNG bytes with the requested count."""
-        from yoto_lib.image_providers.retrodiffusion_provider import RetroDiffusionProvider
+        from yoto_lib.providers.retrodiffusion_provider import RetroDiffusionProvider
 
         with patch.dict("os.environ", {"RETRODIFFUSION_API_KEY": "test-key"}):
             provider = RetroDiffusionProvider()
@@ -43,7 +43,7 @@ class TestGenerateBatch:
 
     def test_count_defaults_to_one(self):
         """generate_batch with default count returns a single-element list."""
-        from yoto_lib.image_providers.retrodiffusion_provider import RetroDiffusionProvider
+        from yoto_lib.providers.retrodiffusion_provider import RetroDiffusionProvider
 
         with patch.dict("os.environ", {"RETRODIFFUSION_API_KEY": "test-key"}):
             provider = RetroDiffusionProvider()
@@ -55,7 +55,7 @@ class TestGenerateBatch:
 
     def test_sends_num_images_in_payload(self):
         """The API request includes the correct num_images field."""
-        from yoto_lib.image_providers.retrodiffusion_provider import RetroDiffusionProvider
+        from yoto_lib.providers.retrodiffusion_provider import RetroDiffusionProvider
 
         with patch.dict("os.environ", {"RETRODIFFUSION_API_KEY": "test-key"}):
             provider = RetroDiffusionProvider()

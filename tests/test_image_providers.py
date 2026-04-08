@@ -2,15 +2,15 @@
 import base64
 from unittest.mock import MagicMock, patch
 
-from yoto_lib.image_providers import get_provider
+from yoto_lib.providers import get_provider
 
 
 class TestGetProvider:
     def test_returns_openai_provider(self):
         """get_provider returns an OpenAIProvider."""
-        with patch("yoto_lib.image_providers.openai_provider.OpenAI"):
+        with patch("yoto_lib.providers.openai_provider.OpenAI"):
             provider = get_provider()
-        from yoto_lib.image_providers.openai_provider import OpenAIProvider
+        from yoto_lib.providers.openai_provider import OpenAIProvider
         assert isinstance(provider, OpenAIProvider)
 
 
@@ -29,8 +29,8 @@ class TestOpenAIProvider:
         mock_client = MagicMock()
         mock_client.images.generate.return_value = mock_response
 
-        with patch("yoto_lib.image_providers.openai_provider.OpenAI", return_value=mock_client):
-            from yoto_lib.image_providers.openai_provider import OpenAIProvider
+        with patch("yoto_lib.providers.openai_provider.OpenAI", return_value=mock_client):
+            from yoto_lib.providers.openai_provider import OpenAIProvider
             provider = OpenAIProvider()
 
         result = provider.generate("a cute cat", 1024, 1024)
@@ -40,9 +40,9 @@ class TestOpenAIProvider:
 
 def test_openai_generate_passes_quality(mock_openai_client):
     """OpenAIProvider.generate() passes quality to the API."""
-    from yoto_lib.image_providers.openai_provider import OpenAIProvider
+    from yoto_lib.providers.openai_provider import OpenAIProvider
 
-    with patch("yoto_lib.image_providers.openai_provider.OpenAI", return_value=mock_openai_client), \
+    with patch("yoto_lib.providers.openai_provider.OpenAI", return_value=mock_openai_client), \
          patch("yoto_lib.costs.COSTS", {
              "openai_generate_low": {"cost": 0.016, "label": "OpenAI generation (low)"},
          }):
@@ -59,12 +59,12 @@ def test_openai_generate_passes_quality(mock_openai_client):
 
 def test_openai_edit_passes_quality(mock_openai_client):
     """OpenAIProvider.edit() passes quality to the API."""
-    from yoto_lib.image_providers.openai_provider import OpenAIProvider
+    from yoto_lib.providers.openai_provider import OpenAIProvider
 
     fake_image = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
     fake_mask = b""
 
-    with patch("yoto_lib.image_providers.openai_provider.OpenAI", return_value=mock_openai_client), \
+    with patch("yoto_lib.providers.openai_provider.OpenAI", return_value=mock_openai_client), \
          patch("yoto_lib.costs.COSTS", {
              "openai_edit_high": {"cost": 0.08, "label": "OpenAI edit (high)"},
          }):
@@ -96,8 +96,8 @@ class TestFluxProvider:
         mock_client = MagicMock()
         mock_client.images.generate.return_value = mock_response
 
-        with patch("yoto_lib.image_providers.flux_provider.Together", return_value=mock_client):
-            from yoto_lib.image_providers.flux_provider import FluxProvider
+        with patch("yoto_lib.providers.flux_provider.Together", return_value=mock_client):
+            from yoto_lib.providers.flux_provider import FluxProvider
             provider = FluxProvider()
             from PIL import Image as PILImage
             import io

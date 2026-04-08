@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from PIL import Image
 
-from yoto_lib.image_providers import get_provider
+from yoto_lib.providers import get_provider
 from yoto_lib import mka
 from yoto_lib.icon_llm import _call_claude
 
@@ -138,7 +138,7 @@ def reframe_album_art(
     debug_dir = Path(tempfile.mkdtemp(prefix="yoto-reframe-"))
 
     try:
-        from yoto_lib.image_providers.flux_provider import FluxProvider
+        from yoto_lib.providers.flux_provider import FluxProvider
         provider = FluxProvider()
 
         for attempt in range(1, max_attempts + 1):
@@ -243,7 +243,7 @@ def add_title_to_illustration(image_bytes: bytes, title: str, width: int, height
     Note: edit before resize — the API only accepts supported sizes
     (1024×1024, 1024×1536, 1536×1024), not the final 638×1011 cover.
     """
-    from yoto_lib.image_providers.openai_provider import OpenAIProvider
+    from yoto_lib.providers.openai_provider import OpenAIProvider
 
     img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
     img_buf = io.BytesIO()

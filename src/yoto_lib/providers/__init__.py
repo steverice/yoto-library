@@ -1,5 +1,5 @@
 """Image provider interface and factory."""
-from yoto_lib.image_providers.openai_provider import OpenAIProvider
+from yoto_lib.providers.openai_provider import OpenAIProvider
 
 
 def get_provider() -> OpenAIProvider:

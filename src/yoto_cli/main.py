@@ -1221,7 +1221,7 @@ def cover(path, force, backup, ignore_album_art):
     logger.debug("command: cover path=%s force=%s backup=%s ignore_album_art=%s", path, force, backup, ignore_album_art)
     reset_tracker()
     from yoto_lib.cover import build_cover_prompt, resize_cover, try_shared_album_art, add_title_to_illustration
-    from yoto_lib.image_providers import get_provider
+    from yoto_lib.providers import get_provider
     from yoto_lib import mka
     import tempfile
 
