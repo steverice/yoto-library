@@ -765,13 +765,17 @@ def lyrics(playlist, force):
             "title": tags.get("title", mka_path.stem),
             "artist": tags.get("artist", ""),
         }
-        # Include existing lyrics tag for get_lyrics to check
-        if "lyrics" in tags:
+        # Only include existing lyrics when not forcing re-fetch
+        if not force and "lyrics" in tags:
             lookup_tags["lyrics"] = tags["lyrics"]
 
         lyrics_text, lyrics_source = get_lyrics(lookup_tags)
         if lyrics_text:
-            write_tags(mka_path, {"lyrics": lyrics_text})
+            new_tags = {"lyrics": lyrics_text}
+            if force:
+                # Clear stale summary so it's regenerated on next select-icon
+                new_tags["lyrics_summary"] = ""
+            write_tags(mka_path, new_tags)
             _console.print(f"  {mka_path.name}: lyrics found via {lyrics_source}")
         else:
             _console.print(f"  [dim]{mka_path.name}: no lyrics found[/dim]")
