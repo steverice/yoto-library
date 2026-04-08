@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from yoto_lib import mka
+from yoto_lib.providers.base import check_status_on_error
 from yoto_lib.providers.claude_provider import ClaudeProvider
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
     from yoto_lib.playlist import Playlist
 
 
+@check_status_on_error(ClaudeProvider)
 def generate_description(
     playlist: "Playlist",
     log: "Callable[[str], None] | None" = None,

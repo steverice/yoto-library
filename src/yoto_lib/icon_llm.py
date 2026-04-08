@@ -7,6 +7,7 @@ import logging
 import tempfile
 from pathlib import Path
 
+from yoto_lib.providers.base import check_status_on_error
 from yoto_lib.providers.claude_provider import ClaudeProvider
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,7 @@ CONFIDENCE_LOW = 0.4
 _claude = ClaudeProvider()
 
 
+@check_status_on_error(ClaudeProvider)
 def summarize_lyrics_for_icon(lyrics: str, track_title: str) -> str | None:
     """Summarize lyrics into a short visual description for icon generation.
 
@@ -41,6 +43,7 @@ def summarize_lyrics_for_icon(lyrics: str, track_title: str) -> str | None:
     return text.strip()
 
 
+@check_status_on_error(ClaudeProvider)
 def describe_icons_llm(
     track_title: str,
     album_description: str | None = None,
@@ -92,6 +95,7 @@ def describe_icons_llm(
         return []
 
 
+@check_status_on_error(ClaudeProvider)
 def match_icon_llm(
     track_title: str,
     icons: list[dict],
@@ -138,6 +142,7 @@ def match_icon_llm(
         return None, 0.0
 
 
+@check_status_on_error(ClaudeProvider)
 def compare_icons_llm(
     track_title: str,
     candidates: list[bytes],

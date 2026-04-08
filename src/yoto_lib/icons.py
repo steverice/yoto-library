@@ -14,6 +14,7 @@ import httpx
 from PIL import Image
 
 from yoto_lib import mka
+from yoto_lib.providers.base import check_status_on_error
 
 logger = logging.getLogger(__name__)
 
@@ -612,6 +613,7 @@ def generate_retrodiffusion_icon(track_title: str) -> tuple[bytes | None, bytes 
     return image_bytes, icon_bytes
 
 
+@check_status_on_error(RetroDiffusionProvider)
 def generate_retrodiffusion_icons(
     descriptions: list[str],
     on_progress: "Callable[[int], None] | None" = None,
