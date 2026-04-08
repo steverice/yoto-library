@@ -374,6 +374,7 @@ def build_icon_prompt(track_title: str) -> str:
         f"The icon depicts: {track_title}. "
         f"Style: bold simple shapes, flat solid colors, minimal detail, high contrast. "
         f"Suitable for a 16x16 pixel icon when downscaled. "
+        f"The subject must fill the entire icon area edge to edge — no empty margins, no padding, no whitespace around the subject. "
         f"Do not include any text, letters, numbers, or lettering."
     )
 
@@ -463,7 +464,7 @@ def _build_pixelart_prompt(visual_description: str) -> str:
         f"Create a simple pixel art icon depicting: {visual_description}. "
         f"Style: very low resolution pixel art, maximum 6-8 colors, large blocky shapes. "
         f"Think original Game Boy or early NES sprite — extremely chunky pixels, no fine detail. "
-        f"The subject should fill most of the canvas. "
+        f"The subject must fill the entire canvas edge to edge — no empty margins, no padding, no whitespace around the subject. "
         f"Use a solid black (#000000) background. "
         f"No text, letters, numbers, or lettering. No anti-aliasing. No gradients. "
         f"Emoji style, bright colors, simple"
