@@ -852,7 +852,7 @@ def select_icon(tracks):
         with make_progress() as progress:
             task = progress.add_task(title, total=6, status="matching Yoto icon")
 
-            inner = progress.add_task("Claude Haiku", total=None, status="")
+            inner = progress.add_task("Matching catalog", total=None, status="")
             yoto_media_id, yoto_confidence = match_icon_llm(title, catalog)
             progress.remove_task(inner)
 
@@ -869,7 +869,7 @@ def select_icon(tracks):
             tmpdir = Path(tempfile.mkdtemp(prefix="yoto-icon-"))
             skipped = False
 
-            inner = progress.add_task("Claude Haiku", total=None, status="")
+            inner = progress.add_task("Describing icons", total=None, status="")
             descriptions = describe_icons_llm(title, album_description=album_desc)
             progress.remove_task(inner)
             if not descriptions:
@@ -903,7 +903,7 @@ def select_icon(tracks):
                 skipped = True
             else:
                 raw_bytes_list: list[bytes] = [rb for rb, _ in batch]
-                inner = progress.add_task("Claude Sonnet", total=None, status="")
+                inner = progress.add_task("Evaluating icons", total=None, status="")
                 winner, scores = compare_icons_llm(
                     title, raw_bytes_list,
                     yoto_icon=yoto_bytes if yoto_img is not None else None,
@@ -970,7 +970,7 @@ def select_icon(tracks):
                 with make_progress() as progress:
                     task = progress.add_task(title, total=5, status="describing icons")
 
-                    inner = progress.add_task("Claude Haiku", total=None, status="")
+                    inner = progress.add_task("Describing icons", total=None, status="")
                     descriptions = describe_icons_llm(title, album_description=album_desc)
                     progress.remove_task(inner)
                     if not descriptions:
@@ -1003,7 +1003,7 @@ def select_icon(tracks):
                         skipped = True
                     else:
                         raw_bytes_list = [rb for rb, _ in batch]
-                        inner = progress.add_task("Claude Sonnet", total=None, status="")
+                        inner = progress.add_task("Evaluating icons", total=None, status="")
                         winner, scores = compare_icons_llm(
                             title, raw_bytes_list,
                             yoto_icon=yoto_bytes if yoto_img is not None else None,
@@ -1207,7 +1207,7 @@ def cover(path, force, backup, ignore_album_art):
         provider = get_provider()
         # Request 1024×1536 — maps exactly to that OpenAI size (~0.667),
         # only ~28px cropped per side to reach 638:1011 (~0.631) target.
-        inner = progress.add_task("Generating", total=None, status="")
+        inner = progress.add_task("Generating cover art", total=None, status="")
         image_bytes = provider.generate(prompt, 1024, 1536, quality="low")
         progress.remove_task(inner)
         progress.update(task, advance=1, status="generated cover art")
