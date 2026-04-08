@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -605,7 +606,9 @@ class TestPrintCommand:
         img = Image.new("RGB", (638, 1011), "blue")
         img.save(folder / "cover.png")
 
-        with patch("yoto_cli.main.print_cover") as mock_print:
+        with patch("yoto_cli.main.print_cover") as mock_print, \
+             patch.dict(os.environ, {}, clear=False) as env:
+            env.pop("YOTO_ICC_PROFILE", None)
             result = runner.invoke(cli, ["print", str(folder)], input="y\n")
 
         assert result.exit_code == 0
