@@ -44,11 +44,6 @@ def make_progress() -> Progress:
     )
 
 
-def spinner_status(msg: str):
-    """Context manager: ora-style spinner for single-step waits."""
-    return _console.status(msg, spinner="dots")
-
-
 # ── Message helpers ───────────────────────────────────────────────────────────
 
 
