@@ -13,6 +13,7 @@ from yoto_cli.main import cli, _is_card_id, _strip_track_number
 from yoto_lib.auth import AuthError
 from yoto_lib.pull import PullResult
 from yoto_lib.sync import SyncResult
+from yoto_lib.printer import PrintError
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -587,3 +588,85 @@ class TestResetIconCommand:
 
         assert result.exit_code == 0
         assert "Error" in result.output
+
+
+# ── test_print_command ───────────────────────────────────────────────────────
+
+
+class TestPrintCommand:
+    def test_print_sends_to_printer(self, runner, tmp_path):
+        """print calls print_cover on the playlist's cover.png."""
+        folder = tmp_path / "album"
+        folder.mkdir()
+        (folder / "playlist.jsonl").write_text('"track.mka"\n')
+        (folder / "track.mka").write_bytes(b"\x00" * 16)
+        # Create a valid cover
+        from PIL import Image
+        img = Image.new("RGB", (638, 1011), "blue")
+        img.save(folder / "cover.png")
+
+        with patch("yoto_cli.main.print_cover") as mock_print:
+            result = runner.invoke(cli, ["print", str(folder)], input="y\n")
+
+        assert result.exit_code == 0
+        mock_print.assert_called_once_with(folder / "cover.png")
+
+    def test_print_yes_skips_confirm(self, runner, tmp_path):
+        """print --yes skips the confirmation prompt."""
+        folder = tmp_path / "album"
+        folder.mkdir()
+        (folder / "playlist.jsonl").write_text('"track.mka"\n')
+        (folder / "track.mka").write_bytes(b"\x00" * 16)
+        from PIL import Image
+        img = Image.new("RGB", (638, 1011), "blue")
+        img.save(folder / "cover.png")
+
+        with patch("yoto_cli.main.print_cover") as mock_print:
+            result = runner.invoke(cli, ["print", "--yes", str(folder)])
+
+        assert result.exit_code == 0
+        mock_print.assert_called_once()
+
+    def test_print_no_cover_offers_generation(self, runner, tmp_path):
+        """print offers to generate cover when cover.png is missing."""
+        folder = tmp_path / "album"
+        folder.mkdir()
+        (folder / "playlist.jsonl").write_text('"track.mka"\n')
+        (folder / "track.mka").write_bytes(b"\x00" * 16)
+        (folder / "description.txt").write_text("A test playlist")
+
+        with patch("yoto_cli.main.generate_cover_if_missing") as mock_gen, \
+             patch("yoto_cli.main.print_cover") as mock_print:
+            # Answer "y" to generate, then "y" to print
+            result = runner.invoke(cli, ["print", str(folder)], input="y\ny\n")
+
+        mock_gen.assert_called_once()
+
+    def test_print_no_cover_decline_generation(self, runner, tmp_path):
+        """print exits cleanly when user declines cover generation."""
+        folder = tmp_path / "album"
+        folder.mkdir()
+        (folder / "playlist.jsonl").write_text('"track.mka"\n')
+        (folder / "track.mka").write_bytes(b"\x00" * 16)
+
+        with patch("yoto_cli.main.generate_cover_if_missing") as mock_gen:
+            result = runner.invoke(cli, ["print", str(folder)], input="n\n")
+
+        mock_gen.assert_not_called()
+        assert result.exit_code == 0
+
+    def test_print_error_shows_message(self, runner, tmp_path):
+        """PrintError is surfaced as a ClickException."""
+        folder = tmp_path / "album"
+        folder.mkdir()
+        (folder / "playlist.jsonl").write_text('"track.mka"\n')
+        (folder / "track.mka").write_bytes(b"\x00" * 16)
+        from PIL import Image
+        img = Image.new("RGB", (638, 1011), "blue")
+        img.save(folder / "cover.png")
+
+        with patch("yoto_cli.main.print_cover", side_effect=PrintError("Printer offline")):
+            result = runner.invoke(cli, ["print", "--yes", str(folder)])
+
+        assert result.exit_code != 0
+        assert "Printer offline" in result.output
