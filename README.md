@@ -19,6 +19,7 @@ Each playlist is a folder. Audio files live in MKA containers that carry metadat
 **AI services (for icon and cover art generation):**
 
 - [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) — descriptions, icon matching, cover text quality checks (uses your Claude subscription)
+- `node` (v18+) — required for web scraping lyrics sources. Install via `brew install node` or from [nodejs.org](https://nodejs.org). Also requires `jsdom`: `npm install jsdom` (run once in the yoto-library directory).
 - [RetroDiffusion](https://www.retrodiffusion.ai/) — 16x16 pixel art icon generation (`RETRODIFFUSION_API_KEY`)
 - [Together AI](https://www.together.ai/) — album art recomposition via FLUX Kontext (`TOGETHER_API_KEY`)
 - [Google Gemini](https://aistudio.google.com/) — text rendering for cover art repair (`GEMINI_API_KEY`)
@@ -190,6 +191,16 @@ yoto print --profile /path/to/profile.icc   # use ICC color profile
 
 If no `cover.png` exists, offers to generate one first. If a profile is specified but not found, warns and offers to continue without color management.
 
+### `yoto lyrics [path]`
+
+Fetch and embed lyrics for tracks in a playlist folder. Tries embedded tags, then user-configured web scraping sources, then the LRCLIB public API.
+
+```
+yoto lyrics                          # fetch lyrics for current directory
+yoto lyrics "Bedtime Songs"          # fetch lyrics for a specific folder
+yoto lyrics --add-source <url>       # analyze a website and add it as a lyrics source
+```
+
 ### `yoto completions [shell]`
 
 Print the shell completion setup command for zsh, bash, or fish. Auto-detects your shell if not specified.
@@ -208,6 +219,8 @@ OPENAI_API_KEY=...           # platform.openai.com — text-to-image cover gener
 ```
 
 Each service handles a specific part of the pipeline — see [AI providers](#ai-providers) below.
+
+**Lyrics sources** — web scraping configs live in `~/.yoto/lyrics/*.json`. Each file defines one source. Use `yoto lyrics --add-source <url>` to add a new source interactively — Claude analyzes the site's HTML and generates the JS snippets automatically.
 
 **Printing** — requires a photo printer configured in macOS System Settings:
 
