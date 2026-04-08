@@ -35,6 +35,8 @@ from yoto_lib.billing import (
     fetch_balances, fetch_subscription_usage, read_totals, reset_totals,
     persist_session, PROVIDER_GROUPS, DASHBOARD_URLS,
 )
+from yoto_lib.printer import PrintError, print_cover
+from yoto_lib.cover import generate_cover_if_missing
 
 
 def _print_cost_summary():
@@ -1199,6 +1201,42 @@ def cover(path, force, backup, ignore_album_art):
 
     _success(f"Saved cover to {cover_path}")
     _print_cost_summary()
+
+
+# ── print ───────────────────────────────────────────────────────────────────
+
+
+@cli.command(name="print")
+@click.argument("path", default=".", type=click.Path(exists=True), shell_complete=_complete_dirs)
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
+def print_cmd(path, yes):
+    """Print cover art to a photo printer."""
+    logger.debug("command: print path=%s yes=%s", path, yes)
+    from yoto_cli.progress import _console, success as _success
+
+    folder = Path(path)
+    playlist = load_playlist(folder)
+    cover_path = playlist.cover_path
+
+    if not cover_path.exists():
+        if not click.confirm("No cover found. Generate one?", default=False):
+            return
+        generate_cover_if_missing(playlist, log=lambda msg: _console.print(msg))
+        # Reload — generation may have created cover.png
+        if not cover_path.exists():
+            raise click.ClickException("Cover generation failed.")
+
+    if not yes:
+        title = playlist.title or folder.name
+        if not click.confirm(f"Print cover for '{title}'?", default=False):
+            return
+
+    try:
+        print_cover(cover_path)
+    except PrintError as exc:
+        raise click.ClickException(str(exc))
+
+    _success("Sent to printer")
 
 
 # ── billing ──────────────────────────────────────────────────────────────────
