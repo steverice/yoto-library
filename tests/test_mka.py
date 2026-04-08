@@ -243,6 +243,24 @@ class TestAttachments:
 # ── TestExtractAlbumArt ──────────────────────────────────────────────────────
 
 
+class TestLyricsTagMapping:
+    def test_lyrics_in_tag_map(self):
+        assert TAG_MAP["lyrics"] == "LYRICS"
+
+    def test_lyrics_summary_in_tag_map(self):
+        assert TAG_MAP["lyrics_summary"] == "YOTO_LYRICS_SUMMARY"
+
+    def test_lyrics_in_source_tag_aliases(self):
+        from yoto_lib.mka import _SOURCE_TAG_ALIASES
+        assert _SOURCE_TAG_ALIASES["lyrics"] == "lyrics"
+        assert _SOURCE_TAG_ALIASES["LYRICS"] == "lyrics"
+
+    def test_lyrics_reverse_map(self):
+        from yoto_lib.mka import _REVERSE_TAG_MAP
+        assert _REVERSE_TAG_MAP["LYRICS"] == "lyrics"
+        assert _REVERSE_TAG_MAP["YOTO_LYRICS_SUMMARY"] == "lyrics_summary"
+
+
 class TestExtractAlbumArt:
     def test_returns_none_when_no_video_stream(self):
         """extract_album_art returns None when there is no video stream."""

@@ -32,6 +32,8 @@ TAG_MAP = {
     "date": "DATE_RELEASED",
     "track": "PART_NUMBER",
     "disc": "DISC_NUMBER",
+    "lyrics": "LYRICS",
+    "lyrics_summary": "YOTO_LYRICS_SUMMARY",
 }
 
 # Reverse map for reading tags back (first occurrence wins, so "artist" beats "author")
@@ -262,6 +264,8 @@ _SOURCE_TAG_ALIASES: dict[str, str] = {
     "LANGUAGE": "language",
     "COPYRIGHT": "copyright",
     "COMMENT": "description",
+    "lyrics": "lyrics",
+    "LYRICS": "lyrics",
 }
 
 
