@@ -122,7 +122,7 @@ _README_TO_COSTS = {
 
 def test_readme_matches_costs_json():
     """Verify the README pricing table is consistent with costs.json."""
-    readme = (Path(__file__).parent.parent / "README.md").read_text(encoding="utf-8")
+    readme = (Path(__file__).parent.parent.parent / "README.md").read_text(encoding="utf-8")
 
     # Find pricing table rows
     table_rows = re.findall(r"^\|(.+)\|$", readme, re.MULTILINE)
