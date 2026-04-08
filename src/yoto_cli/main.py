@@ -306,8 +306,14 @@ def sync(path, dry_run, no_trim, ignore_album_art, print_cover_flag):
                     _warning(f"ICC profile not found: {icc_profile}")
                     icc_profile = None
                 try:
-                    print_cover(cover_path, icc_profile=icc_profile)
-                    _success("Sent to printer")
+                    _console.print("[dim]Ctrl+C to stop waiting (won't cancel the print)[/dim]")
+                    with _console.status("Sending to printer...", spinner="dots") as status:
+                        print_cover(
+                            cover_path,
+                            icc_profile=icc_profile,
+                            on_status=lambda msg: status.update(f"Printing: {msg}"),
+                        )
+                    _success("Print complete")
                 except PrintError as exc:
                     _warning(f"Print failed: {exc}")
 
@@ -1266,11 +1272,17 @@ def print_cmd(path, yes, profile):
             return
 
     try:
-        print_cover(cover_path, icc_profile=icc_profile)
+        _console.print("[dim]Ctrl+C to stop waiting (won't cancel the print)[/dim]")
+        with _console.status("Sending to printer...", spinner="dots") as status:
+            print_cover(
+                cover_path,
+                icc_profile=icc_profile,
+                on_status=lambda msg: status.update(f"Printing: {msg}"),
+            )
     except PrintError as exc:
         raise click.ClickException(str(exc))
 
-    _success("Sent to printer")
+    _success("Print complete")
 
 
 # ── billing ──────────────────────────────────────────────────────────────────

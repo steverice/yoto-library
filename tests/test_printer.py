@@ -20,6 +20,8 @@ from yoto_lib.printer import (
     _check_printer,
     _icc_convert,
     _send_to_printer,
+    _get_job_status,
+    wait_for_job,
     DEFAULT_PRINTER,
 )
 
@@ -185,6 +187,57 @@ class TestSendToPrinter:
             mock_run.return_value = MagicMock(returncode=1, stderr="offline")
             with pytest.raises(PrintError, match="Print failed"):
                 _send_to_printer(png, "Canon_SELPHY_CP1300")
+
+
+class TestGetJobStatus:
+    def test_parses_status_line(self):
+        """Extracts status from lpstat output."""
+        output = (
+            "Canon_SELPHY_CP1300-385 smrice 1665024\n"
+            "\tStatus: Looking for printer.\n"
+            "\tAlerts: job-printing\n"
+        )
+        with patch("yoto_lib.printer.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=output)
+            assert _get_job_status("Canon_SELPHY_CP1300") == "Looking for printer."
+
+    def test_no_jobs_returns_none(self):
+        """Returns None when no jobs in queue."""
+        with patch("yoto_lib.printer.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="")
+            assert _get_job_status("Canon_SELPHY_CP1300") is None
+
+    def test_job_without_status_returns_queued(self):
+        """Returns 'Queued' when job exists but has no Status line."""
+        output = "Canon_SELPHY_CP1300-385 smrice 1665024\n"
+        with patch("yoto_lib.printer.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=output)
+            assert _get_job_status("Canon_SELPHY_CP1300") == "Queued"
+
+
+class TestWaitForJob:
+    def test_calls_on_status(self):
+        """on_status is called with each new status."""
+        statuses = []
+        with patch("yoto_lib.printer._get_job_status", side_effect=["Queued", "Sending data", None]), \
+             patch("yoto_lib.printer.time.sleep"):
+            wait_for_job("Canon_SELPHY_CP1300", on_status=statuses.append)
+        assert statuses == ["Queued", "Sending data"]
+
+    def test_deduplicates_status(self):
+        """Repeated same status only calls on_status once."""
+        statuses = []
+        with patch("yoto_lib.printer._get_job_status", side_effect=["Queued", "Queued", "Queued", None]), \
+             patch("yoto_lib.printer.time.sleep"):
+            wait_for_job("Canon_SELPHY_CP1300", on_status=statuses.append)
+        assert statuses == ["Queued"]
+
+    def test_returns_immediately_when_no_job(self):
+        """Returns immediately if no job in queue."""
+        with patch("yoto_lib.printer._get_job_status", return_value=None), \
+             patch("yoto_lib.printer.time.sleep") as mock_sleep:
+            wait_for_job("Canon_SELPHY_CP1300")
+        mock_sleep.assert_not_called()
 
 
 class TestPrintCover:

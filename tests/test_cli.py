@@ -609,7 +609,9 @@ class TestPrintCommand:
             result = runner.invoke(cli, ["print", str(folder)], input="y\n")
 
         assert result.exit_code == 0
-        mock_print.assert_called_once_with(folder / "cover.png", icc_profile=None)
+        mock_print.assert_called_once()
+        assert mock_print.call_args[0][0] == folder / "cover.png"
+        assert mock_print.call_args[1]["icc_profile"] is None
 
     def test_print_yes_skips_confirm(self, runner, tmp_path):
         """print --yes skips the confirmation prompt."""
@@ -671,7 +673,8 @@ class TestPrintCommand:
             result = runner.invoke(cli, ["print", "--yes", "--profile", str(fake_profile), str(folder)])
 
         assert result.exit_code == 0
-        mock_print.assert_called_once_with(folder / "cover.png", icc_profile=str(fake_profile))
+        mock_print.assert_called_once()
+        assert mock_print.call_args[1]["icc_profile"] == str(fake_profile)
 
     def test_print_missing_profile_warns(self, runner, tmp_path):
         """print warns and offers to continue when profile not found."""
@@ -688,7 +691,8 @@ class TestPrintCommand:
             result = runner.invoke(cli, ["print", "--profile", "/nonexistent.icc", str(folder)], input="y\ny\n")
 
         assert result.exit_code == 0
-        mock_print.assert_called_once_with(folder / "cover.png", icc_profile=None)
+        mock_print.assert_called_once()
+        assert mock_print.call_args[1]["icc_profile"] is None
 
     def test_print_error_shows_message(self, runner, tmp_path):
         """PrintError is surfaced as a ClickException."""
@@ -727,7 +731,8 @@ class TestSyncPrint:
             result = runner.invoke(cli, ["sync", "--print", str(folder)])
 
         assert result.exit_code == 0
-        mock_print.assert_called_once_with(folder / "cover.png", icc_profile=None)
+        mock_print.assert_called_once()
+        assert mock_print.call_args[0][0] == folder / "cover.png"
 
     def test_sync_no_print_flag(self, runner, tmp_path):
         """sync --no-print skips printing even when cover was uploaded."""
