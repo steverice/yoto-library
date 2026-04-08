@@ -670,3 +670,106 @@ class TestPrintCommand:
 
         assert result.exit_code != 0
         assert "Printer offline" in result.output
+
+
+# ── test_sync_print ──────────────────────────────────────────────────────────
+
+
+class TestSyncPrint:
+    def test_sync_print_flag(self, runner, tmp_path):
+        """sync --print calls print_cover when cover was uploaded."""
+        folder = tmp_path / "album"
+        folder.mkdir()
+        (folder / "track01.mp3").write_bytes(b"\x00" * 16)
+        from PIL import Image
+        img = Image.new("RGB", (638, 1011), "blue")
+        img.save(folder / "cover.png")
+
+        fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1, cover_uploaded=True, folder=folder)]
+
+        with patch("yoto_cli.main.sync_path", return_value=fake_results) as mock_sync, \
+             patch("yoto_cli.main.print_cover") as mock_print:
+            result = runner.invoke(cli, ["sync", "--print", str(folder)])
+
+        assert result.exit_code == 0
+        mock_print.assert_called_once_with(folder / "cover.png")
+
+    def test_sync_no_print_flag(self, runner, tmp_path):
+        """sync --no-print skips printing even when cover was uploaded."""
+        folder = tmp_path / "album"
+        folder.mkdir()
+        (folder / "track01.mp3").write_bytes(b"\x00" * 16)
+
+        fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1, cover_uploaded=True, folder=folder)]
+
+        with patch("yoto_cli.main.sync_path", return_value=fake_results) as mock_sync, \
+             patch("yoto_cli.main.print_cover") as mock_print:
+            result = runner.invoke(cli, ["sync", "--no-print", str(folder)])
+
+        assert result.exit_code == 0
+        mock_print.assert_not_called()
+
+    def test_sync_prompts_when_cover_uploaded(self, runner, tmp_path):
+        """sync prompts to print when cover was uploaded and no flag given."""
+        folder = tmp_path / "album"
+        folder.mkdir()
+        (folder / "track01.mp3").write_bytes(b"\x00" * 16)
+        from PIL import Image
+        img = Image.new("RGB", (638, 1011), "blue")
+        img.save(folder / "cover.png")
+
+        fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1, cover_uploaded=True, folder=folder)]
+
+        with patch("yoto_cli.main.sync_path", return_value=fake_results) as mock_sync, \
+             patch("yoto_cli.main.print_cover") as mock_print:
+            result = runner.invoke(cli, ["sync", str(folder)], input="y\n")
+
+        mock_print.assert_called_once()
+
+    def test_sync_no_prompt_when_cover_not_uploaded(self, runner, tmp_path):
+        """sync does not prompt to print when cover was not uploaded."""
+        folder = tmp_path / "album"
+        folder.mkdir()
+        (folder / "track01.mp3").write_bytes(b"\x00" * 16)
+
+        fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1, cover_uploaded=False, folder=folder)]
+
+        with patch("yoto_cli.main.sync_path", return_value=fake_results) as mock_sync, \
+             patch("yoto_cli.main.print_cover") as mock_print:
+            result = runner.invoke(cli, ["sync", str(folder)])
+
+        assert result.exit_code == 0
+        mock_print.assert_not_called()
+
+    def test_sync_dry_run_never_prints(self, runner, tmp_path):
+        """sync --dry-run never prints, regardless of --print flag."""
+        folder = tmp_path / "album"
+        folder.mkdir()
+        (folder / "track01.mp3").write_bytes(b"\x00" * 16)
+
+        fake_results = [SyncResult(card_id=None, tracks_uploaded=2, dry_run=True, cover_uploaded=True, folder=folder)]
+
+        with patch("yoto_cli.main.sync_path", return_value=fake_results) as mock_sync, \
+             patch("yoto_cli.main.print_cover") as mock_print:
+            result = runner.invoke(cli, ["sync", "--dry-run", "--print", str(folder)])
+
+        assert result.exit_code == 0
+        mock_print.assert_not_called()
+
+    def test_sync_print_error_shown_as_warning(self, runner, tmp_path):
+        """If printing fails during sync, show a warning but don't fail the sync."""
+        folder = tmp_path / "album"
+        folder.mkdir()
+        (folder / "track01.mp3").write_bytes(b"\x00" * 16)
+        from PIL import Image
+        img = Image.new("RGB", (638, 1011), "blue")
+        img.save(folder / "cover.png")
+
+        fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1, cover_uploaded=True, folder=folder)]
+
+        with patch("yoto_cli.main.sync_path", return_value=fake_results), \
+             patch("yoto_cli.main.print_cover", side_effect=PrintError("Printer offline")):
+            result = runner.invoke(cli, ["sync", "--print", str(folder)])
+
+        assert result.exit_code == 0
+        assert "Printer offline" in result.output

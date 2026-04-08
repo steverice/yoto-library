@@ -442,3 +442,20 @@ class TestSyncErrorPaths:
         call_args = mock_schema.call_args
         cover_url_arg = call_args.args[3] if len(call_args.args) > 3 else call_args.kwargs.get("cover_url")
         assert cover_url_arg == "https://cdn.yoto.io/existing.png"
+
+
+# ── TestSyncResultFolder ─────────────────────────────────────────────────────
+
+
+class TestSyncResultFolder:
+    def test_sync_result_has_folder(self):
+        """SyncResult carries the folder path for post-sync actions like printing."""
+        from yoto_lib.sync import SyncResult
+        result = SyncResult(folder=Path("/tmp/album"))
+        assert result.folder == Path("/tmp/album")
+
+    def test_sync_result_folder_default_none(self):
+        """SyncResult.folder defaults to None."""
+        from yoto_lib.sync import SyncResult
+        result = SyncResult()
+        assert result.folder is None
