@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
-import re
-import subprocess
 import tempfile
 from pathlib import Path
+
+from yoto_lib.providers.claude_provider import ClaudeProvider
 
 logger = logging.getLogger(__name__)
 
@@ -15,45 +15,7 @@ logger = logging.getLogger(__name__)
 CONFIDENCE_HIGH = 0.8
 CONFIDENCE_LOW = 0.4
 
-
-def _extract_json(text: str) -> str:
-    """Strip markdown code fences from Claude output to get raw JSON."""
-    m = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
-    if m:
-        return m.group(1).strip()
-    return text.strip()
-
-
-def _call_claude(prompt: str, *, allowed_tools: str = "", timeout: int = 120, model: str = "haiku") -> str | None:
-    """Call Claude CLI and return the response text, or None on failure."""
-    cmd = [
-        "claude", "-p", prompt,
-        "--output-format", "json",
-        "--model", model,
-    ]
-    if allowed_tools:
-        cmd += ["--allowedTools", allowed_tools]
-    else:
-        cmd += ["--tools", ""]
-
-    try:
-        logger.debug("icon_llm._call_claude: model=%s prompt_length=%d", model, len(prompt))
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-        logger.debug("icon_llm._call_claude: exit_code=%d response_length=%d", result.returncode, len(result.stdout))
-        if result.returncode != 0:
-            return None
-        wrapper = json.loads(result.stdout)
-        if wrapper.get("is_error"):
-            return None
-        text = wrapper.get("result", result.stdout).strip()
-        parsed = _extract_json(text)
-        logger.debug("icon_llm._call_claude response: %s", parsed)
-        from yoto_lib.costs import get_tracker, is_subscription
-        get_tracker().record(f"claude_{model}", subscription=is_subscription(f"claude_{model}"))
-        return parsed
-    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
-        logger.debug("icon_llm._call_claude: failed with %s", type(exc).__name__)
-        return None
+_claude = ClaudeProvider()
 
 
 def summarize_lyrics_for_icon(lyrics: str, track_title: str) -> str | None:
@@ -73,7 +35,7 @@ def summarize_lyrics_for_icon(lyrics: str, track_title: str) -> str | None:
         f'Return ONLY the visual description, no explanation or preamble.'
     )
 
-    text = _call_claude(prompt)
+    text = _claude.call(prompt)
     if not text or not text.strip():
         return None
     return text.strip()
@@ -117,7 +79,7 @@ def describe_icons_llm(
 
     try:
         logger.debug("describe_icons_llm: title='%s'", track_title)
-        text = _call_claude(prompt)
+        text = _claude.call(prompt)
         if text is None:
             return []
         descriptions = json.loads(text)
@@ -162,7 +124,7 @@ def match_icon_llm(
     )
 
     try:
-        text = _call_claude(prompt)
+        text = _claude.call(prompt)
         if text is None:
             return None, 0.0
         data = json.loads(text)
@@ -241,7 +203,7 @@ def compare_icons_llm(
         )
 
         try:
-            text = _call_claude(prompt, allowed_tools="Read", timeout=120, model="sonnet")
+            text = _claude.call(prompt, allowed_tools="Read", timeout=120, model="sonnet")
             if text is None:
                 return 1, []
             data = json.loads(text)

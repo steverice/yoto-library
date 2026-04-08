@@ -17,7 +17,9 @@ from PIL import Image
 
 from yoto_lib.providers import get_provider
 from yoto_lib import mka
-from yoto_lib.icon_llm import _call_claude
+from yoto_lib.providers.claude_provider import ClaudeProvider
+
+_claude = ClaudeProvider()
 
 logger = logging.getLogger(__name__)
 
@@ -401,7 +403,7 @@ def check_recompose_quality(original: bytes, recomposed: bytes) -> bool:
             f"Reply with ONLY: YES or NO"
         )
 
-        response = _call_claude(prompt, allowed_tools="Read", model="sonnet")
+        response = _claude.call(prompt, allowed_tools="Read", model="sonnet")
 
         if response:
             match = re.search(r"\b(YES|NO)\b", response.upper())
@@ -424,7 +426,7 @@ def describe_album_text(art_bytes: bytes) -> list[dict] | None:
         f.write(art_bytes)
         tmp = f.name
     try:
-        response = _call_claude(
+        response = _claude.call(
             f"Read this album cover image: {tmp}\n"
             f"Describe ALL visible text and its visual style. For each text element:\n"
             f"- text: the exact text\n"
@@ -465,7 +467,7 @@ def get_text_placement(
         orig_path.write_bytes(original)
         recomp_path.write_bytes(recomposed)
 
-        response = _call_claude(
+        response = _claude.call(
             f"Original album cover: {orig_path}\n"
             f"Portrait version ({width}x{height}): {recomp_path}\n\n"
             f"The portrait is missing text from the original. Where should I "
@@ -676,7 +678,7 @@ def pick_best_candidate(
             f"Reply with ONLY the candidate number (1-{len(candidates)})"
         )
 
-        response = _call_claude(prompt, allowed_tools="Read", model="sonnet")
+        response = _claude.call(prompt, allowed_tools="Read", model="sonnet")
 
         if response:
             match = re.search(r"\b(\d+)\b", response)
