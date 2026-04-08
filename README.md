@@ -120,6 +120,8 @@ yoto sync                     # sync playlist in current directory
 yoto sync "Bedtime Songs"     # sync a specific folder
 yoto sync --dry-run           # preview changes without executing
 yoto sync --no-trim           # skip silence trimming on YouTube downloads
+yoto sync --print             # print cover art after sync
+yoto sync --no-print          # skip print prompt
 ```
 
 ### `yoto pull [path | card-id]`
@@ -175,6 +177,18 @@ Interactive icon selection for a single track (or multiple tracks in sequence). 
 
 Remove icon attachments from one or more MKA files. The next `yoto sync` will regenerate icons for those tracks.
 
+### `yoto print [path]`
+
+Print cover art to a photo printer. Uses macOS ColorSync for ICC color management and CUPS for printing. Requires a configured printer (default: Canon SELPHY CP1300).
+
+```
+yoto print                    # print cover in current directory
+yoto print "Bedtime Songs"   # print a specific playlist's cover
+yoto print --yes              # skip confirmation prompt
+```
+
+If no `cover.png` exists, offers to generate one first.
+
 ### `yoto completions [shell]`
 
 Print the shell completion setup command for zsh, bash, or fish. Auto-detects your shell if not specified.
@@ -193,6 +207,11 @@ OPENAI_API_KEY=...           # platform.openai.com — text-to-image cover gener
 ```
 
 Each service handles a specific part of the pipeline — see [AI providers](#ai-providers) below.
+
+**Printing** — requires a photo printer configured in macOS System Settings:
+
+- `YOTO_PRINTER` — CUPS printer name (default: `Canon_SELPHY_CP1300`)
+- `YOTO_ICC_PROFILE` — path to ICC color profile (default: `~/Library/ColorSync/Profiles/Canon Selphy CP1200.ICC`)
 
 ## How it works
 
