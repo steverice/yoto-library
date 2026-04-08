@@ -232,7 +232,8 @@ def auth():
 @click.option("--dry-run", is_flag=True, help="Preview changes without executing")
 @click.option("--no-trim", is_flag=True, help="Skip silence trimming on YouTube downloads")
 @click.option("--ignore-album-art", is_flag=True, help="Skip album art reuse; generate cover purely from prompt")
-def sync(path, dry_run, no_trim, ignore_album_art):
+@click.option("--print/--no-print", "print_cover_flag", default=None, help="Print cover art after sync")
+def sync(path, dry_run, no_trim, ignore_album_art, print_cover_flag):
     """Push local playlist state to Yoto."""
     logger.debug("command: sync path=%s dry_run=%s no_trim=%s ignore_album_art=%s", path, dry_run, no_trim, ignore_album_art)
     trim = not no_trim
@@ -285,6 +286,26 @@ def sync(path, dry_run, no_trim, ignore_album_art):
         for err in result.errors:
             _error(err)
     _print_cost_summary()
+
+    # Offer to print cover if it was newly generated/uploaded
+    if not dry_run:
+        from yoto_cli.progress import warning as _warning
+        for result in results:
+            if not result.cover_uploaded or not result.folder:
+                continue
+            cover_path = result.folder / "cover.png"
+            if not cover_path.exists():
+                continue
+
+            should_print = print_cover_flag
+            if should_print is None:
+                should_print = click.confirm("Cover was generated. Print it?", default=False)
+            if should_print:
+                try:
+                    print_cover(cover_path)
+                    _success("Sent to printer")
+                except PrintError as exc:
+                    _warning(f"Print failed: {exc}")
 
 
 # ── download ─────────────────────────────────────────────────────────────────

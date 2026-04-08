@@ -43,6 +43,7 @@ class SyncResult:
     icons_uploaded: int = 0
     dry_run: bool = False
     errors: list[str] = field(default_factory=list)
+    folder: Path | None = None
 
 
 # ── _parse_remote_state ───────────────────────────────────────────────────────
@@ -159,6 +160,7 @@ def sync_playlist(
     resolve_weblocs(folder, trim=trim)
 
     result = SyncResult(dry_run=dry_run)
+    result.folder = folder
 
     # 1. Load local playlist
     playlist = load_playlist(folder)
