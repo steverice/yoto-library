@@ -49,7 +49,7 @@ Cost tracking is automatic — providers record costs via `get_tracker().record(
 
 **HTTP client** — httpx (not requests).
 
-**LLM calls** — go through the `claude` CLI as a subprocess (`claude -p <prompt> --output-format json`). See `icon_llm.py` for the pattern. Do not use the Anthropic Python SDK for LLM calls in this project.
+**LLM calls** — go through the `claude` CLI as a subprocess (`claude -p <prompt> --output-format json`). See `icon_llm.py` for the pattern. Do not use the Anthropic Python SDK for LLM calls in this project. The `--add-source` wizard calls Claude with `allowed_tools="Read"` to analyze downloaded HTML files.
 
 **Image generation** — pluggable providers in `image_providers/`. Provider selected by `YOTO_IMAGE_PROVIDER` env var. Follow the existing provider interface when adding new providers.
 
@@ -60,7 +60,7 @@ Cost tracking is automatic — providers record costs via `get_tracker().record(
 ## Architecture rules
 
 - **Library/CLI separation** — `yoto_lib` must be importable without Click. No CLI framework imports in library code. The library is designed to be called by other tools (e.g., a Quick Look plugin).
-- **No global config file** — env vars for provider selection, Keychain for auth. This is a deliberate choice, not an oversight.
+- **No global config file** — env vars for provider selection, Keychain for auth. This is a deliberate choice, not an oversight. **Exception: `~/.yoto/lyrics/*.json` are per-source scraping configs (not a central config file — each is self-contained).**
 - **Sync is one-directional** — `sync` is always local→remote (local wins). `pull` is always remote→local (remote wins). There is no conflict resolution, and none should be added.
 - **One chapter per track** — each track maps to one Yoto chapter, giving the user dial control per song on the physical player. Do not collapse tracks into shared chapters.
 - **Cover art dimensions** — 638x1011 pixels (portrait). Print-ready at 300dpi for 54x86mm physical cards.
@@ -105,6 +105,7 @@ Tests mock external calls (Yoto API, subprocess, Claude CLI). See `conftest.py` 
 | mkvtoolnix | MKA metadata tag and attachment read/write | yes |
 | yt-dlp | YouTube audio download | for `.webloc` support |
 | claude CLI | auto-descriptions, LLM-based icon matching | for AI features |
+| `node` + `jsdom` | Web scraping lyrics sources via `scrape_runner.js` | for lyrics scraping |
 
 These are invoked as subprocesses, not Python bindings.
 

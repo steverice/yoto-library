@@ -196,6 +196,41 @@ Key rich features used:
 - **RichHandler** — Python logging integration (stderr, no formatter)
 - **Markup** — `[green]✓[/green]` style inline coloring for messages
 
+## Lyrics pipeline
+
+Lyrics are sourced in three stages, tried in order:
+
+1. **Embedded tags** — audio files often carry lyrics in their metadata (ID3 USLT, Vorbis LYRICS tag, etc.). These are read via ffprobe during import and stored as the `LYRICS` Matroska tag.
+
+2. **Web scraping sources** — user-configured sources in `~/.yoto/lyrics/*.json`. Each file defines an index page URL plus two JS snippets: `index_js` (extracts `[{title, url}]` from the index) and `lyrics_js` (extracts lyrics text from a song page). A Node.js script (`scrape_runner.js`) runs these snippets against the page HTML using jsdom. Title matching uses `difflib.SequenceMatcher` with a 0.6 threshold.
+
+3. **LRCLIB API** — public lyrics API at `lrclib.net`. Requires both artist and title.
+
+### Adding a new lyrics source
+
+Run `yoto lyrics --add-source <index-url>`. The wizard:
+1. Downloads the index page HTML
+2. Calls Claude Sonnet (with `allowed_tools="Read"`) to analyze the HTML and write `index_js`
+3. Picks a sample song, downloads its page
+4. Calls Claude Sonnet again to write `lyrics_js`
+5. Validates both snippets run correctly
+6. Shows a preview and saves the config to `~/.yoto/lyrics/<name>.json`
+
+The config format is intentionally simple — just a name, URL, and two JS strings. Configs are human-readable and editable.
+
+### Upgrade path: JS-rendered sites
+
+The current implementation fetches HTML via `httpx` and runs JS snippets against it using jsdom (a pure-JS DOM implementation). This works for plain HTML sites.
+
+For JS-rendered sites (SPAs that load content via JavaScript), swap `scrape_runner.js` to use `puppeteer-core` with `chrome-headless-shell` (~50MB download):
+
+```bash
+npm install puppeteer-core
+npx puppeteer browsers install chrome-headless-shell
+```
+
+Then update `scrape_runner.js` to use `browser.newPage()` + `page.goto()` + `page.evaluate()` instead of jsdom. The config format (`index_js`, `lyrics_js`) stays identical — no config migration needed.
+
 ## Cover printing
 
 The `printer` module (`src/yoto_lib/printer.py`) handles printing cover art to a Canon
