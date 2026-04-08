@@ -29,6 +29,7 @@ from yoto_lib.pull import pull_playlist
 from yoto_lib.playlist import read_jsonl, write_jsonl, scan_audio_files, load_playlist, diff_playlists
 from yoto_lib.mka import wrap_in_mka, remove_attachment, set_attachment, read_source_tags, write_tags, generate_source_patch, extract_album_art, read_tags
 from yoto_lib.itunes import enrich_from_itunes
+from yoto_lib.lyrics import get_lyrics
 from yoto_lib.sources import resolve_weblocs
 from yoto_lib.costs import get_tracker, reset_tracker
 from yoto_lib.billing import (
@@ -642,7 +643,7 @@ def import_cmd(source, output):
                     progress.update(task, advance=1, status=audio.name)
                 return mka_name
 
-            inner_task = progress.add_task(audio.name, total=4, status="wrapping") if progress else None
+            inner_task = progress.add_task(audio.name, total=5, status="wrapping") if progress else None
             try:
                 wrap_in_mka(audio, mka_dest)
                 if progress and inner_task is not None:
@@ -656,6 +657,21 @@ def import_cmd(source, output):
                 # Fetch album art from iTunes (serialized to avoid duplicate API calls)
                 with album_cache_lock:
                     enrich_from_itunes(mka_dest, source_tags, album_cache)
+                if progress and inner_task is not None:
+                    progress.update(inner_task, advance=1, status="lyrics")
+                # Fetch lyrics from source tags or LRCLIB
+                lyrics_text, lyrics_source = get_lyrics(source_tags)
+                if lyrics_text:
+                    write_tags(mka_dest, {"lyrics": lyrics_text})
+                    if progress:
+                        progress.console.print(
+                            f"  [dim]Lyrics: found in {lyrics_source}[/dim]"
+                        )
+                else:
+                    if progress:
+                        progress.console.print(
+                            f"  [dim]Lyrics: not found[/dim]"
+                        )
                 if progress and inner_task is not None:
                     progress.update(inner_task, advance=1, status="patching")
                 # Generate bsdiff patch for byte-perfect export

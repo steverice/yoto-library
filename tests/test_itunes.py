@@ -2,7 +2,7 @@ import os
 import subprocess
 import struct
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
 import httpx
 import pytest
 from click.testing import CliRunner
@@ -343,6 +343,44 @@ class TestImportIntegration:
         assert call_args[0].suffix == ".mka"
         assert isinstance(call_args[1], dict)
         assert isinstance(call_args[2], dict)
+
+    @needs_ffmpeg
+    def test_import_calls_get_lyrics(self, tmp_path):
+        """Verify import_cmd calls get_lyrics and writes LYRICS tag when found."""
+        from yoto_cli.main import cli
+
+        wav = tmp_path / "source" / "track.wav"
+        wav.parent.mkdir()
+        sample_rate = 44100
+        data_size = 2
+        header = struct.pack(
+            "<4sI4s4sIHHIIHH4sI",
+            b"RIFF", 36 + data_size, b"WAVE", b"fmt ", 16, 1,
+            1, sample_rate, sample_rate * 2, 2, 16,
+            b"data", data_size,
+        )
+        wav.write_bytes(header + b"\x00\x00")
+
+        output = tmp_path / "output"
+
+        with (
+            patch("yoto_cli.main.enrich_from_itunes"),
+            patch("yoto_cli.main.generate_description"),
+            patch("yoto_cli.main.get_lyrics", return_value=("La la la", "lrclib")) as mock_lyrics,
+            patch("yoto_cli.main.write_tags") as mock_write_tags,
+        ):
+            runner = CliRunner()
+            result = runner.invoke(cli, ["import", str(wav.parent), "-o", str(output)])
+
+        assert result.exit_code == 0, result.output
+        mock_lyrics.assert_called_once()
+        # write_tags should have been called with lyrics
+        lyrics_calls = [
+            call for call in mock_write_tags.call_args_list
+            if "lyrics" in call[0][1]
+        ]
+        assert len(lyrics_calls) >= 1
+        assert lyrics_calls[0][0][1]["lyrics"] == "La la la"
 
 
 import httpx as httpx_client
