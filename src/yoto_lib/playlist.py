@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -75,6 +76,15 @@ class Playlist:
     @property
     def card_id_path(self) -> Path:
         return self.path / ".yoto-card-id"
+
+    @property
+    def cover_hash_path(self) -> Path:
+        return self.path / ".yoto-cover-hash"
+
+
+def _cover_hash(cover_path: Path) -> str:
+    """Return SHA256 hex digest of a cover file."""
+    return hashlib.sha256(cover_path.read_bytes()).hexdigest()
 
 
 # ── load_playlist ─────────────────────────────────────────────────────────────
@@ -272,9 +282,15 @@ def diff_playlists(playlist: Playlist, remote: dict[str, Any] | None) -> Playlis
     common_remote = [t for t in remote_tracks if t in local_set]
     order_changed = common_local != common_remote
 
-    # Cover changed
+    # Cover changed — check presence and content hash
     remote_has_cover: bool = remote.get("has_cover", False)
-    cover_changed = playlist.has_cover != remote_has_cover
+    if playlist.has_cover != remote_has_cover:
+        cover_changed = True
+    elif playlist.has_cover and playlist.cover_hash_path.exists():
+        stored_hash = playlist.cover_hash_path.read_text(encoding="utf-8").strip()
+        cover_changed = _cover_hash(playlist.cover_path) != stored_hash
+    else:
+        cover_changed = False
 
     # Metadata changed — compare description
     remote_description = remote.get("description", None)

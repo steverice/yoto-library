@@ -233,15 +233,16 @@ def auth():
 @click.option("--dry-run", is_flag=True, help="Preview changes without executing")
 @click.option("--no-trim", is_flag=True, help="Skip silence trimming on YouTube downloads")
 @click.option("--ignore-album-art", is_flag=True, help="Skip album art reuse; generate cover purely from prompt")
+@click.option("--force-cover", is_flag=True, help="Re-upload cover art even if unchanged")
 @click.option("--print/--no-print", "print_cover_flag", default=None, help="Print cover art after sync")
-def sync(path, dry_run, no_trim, ignore_album_art, print_cover_flag):
+def sync(path, dry_run, no_trim, ignore_album_art, force_cover, print_cover_flag):
     """Push local playlist state to Yoto."""
     logger.debug("command: sync path=%s dry_run=%s no_trim=%s ignore_album_art=%s", path, dry_run, no_trim, ignore_album_art)
     trim = not no_trim
     reset_tracker()
     from yoto_cli.progress import _console, error as _error
     if dry_run:
-        results = sync_path(Path(path), dry_run=True, trim=trim, ignore_album_art=ignore_album_art)
+        results = sync_path(Path(path), dry_run=True, trim=trim, ignore_album_art=ignore_album_art, force_cover=force_cover)
         for result in results:
             icon_msg = f", {result.icons_uploaded} icons" if result.icons_uploaded else ""
             _console.print(f"[Dry run] Would upload {result.tracks_uploaded} tracks{icon_msg}")
@@ -276,7 +277,7 @@ def sync(path, dry_run, no_trim, ignore_album_art, print_cover_flag):
         results = sync_path(
             Path(path), dry_run=False, trim=trim, log=log,
             on_upload_start=on_upload_start, on_upload_done=on_upload_done,
-            ignore_album_art=ignore_album_art,
+            ignore_album_art=ignore_album_art, force_cover=force_cover,
         )
         progress.update(task, completed=total)
 
