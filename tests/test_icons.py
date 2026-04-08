@@ -19,7 +19,7 @@ from yoto_lib.icons import (
     generate_icns_sizes,
     generate_retrodiffusion_icons,
     generate_track_icon,
-    match_public_icon,
+
     nearest_neighbor_upscale,
 )
 
@@ -93,48 +93,6 @@ class TestGenerateIcnsSizes:
             assert len(ICNS_TYPE_MAP[size]) == 4, (
                 f"Type tag for size {size} must be exactly 4 bytes"
             )
-
-
-# ── TestMatchPublicIcon ───────────────────────────────────────────────────────
-
-
-class TestMatchPublicIcon:
-    def _icons(self, entries: list[tuple[str, str]]) -> list[dict]:
-        """Build a list of public-icon dicts from (title, mediaId) pairs."""
-        return [{"title": title, "mediaId": mid} for title, mid in entries]
-
-    def test_exact_title_match(self):
-        """An icon whose title exactly equals the track title returns its mediaId."""
-        icons = self._icons([
-            ("Jungle Adventure", "id-jungle"),
-            ("Space Explorer", "id-space"),
-        ])
-        result = match_public_icon("Jungle Adventure", icons)
-        assert result == "id-jungle"
-
-    def test_partial_match(self):
-        """An icon with significant word overlap is returned (score >= 0.5)."""
-        icons = self._icons([
-            ("Adventure Time", "id-adventure"),
-            ("Bedtime Story", "id-bedtime"),
-        ])
-        result = match_public_icon("Adventure Time Stories", icons)
-        assert result == "id-adventure"
-
-    def test_no_match_returns_none(self):
-        """Returns None when no icon has a score >= 0.5."""
-        icons = self._icons([
-            ("Jungle Adventure", "id-jungle"),
-            ("Space Explorer", "id-space"),
-        ])
-        result = match_public_icon("Completely Unrelated Topic Here", icons)
-        assert result is None
-
-    def test_falls_back_to_name_field(self):
-        """Falls back to 'name' if 'title' is missing."""
-        icons = [{"name": "Jungle Adventure", "mediaId": "id-jungle"}]
-        result = match_public_icon("Jungle Adventure", icons)
-        assert result == "id-jungle"
 
 
 # ── TestExtractIconHash ──────────────────────────────────────────────────────

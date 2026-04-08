@@ -303,62 +303,6 @@ def clear_macos_file_icon(file_path: Path) -> None:
     _run_osascript(script)
 
 
-# ── Public icon matching ──────────────────────────────────────────────────────
-
-
-def match_public_icon(
-    track_title: str,
-    public_icons: list[dict],
-) -> str | None:
-    """Match track_title against Yoto public icon library.
-
-    Compares word overlap and substring matching.  Returns the mediaId of the
-    best match, or None if the best score is below 0.5.
-    """
-    if not public_icons or not track_title:
-        return None
-
-    title_lower = track_title.lower()
-    title_words = set(title_lower.split())
-
-    best_score = 0.0
-    best_id: str | None = None
-
-    for icon in public_icons:
-        name: str = icon.get("title", "") or icon.get("name", "") or ""
-        media_id: str = icon.get("mediaId", "") or ""
-        if not media_id:
-            continue
-
-        name_lower = name.lower()
-        name_words = set(name_lower.split())
-
-        # Word overlap score: Jaccard-like — overlap / union
-        if title_words or name_words:
-            overlap = len(title_words & name_words)
-            union = len(title_words | name_words)
-            word_score = overlap / union if union else 0.0
-        else:
-            word_score = 0.0
-
-        # Substring score
-        if title_lower and name_lower:
-            if name_lower in title_lower or title_lower in name_lower:
-                substring_score = 1.0
-            else:
-                substring_score = 0.0
-        else:
-            substring_score = 0.0
-
-        score = max(word_score, substring_score)
-
-        if score > best_score:
-            best_score = score
-            best_id = media_id
-
-    return best_id if best_score >= 0.5 else None
-
-
 # ── AI icon generation ────────────────────────────────────────────────────────
 
 GRID_SIZE = 8
@@ -455,8 +399,6 @@ def generate_track_icon(track_title: str) -> bytes | None:
         return None
 
 
-# ── Strategy: pixelart (image gen with pixel-block prompt) ────────────────────
-
 
 def _build_pixelart_prompt(visual_description: str) -> str:
     """Wrap a visual description in pixel-art style instructions."""
@@ -469,109 +411,6 @@ def _build_pixelart_prompt(visual_description: str) -> str:
         f"No text, letters, numbers, or lettering. No anti-aliasing. No gradients. "
         f"Emoji style, bright colors, simple"
     )
-
-
-def generate_pixelart_icon(track_title: str) -> tuple[bytes | None, bytes | None]:
-    """Generate a 16x16 icon via the pixel-art block technique.
-
-    Returns (raw_1024_bytes, icon_16_bytes) — either may be None on failure.
-    """
-    try:
-        from yoto_lib.providers import get_provider
-        provider = get_provider()
-    except (ImportError, ValueError):
-        return None, None
-
-    prompt = _build_pixelart_prompt(track_title)
-
-    try:
-        image_bytes = provider.generate(prompt, CANVAS_SIZE, CANVAS_SIZE)
-    except (OSError, httpx.HTTPError):
-        return None, None
-
-    try:
-        raw_dir = ICON_CACHE_DIR / "raw"
-        raw_dir.mkdir(parents=True, exist_ok=True)
-        (raw_dir / f"{_sanitize_title(track_title)}_pixelart.png").write_bytes(image_bytes)
-    except OSError:
-        pass
-
-    try:
-        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        icon_16 = _dominant_color_downscale(img, ICON_SIZE)
-        buf = io.BytesIO()
-        icon_16.save(buf, format="PNG")
-        return image_bytes, buf.getvalue()
-    except (OSError, ValueError):
-        return image_bytes, None
-
-
-# ── Strategy: small-image providers (256x256) ────────────────────────────────
-
-
-def _generate_small_icon(
-    provider: "ImageProvider",
-    track_title: str,
-    width: int,
-    height: int,
-    label: str = "unknown",
-) -> tuple[bytes | None, bytes | None]:
-    """Generate an icon using a provider that supports small output sizes.
-
-    Returns (raw_bytes, icon_16_bytes).
-    """
-    prompt = _build_pixelart_prompt(track_title)
-
-    try:
-        image_bytes = provider.generate(prompt, width, height)
-    except (OSError, httpx.HTTPError):
-        return None, None
-
-    try:
-        raw_dir = ICON_CACHE_DIR / "raw"
-        raw_dir.mkdir(parents=True, exist_ok=True)
-        (raw_dir / f"{_sanitize_title(track_title)}_{label}.png").write_bytes(image_bytes)
-    except OSError:
-        pass
-
-    try:
-        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        icon_16 = _dominant_color_downscale(img, ICON_SIZE)
-        buf = io.BytesIO()
-        icon_16.save(buf, format="PNG")
-        return image_bytes, buf.getvalue()
-    except (OSError, ValueError):
-        return image_bytes, None
-
-
-def generate_dalle2_icon(track_title: str) -> tuple[bytes | None, bytes | None]:
-    """Generate via DALL-E 2 at 256x256. Returns (raw_bytes, icon_16_bytes)."""
-    from yoto_lib.providers.dalle2_provider import DallE2Provider
-    return _generate_small_icon(DallE2Provider(), track_title, 256, 256, "dalle2")
-
-
-def generate_flux_icon(track_title: str) -> tuple[bytes | None, bytes | None]:
-    """Generate via FLUX.1-schnell at 256x256. Returns (raw_bytes, icon_16_bytes)."""
-    from yoto_lib.providers.together_provider import TogetherProvider
-    return _generate_small_icon(
-        TogetherProvider("black-forest-labs/FLUX.1-schnell"),
-        track_title, 256, 256, "flux",
-    )
-
-
-def generate_sd3_icon(track_title: str) -> tuple[bytes | None, bytes | None]:
-    """Generate via Stable Diffusion 3 at 256x256. Returns (raw_bytes, icon_16_bytes)."""
-    from yoto_lib.providers.together_provider import TogetherProvider
-    return _generate_small_icon(
-        TogetherProvider("stabilityai/stable-diffusion-3-medium"),
-        track_title, 256, 256, "sd3",
-    )
-
-
-def generate_gemini_icon(track_title: str) -> tuple[bytes | None, bytes | None]:
-    """Generate via Gemini Imagen 4.0 (1024x1024). Returns (raw_bytes, icon_16_bytes)."""
-    from yoto_lib.providers.gemini_provider import GeminiProvider
-    return _generate_small_icon(GeminiProvider(), track_title, 1024, 1024, "gemini")
 
 
 def generate_retrodiffusion_icon(track_title: str) -> tuple[bytes | None, bytes | None]:

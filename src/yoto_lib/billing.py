@@ -29,7 +29,6 @@ PROVIDER_GROUPS: dict[str, list[str]] = {
 # Dashboard URLs for providers without balance APIs
 DASHBOARD_URLS: dict[str, str] = {
     "OpenAI": "platform.openai.com",
-    "Together AI": "api.together.ai",
     "Google Gemini": "aistudio.google.com",
     "Claude": "console.anthropic.com",
 }
