@@ -135,6 +135,7 @@ def sync_playlist(
     on_upload_start: Callable[[str], None] | None = None,
     on_upload_done: Callable[[str], None] | None = None,
     ignore_album_art: bool = False,
+    force_cover: bool = False,
 ) -> SyncResult:
     """
     Sync a single playlist folder to the Yoto API.
@@ -190,6 +191,8 @@ def sync_playlist(
 
     # 4. Diff
     diff = diff_playlists(playlist, remote_state)
+    if force_cover and playlist.has_cover:
+        diff.cover_changed = True
     logger.debug("sync: diff — new=%d removed=%d order_changed=%s cover_changed=%s",
                   len(diff.new_tracks), len(diff.removed_tracks), diff.order_changed, diff.cover_changed)
 
@@ -298,6 +301,11 @@ def sync_playlist(
             ci = cover_result.get("coverImage", cover_result)
             cover_url = ci.get("mediaUrl") or ci.get("url") or cover_result.get("coverUrl")
             result.cover_uploaded = True
+            # Store hash so we can detect future local changes
+            from yoto_lib.playlist import _cover_hash
+            playlist.cover_hash_path.write_text(
+                _cover_hash(playlist.cover_path), encoding="utf-8",
+            )
         except (OSError, httpx.HTTPError) as exc:
             result.errors.append(f"Cover upload failed: {exc}")
             result.cover_uploaded = False
@@ -348,6 +356,7 @@ def sync_path(
     on_upload_start: Callable[[str], None] | None = None,
     on_upload_done: Callable[[str], None] | None = None,
     ignore_album_art: bool = False,
+    force_cover: bool = False,
 ) -> list[SyncResult]:
     """
     Sync one or more playlists rooted at path.
@@ -364,7 +373,7 @@ def sync_path(
             path, dry_run=dry_run, trim=trim,
             on_track_done=on_track_done, log=log,
             on_upload_start=on_upload_start, on_upload_done=on_upload_done,
-            ignore_album_art=ignore_album_art,
+            ignore_album_art=ignore_album_art, force_cover=force_cover,
         ))
     else:
         subdirs = sorted(p for p in path.iterdir() if p.is_dir())
@@ -375,7 +384,7 @@ def sync_path(
                 subdir, dry_run=dry_run, trim=trim,
                 on_track_done=on_track_done, log=log,
                 on_upload_start=on_upload_start, on_upload_done=on_upload_done,
-                ignore_album_art=ignore_album_art,
+                ignore_album_art=ignore_album_art, force_cover=force_cover,
             ))
 
     return results
