@@ -134,7 +134,8 @@ def render_icon_panels(
         is_sel = i == selected
         table.add_column(
             f"{label}{marker}",
-            no_wrap=True,
+            width=24,
+            justify="center",
             header_style="bold cyan" if is_sel else "",
         )
 
