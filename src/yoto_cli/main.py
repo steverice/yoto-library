@@ -805,7 +805,15 @@ def lyrics(path: str | None, force: bool, show: bool, add_source_url: str | None
         # 3. Run the wizard
         try:
             from yoto_lib.lyrics_source_wizard import run_wizard
-            config = run_wizard(add_source_url)
+            from yoto_cli.progress import make_progress
+            _WIZARD_STEPS = 6
+            with make_progress() as progress:
+                task = progress.add_task("Analyzing lyrics site", total=_WIZARD_STEPS, status="")
+
+                def _on_step(msg: str) -> None:
+                    progress.update(task, advance=1, status=msg)
+
+                config = run_wizard(add_source_url, on_step=_on_step)
         except ValueError as exc:
             _error(str(exc))
             return
@@ -913,32 +921,38 @@ def lyrics(path: str | None, force: bool, show: bool, add_source_url: str | None
                 ))
         return
 
-    for mka_path in mka_files:
-        tags = read_tags(mka_path)
+    from yoto_cli.progress import make_progress
+    with make_progress() as progress:
+        task = progress.add_task(target.name, total=len(mka_files), status="")
+        for mka_path in mka_files:
+            progress.update(task, status=mka_path.stem)
+            tags = read_tags(mka_path)
 
-        if not force and tags.get("lyrics"):
-            _console.print(f"  [dim]{mka_path.name}: lyrics already present[/dim]")
-            continue
+            if not force and tags.get("lyrics"):
+                progress.console.print(f"  [dim]{mka_path.name}: lyrics already present[/dim]")
+                progress.update(task, advance=1)
+                continue
 
-        # Build a tags dict that get_lyrics can use (needs title, artist)
-        lookup_tags = {
-            "title": tags.get("title", mka_path.stem),
-            "artist": tags.get("artist", ""),
-        }
-        # Only include existing lyrics when not forcing re-fetch
-        if not force and "lyrics" in tags:
-            lookup_tags["lyrics"] = tags["lyrics"]
+            # Build a tags dict that get_lyrics can use (needs title, artist)
+            lookup_tags = {
+                "title": tags.get("title", mka_path.stem),
+                "artist": tags.get("artist", ""),
+            }
+            # Only include existing lyrics when not forcing re-fetch
+            if not force and "lyrics" in tags:
+                lookup_tags["lyrics"] = tags["lyrics"]
 
-        lyrics_text, lyrics_source = get_lyrics(lookup_tags)
-        if lyrics_text:
-            new_tags = {"lyrics": lyrics_text}
-            if force:
-                # Clear stale summary so it's regenerated on next select-icon
-                new_tags["lyrics_summary"] = ""
-            write_tags(mka_path, new_tags)
-            _console.print(f"  {mka_path.name}: lyrics found via {lyrics_source}")
-        else:
-            _console.print(f"  [dim]{mka_path.name}: no lyrics found[/dim]")
+            lyrics_text, lyrics_source = get_lyrics(lookup_tags)
+            if lyrics_text:
+                new_tags = {"lyrics": lyrics_text}
+                if force:
+                    # Clear stale summary so it's regenerated on next select-icon
+                    new_tags["lyrics_summary"] = ""
+                write_tags(mka_path, new_tags)
+                progress.console.print(f"  {mka_path.name}: lyrics found via {lyrics_source}")
+            else:
+                progress.console.print(f"  [dim]{mka_path.name}: no lyrics found[/dim]")
+            progress.update(task, advance=1)
 
 
 # ── export ───────────────────────────────────────────────────────────────
@@ -1604,8 +1618,6 @@ def _print_balances(balances: dict) -> None:
         active_providers.append("RetroDiffusion")
     if os.environ.get("OPENAI_API_KEY"):
         active_providers.append("OpenAI")
-    if os.environ.get("TOGETHER_AI_KEY") or os.environ.get("TOGETHER_API_KEY"):
-        active_providers.append("Together AI")
     if os.environ.get("GEMINI_API_KEY"):
         active_providers.append("Google Gemini")
 
