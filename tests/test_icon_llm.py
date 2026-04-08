@@ -26,7 +26,7 @@ class TestMatchIconLlm:
         ]
         response_json = json.dumps({"mediaId": "dino-id", "confidence": 0.92})
 
-        with patch("yoto_lib.icon_llm._call_claude", return_value=response_json):
+        with patch("yoto_lib.icon_llm._claude.call", return_value=response_json):
             media_id, confidence = match_icon_llm("Dinosaur Stories", icons)
 
         assert media_id == "dino-id"
@@ -37,7 +37,7 @@ class TestMatchIconLlm:
         icons = [{"mediaId": "star-id", "title": "Star"}]
         response_json = json.dumps({"mediaId": "none", "confidence": 0.0})
 
-        with patch("yoto_lib.icon_llm._call_claude", return_value=response_json):
+        with patch("yoto_lib.icon_llm._claude.call", return_value=response_json):
             media_id, confidence = match_icon_llm("Quantum Physics Lecture", icons)
 
         assert media_id is None
@@ -47,7 +47,7 @@ class TestMatchIconLlm:
         """Returns (None, 0.0) when the Claude CLI call fails."""
         icons = [{"mediaId": "star-id", "title": "Star"}]
 
-        with patch("yoto_lib.icon_llm._call_claude", return_value=None):
+        with patch("yoto_lib.icon_llm._claude.call", return_value=None):
             media_id, confidence = match_icon_llm("Anything", icons)
 
         assert media_id is None
@@ -63,7 +63,7 @@ class TestMatchIconLlm:
         """Returns (None, 0.0) when the LLM returns unparseable output."""
         icons = [{"mediaId": "star-id", "title": "Star"}]
 
-        with patch("yoto_lib.icon_llm._call_claude", return_value="not json at all"):
+        with patch("yoto_lib.icon_llm._claude.call", return_value="not json at all"):
             media_id, confidence = match_icon_llm("Anything", icons)
 
         assert media_id is None
@@ -81,7 +81,7 @@ def _make_red_png() -> bytes:
 
 class TestSummarizeLyricsForIcon:
     def test_returns_summary_on_success(self):
-        with patch("yoto_lib.icon_llm._call_claude", return_value="A bear climbing a tall oak tree to reach a beehive"):
+        with patch("yoto_lib.icon_llm._claude.call", return_value="A bear climbing a tall oak tree to reach a beehive"):
             result = summarize_lyrics_for_icon(
                 "Old MacDonald had a farm, E-I-E-I-O, and on his farm he had a cow",
                 "Old MacDonald",
@@ -89,12 +89,12 @@ class TestSummarizeLyricsForIcon:
         assert result == "A bear climbing a tall oak tree to reach a beehive"
 
     def test_returns_none_on_failure(self):
-        with patch("yoto_lib.icon_llm._call_claude", return_value=None):
+        with patch("yoto_lib.icon_llm._claude.call", return_value=None):
             result = summarize_lyrics_for_icon("some lyrics", "Some Song")
         assert result is None
 
     def test_returns_none_for_empty_response(self):
-        with patch("yoto_lib.icon_llm._call_claude", return_value=""):
+        with patch("yoto_lib.icon_llm._claude.call", return_value=""):
             result = summarize_lyrics_for_icon("some lyrics", "Some Song")
         assert result is None
 
@@ -103,7 +103,7 @@ class TestDescribeIconsWithLyrics:
     def test_includes_lyrics_summary_in_prompt(self):
         response_json = json.dumps(["bear in tree", "beehive", "farm animals"])
 
-        with patch("yoto_lib.icon_llm._call_claude", return_value=response_json) as mock_claude:
+        with patch("yoto_lib.icon_llm._claude.call", return_value=response_json) as mock_claude:
             result = describe_icons_llm(
                 "Old MacDonald",
                 lyrics_summary="Farm animals including cows, pigs, and chickens on a green pasture",
@@ -117,7 +117,7 @@ class TestDescribeIconsWithLyrics:
     def test_works_without_lyrics_summary(self):
         response_json = json.dumps(["concept 1", "concept 2", "concept 3"])
 
-        with patch("yoto_lib.icon_llm._call_claude", return_value=response_json) as mock_claude:
+        with patch("yoto_lib.icon_llm._claude.call", return_value=response_json) as mock_claude:
             result = describe_icons_llm("Some Track")
 
         assert len(result) == 3
@@ -131,7 +131,7 @@ class TestCompareIconsLlm:
         candidates = [_make_red_png(), _make_red_png(), _make_red_png()]
         response_json = json.dumps({"winner": 2, "scores": [0.5, 0.9, 0.6]})
 
-        with patch("yoto_lib.icon_llm._call_claude", return_value=response_json):
+        with patch("yoto_lib.icon_llm._claude.call", return_value=response_json):
             winner, scores = compare_icons_llm("Dinosaur Story", candidates)
 
         assert winner == 2
@@ -143,7 +143,7 @@ class TestCompareIconsLlm:
         yoto_icon = _make_red_png()
         response_json = json.dumps({"winner": 4, "scores": [0.5, 0.6, 0.5, 0.85]})
 
-        with patch("yoto_lib.icon_llm._call_claude", return_value=response_json):
+        with patch("yoto_lib.icon_llm._claude.call", return_value=response_json):
             winner, scores = compare_icons_llm(
                 "Dinosaur Story", ai_icons, yoto_icon=yoto_icon,
             )
@@ -155,7 +155,7 @@ class TestCompareIconsLlm:
         """On API failure, returns winner=1 (first candidate)."""
         candidates = [_make_red_png(), _make_red_png()]
 
-        with patch("yoto_lib.icon_llm._call_claude", return_value=None):
+        with patch("yoto_lib.icon_llm._claude.call", return_value=None):
             winner, scores = compare_icons_llm("Title", candidates)
 
         assert winner == 1

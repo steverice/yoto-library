@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from yoto_lib import mka
+from yoto_lib.providers.claude_provider import ClaudeProvider
 
 logger = logging.getLogger(__name__)
+
+_claude = ClaudeProvider()
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -144,23 +146,4 @@ def _build_prompt(playlist_title: str, metadata: dict[str, list[str]]) -> str:
 
 def _call_claude(prompt: str) -> str | None:
     """Call Claude CLI and return the response text, or None on failure."""
-    try:
-        cmd = ["claude", "-p", prompt, "--output-format", "json", "--model", "haiku", "--tools", ""]
-        logger.debug("description._call_claude: model=haiku prompt_length=%d", len(prompt))
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-        logger.debug("description._call_claude: exit_code=%d response_length=%d", result.returncode, len(result.stdout))
-        if result.returncode != 0:
-            return None
-
-        try:
-            wrapper = json.loads(result.stdout)
-            text = wrapper.get("result", result.stdout)
-        except json.JSONDecodeError:
-            text = result.stdout
-
-        from yoto_lib.costs import get_tracker, is_subscription
-        get_tracker().record("claude_haiku", subscription=is_subscription("claude_haiku"))
-        return text.strip()
-    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
-        logger.debug("description._call_claude: failed with %s", type(exc).__name__)
-        return None
+    return _claude.call(prompt, extract_json=False)
