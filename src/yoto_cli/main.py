@@ -735,6 +735,48 @@ def import_cmd(source, output):
     _print_cost_summary()
 
 
+# ── lyrics ───────────────────────────────────────────────────────────────
+
+
+@cli.command()
+@click.argument("playlist", type=click.Path(exists=True), shell_complete=_complete_dirs)
+@click.option("--force", is_flag=True, help="Re-fetch lyrics even if already present")
+def lyrics(playlist, force):
+    """Fetch and store lyrics for tracks in a playlist folder."""
+    logger.debug("command: lyrics playlist=%s force=%s", playlist, force)
+    from yoto_cli.progress import _console
+
+    playlist_path = Path(playlist)
+    mka_files = sorted(playlist_path.glob("*.mka"))
+
+    if not mka_files:
+        _console.print("[dim]No MKA files found.[/dim]")
+        return
+
+    for mka_path in mka_files:
+        tags = read_tags(mka_path)
+
+        if not force and tags.get("lyrics"):
+            _console.print(f"  [dim]{mka_path.name}: lyrics already present[/dim]")
+            continue
+
+        # Build a tags dict that get_lyrics can use (needs title, artist)
+        lookup_tags = {
+            "title": tags.get("title", mka_path.stem),
+            "artist": tags.get("artist", ""),
+        }
+        # Include existing lyrics tag for get_lyrics to check
+        if "lyrics" in tags:
+            lookup_tags["lyrics"] = tags["lyrics"]
+
+        lyrics_text, lyrics_source = get_lyrics(lookup_tags)
+        if lyrics_text:
+            write_tags(mka_path, {"lyrics": lyrics_text})
+            _console.print(f"  {mka_path.name}: lyrics found via {lyrics_source}")
+        else:
+            _console.print(f"  [dim]{mka_path.name}: no lyrics found[/dim]")
+
+
 # ── export ───────────────────────────────────────────────────────────────
 
 
