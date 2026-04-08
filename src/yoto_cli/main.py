@@ -194,6 +194,32 @@ def _complete_mka_with_icon(ctx, param, incomplete):
     return results
 
 
+def _has_lyrics(path: Path) -> bool:
+    """Check if an MKA file has a LYRICS tag."""
+    try:
+        tags = read_tags(path)
+        return bool(tags.get("lyrics"))
+    except Exception:
+        return False
+
+
+def _complete_lyrics_path(ctx, param, incomplete):
+    """Complete dirs and .mka files for lyrics command.
+
+    With --show: prefer tracks that have lyrics.
+    Without --show: prefer tracks that lack lyrics.
+    Falls back to all .mka files if the preferred filter matches none.
+    """
+    show_mode = ctx.params.get("show", False)
+    if show_mode:
+        results = _complete_path(incomplete, lambda p: _is_mka(p) and _has_lyrics(p))
+    else:
+        results = _complete_path(incomplete, lambda p: _is_mka(p) and not _has_lyrics(p))
+    if not any(item.type == "plain" and not item.value.endswith("/") for item in results):
+        results = _complete_path(incomplete, _is_mka)
+    return results
+
+
 def _complete_mka_without_icon(ctx, param, incomplete):
     """Complete .mka files that lack a custom icon, falling back to all .mka."""
     results = _complete_path(incomplete, lambda p: _is_mka(p) and not _has_custom_icon(p))
@@ -740,15 +766,21 @@ def import_cmd(source, output):
 
 
 @cli.command()
-@click.argument("playlist", type=click.Path(), required=False, default=None, shell_complete=_complete_dirs)
-@click.option("--force", is_flag=True, help="Re-fetch lyrics even if already present")
+@click.argument("path", type=click.Path(), required=False, default=None, shell_complete=_complete_lyrics_path)
+@click.option("--force", is_flag=True, help="Re-fetch lyrics even if already present / skip confirmation for stdin")
 @click.option("--show", is_flag=True, help="Display stored lyrics for each track")
 @click.option("--add-source", "add_source_url", default=None, metavar="URL",
               help="Analyze a lyrics website and generate a scraping config.")
-def lyrics(playlist, force, show, add_source_url):
-    """Fetch and store lyrics for tracks in a playlist folder."""
-    logger.debug("command: lyrics playlist=%s force=%s show=%s add_source_url=%s", playlist, force, show, add_source_url)
+def lyrics(path: str | None, force: bool, show: bool, add_source_url: str | None) -> None:
+    """Fetch and store lyrics for tracks in a playlist folder or single track.
+
+    Accepts a playlist folder or a single .mka file. When piping lyrics via
+    stdin (e.g. `cat lyrics.txt | yoto lyrics track.mka`), requires a single
+    track path. Use --force to skip confirmation when overwriting.
+    """
+    logger.debug("command: lyrics path=%s force=%s show=%s add_source_url=%s", path, force, show, add_source_url)
     from yoto_cli.progress import _console, error as _error, success as _success
+    from rich.prompt import Confirm
 
     if add_source_url:
         import shutil
@@ -764,7 +796,7 @@ def lyrics(playlist, force, show, add_source_url):
         jsdom_check = subprocess.run(
             ["node", "-e", "require('jsdom')"],
             capture_output=True,
-            cwd=str(Path(__file__).parent.parent / "yoto_lib"),
+            cwd=Path(__file__).parent.parent / "yoto_lib",
         )
         if jsdom_check.returncode != 0:
             _error("jsdom not installed. Run: npm install jsdom")
@@ -781,11 +813,11 @@ def lyrics(playlist, force, show, add_source_url):
         # 4. Show preview
         from rich.panel import Panel
         from rich.text import Text
-        from rich.prompt import Confirm
 
         sample_lyrics = config.get("_sample_lyrics", "")
+        sample_song = config.get("_sample_song", "(unknown)")
         preview_text = (
-            f"Sample: {config['_sample_song']}\n\n"
+            f"Sample: {sample_song}\n\n"
             f"{sample_lyrics[:500]}{'...' if len(sample_lyrics) > 500 else ''}"
         )
         _console.print(Panel(
@@ -810,7 +842,7 @@ def lyrics(playlist, force, show, add_source_url):
         config_path = lyrics_dir / f"{slug}.json"
 
         save_config = {k: v for k, v in config.items() if not k.startswith("_")}
-        with open(config_path, "w", encoding="utf-8") as f:
+        with config_path.open("w", encoding="utf-8") as f:
             json.dump(save_config, f, indent=2)
 
         # 7. Report success
@@ -818,18 +850,44 @@ def lyrics(playlist, force, show, add_source_url):
         _console.print("Use 'yoto lyrics --force <playlist>' to fetch lyrics using the new source.")
         return
 
-    if playlist is None:
-        _error("Missing argument 'PLAYLIST'. Run 'yoto lyrics --help' for usage.")
+    if path is None:
+        _error("Missing argument 'PATH'. Run 'yoto lyrics --help' for usage.")
         return
 
-    playlist_path = Path(playlist)
-    if not playlist_path.exists():
-        _error(f"Playlist path does not exist: {playlist}")
+    target = Path(path)
+
+    # Resolve target to a list of MKA files
+    if target.is_file() and target.suffix.lower() == ".mka":
+        mka_files = [target]
+    elif target.is_dir():
+        mka_files = sorted(target.glob("*.mka"))
+    else:
+        _console.print(f"[red]✗[/red] {target}: not a playlist folder or .mka file")
         return
-    mka_files = sorted(playlist_path.glob("*.mka"))
 
     if not mka_files:
         _console.print("[dim]No MKA files found.[/dim]")
+        return
+
+    # Check for stdin input (piped lyrics)
+    has_stdin = not sys.stdin.isatty()
+    if has_stdin:
+        if len(mka_files) != 1 or target.is_dir():
+            _console.print("[red]✗[/red] When piping lyrics via stdin, specify a single .mka file")
+            return
+        stdin_text = sys.stdin.read()
+        if not stdin_text.strip():
+            _console.print("[red]✗[/red] No lyrics on stdin")
+            return
+        mka_path = mka_files[0]
+        tags = read_tags(mka_path)
+        if tags.get("lyrics") and not force:
+            _console.print(f"[bold]{mka_path.name}[/bold] already has lyrics:")
+            _console.print(f"[dim]{tags['lyrics'][:200]}{'...' if len(tags['lyrics']) > 200 else ''}[/dim]")
+            if not Confirm.ask("Overwrite?", console=_console):
+                return
+        write_tags(mka_path, {"lyrics": stdin_text, "lyrics_summary": ""})
+        _console.print(f"  {mka_path.name}: lyrics set from stdin")
         return
 
     if show:
