@@ -100,7 +100,8 @@ class TestFetchLyricsLrclib:
 
 
 class TestGetLyrics:
-    def test_returns_lyrics_from_tags(self):
+    @patch("yoto_lib.lyrics._try_scrape_sources", return_value=(None, None))
+    def test_returns_lyrics_from_tags(self, _):
         from yoto_lib.lyrics import get_lyrics
         tags = {"title": "Song", "artist": "Artist", "lyrics": "La la la"}
 
@@ -111,7 +112,8 @@ class TestGetLyrics:
         assert source == "tags"
         mock_fetch.assert_not_called()
 
-    def test_falls_back_to_lrclib(self):
+    @patch("yoto_lib.lyrics._try_scrape_sources", return_value=(None, None))
+    def test_falls_back_to_lrclib(self, _):
         from yoto_lib.lyrics import get_lyrics
         tags = {"title": "Song", "artist": "Artist"}
 
@@ -122,7 +124,8 @@ class TestGetLyrics:
         assert source == "lrclib"
         mock_fetch.assert_called_once_with("Artist", "Song")
 
-    def test_returns_none_when_both_fail(self):
+    @patch("yoto_lib.lyrics._try_scrape_sources", return_value=(None, None))
+    def test_returns_none_when_both_fail(self, _):
         from yoto_lib.lyrics import get_lyrics
         tags = {"title": "Song", "artist": "Artist"}
 
@@ -132,7 +135,8 @@ class TestGetLyrics:
         assert text is None
         assert source == "none"
 
-    def test_skips_lrclib_when_no_artist(self):
+    @patch("yoto_lib.lyrics._try_scrape_sources", return_value=(None, None))
+    def test_skips_lrclib_when_no_artist(self, _):
         from yoto_lib.lyrics import get_lyrics
         tags = {"title": "Song"}
 
@@ -143,7 +147,8 @@ class TestGetLyrics:
         assert source == "none"
         mock_fetch.assert_not_called()
 
-    def test_skips_lrclib_when_no_title(self):
+    @patch("yoto_lib.lyrics._try_scrape_sources", return_value=(None, None))
+    def test_skips_lrclib_when_no_title(self, _):
         from yoto_lib.lyrics import get_lyrics
         tags = {"artist": "Artist"}
 
@@ -153,3 +158,26 @@ class TestGetLyrics:
         assert text is None
         assert source == "none"
         mock_fetch.assert_not_called()
+
+    @patch("yoto_lib.lyrics.fetch_lyrics_lrclib", return_value="lrclib lyrics")
+    @patch("yoto_lib.lyrics._try_scrape_sources", return_value=("scraped lyrics", "Test Source"))
+    def test_get_lyrics_uses_scrape_before_lrclib(self, mock_scrape, mock_lrclib):
+        from yoto_lib.lyrics import get_lyrics
+        tags = {"title": "Song", "artist": "Artist"}
+
+        text, source = get_lyrics(tags)
+
+        assert text == "scraped lyrics"
+        assert source == "Test Source"
+        mock_lrclib.assert_not_called()
+
+    @patch("yoto_lib.lyrics.fetch_lyrics_lrclib", return_value="lrclib lyrics")
+    @patch("yoto_lib.lyrics._try_scrape_sources", return_value=(None, None))
+    def test_get_lyrics_scrape_falls_through_to_lrclib(self, mock_scrape, mock_lrclib):
+        from yoto_lib.lyrics import get_lyrics
+        tags = {"title": "Song", "artist": "Artist"}
+
+        text, source = get_lyrics(tags)
+
+        assert text == "lrclib lyrics"
+        assert source == "lrclib"

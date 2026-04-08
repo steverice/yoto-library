@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from pathlib import Path
 
 import httpx
 
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 _LRCLIB_BASE = "https://lrclib.net/api"
 _USER_AGENT = "yoto-library/1.0 (https://github.com/smrice/yoto-library)"
+_LYRICS_DIR = Path.home() / ".yoto" / "lyrics"
 
 
 def read_lyrics_from_tags(tags: dict[str, str]) -> str | None:
@@ -58,20 +60,40 @@ def fetch_lyrics_lrclib(artist: str, title: str) -> str | None:
     return None
 
 
-def get_lyrics(tags: dict[str, str]) -> tuple[str | None, str]:
-    """Get lyrics from source tags or LRCLIB API.
+def _try_scrape_sources(artist: str, title: str) -> tuple[str, str] | tuple[None, None]:
+    """Try configured web scraping lyrics sources. Returns (text, source_name) or (None, None)."""
+    if not _LYRICS_DIR.exists():
+        return None, None
+    # Check if any .json configs exist before importing (node check happens inside)
+    if not list(_LYRICS_DIR.glob("*.json")):
+        return None, None
+    from yoto_lib.lyrics_scrape import fetch_lyrics_scrape
+    return fetch_lyrics_scrape(artist, title)
 
-    Returns (lyrics_text, source) where source is "tags", "lrclib", or "none".
+
+def get_lyrics(tags: dict[str, str]) -> tuple[str | None, str]:
+    """Get lyrics from source tags, scrape sources, or LRCLIB API.
+
+    Returns (lyrics_text, source) where source is "tags", a scrape source name, "lrclib", or "none".
     """
     # Try source tags first
     text = read_lyrics_from_tags(tags)
     if text:
         return text, "tags"
 
-    # Fall back to LRCLIB API (needs artist + title)
-    artist = tags.get("artist", "").strip()
+    # Title is required for all API/scrape lookups
     title = tags.get("title", "").strip()
-    if not artist or not title:
+    if not title:
+        return None, "none"
+
+    # Try configured scrape sources (artist optional for some sources)
+    artist = tags.get("artist", "").strip()
+    text, source_name = _try_scrape_sources(artist, title)
+    if text is not None:
+        return text, source_name
+
+    # Fall back to LRCLIB API (requires artist)
+    if not artist:
         return None, "none"
 
     text = fetch_lyrics_lrclib(artist, title)
