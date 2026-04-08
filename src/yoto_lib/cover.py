@@ -513,51 +513,19 @@ def render_text_layer(original: bytes, text_descriptions: list[dict]) -> bytes |
     if not instructions:
         return None
 
+    prompt = (
+        "Generate an image with ONLY text on a pure black (#000000) "
+        "background. Render these text elements:\n"
+        + "\n".join(instructions)
+        + "\n\nNothing else in the image — only the text on solid black."
+    )
+
     try:
-        from google import genai
-        from google.genai import types
-
-        client = genai.Client()
-        response = client.models.generate_content(
-            model="gemini-2.5-flash-image",
-            contents=[
-                f"Generate an image with ONLY text on a pure black (#000000) "
-                f"background. Render these text elements:\n"
-                + "\n".join(instructions)
-                + "\n\nNothing else in the image — only the text on solid black.",
-                types.Part.from_bytes(data=original, mime_type="image/png"),
-            ],
-            config=types.GenerateContentConfig(
-                response_modalities=["IMAGE"],
-            ),
-        )
-
-        if not response.candidates:
-            feedback = getattr(response, "prompt_feedback", None)
-            logger.warning("render_text_layer: no candidates (feedback=%s)", feedback)
-            return None
-
-        candidate = response.candidates[0]
-        finish = getattr(candidate, "finish_reason", None)
-        if finish and str(finish) not in ("STOP", "0", "FinishReason.STOP"):
-            logger.warning("render_text_layer: finish_reason=%s", finish)
-
-        if not candidate.content or not candidate.content.parts:
-            logger.warning("render_text_layer: empty content in candidate")
-            return None
-
-        for part in candidate.content.parts:
-            if part.inline_data is not None:
-                logger.debug("render_text_layer: %d bytes", len(part.inline_data.data))
-                from yoto_lib.costs import get_tracker
-                get_tracker().record("gemini_flash_image")
-                return part.inline_data.data
-            if hasattr(part, "text") and part.text:
-                logger.debug("render_text_layer: got text instead of image: %s", part.text[:200])
+        from yoto_lib.providers.gemini_provider import GeminiProvider
+        return GeminiProvider().generate(prompt, reference_image=original)
     except Exception as exc:
         logger.warning("render_text_layer: failed: %s", exc)
-
-    return None
+        return None
 
 
 def composite_text(
