@@ -119,6 +119,36 @@ ffmpeg -y -i track.mka \
 
 This produces byte-identical output regardless of what tags, icons, or other attachments have been added to the MKA since the bsdiff patch was generated.
 
+## Provider architecture
+
+All external service integrations extend the `Provider` abstract base class
+(`src/yoto_lib/providers/base.py`). Each provider implements a `check_status()`
+classmethod that reports its health — this might check a statuspage.io API,
+verify a CLI tool is on PATH, or simply return healthy.
+
+```
+Provider (ABC)
+  ├── check_status() → ProviderStatus   (classmethod, abstract)
+  └── subclasses: OpenAI, DallE2, Flux, Together, RetroDiffusion, Claude
+
+StatusPageMixin
+  └── check_status() via _fetch_statuspage()   (cached 5 min, thread-safe)
+  └── Used by: OpenAIProvider, DallE2Provider, ClaudeProvider
+```
+
+The `@check_status_on_error` decorator goes on **logic functions** that use
+providers. On error (exception or None return), it calls `check_status()` on
+each listed provider and logs a warning if any are unhealthy:
+
+```python
+@check_status_on_error(ClaudeProvider)
+def compare_icons_llm(track_title, candidates, ...): ...
+```
+
+This keeps provider health concerns completely out of business logic. Adding a
+new provider: extend `Provider`, implement `check_status()` (use `StatusPageMixin`
+if backed by statuspage.io), add the decorator to functions that use it.
+
 ## AI provider strategy
 
 Each AI-powered feature uses a hardcoded provider chosen for best results at that specific task. Providers are not interchangeable — the pipeline depends on each model's specific strengths.
