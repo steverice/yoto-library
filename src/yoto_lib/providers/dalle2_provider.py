@@ -6,13 +6,16 @@ import logging
 
 from openai import OpenAI
 
+from yoto_lib.providers.base import Provider, ProviderStatus, StatusPageMixin
+
 logger = logging.getLogger(__name__)
 
 
 _SUPPORTED_SIZES = {256, 512, 1024}
 
 
-class DallE2Provider:
+class DallE2Provider(StatusPageMixin, Provider):
+    status_page_url = "https://status.openai.com/api/v2/status.json"
     """Generates images using DALL-E 2 (supports small sizes)."""
 
     def __init__(self) -> None:
