@@ -18,7 +18,6 @@ PRINT_RATIO = 54 / 86  # 0.6279
 ASPECT_TOLERANCE = 0.05  # 5% deviation allowed
 
 DEFAULT_PRINTER = "Canon_SELPHY_CP1300"
-DEFAULT_ICC_PROFILE = "~/Library/ColorSync/Profiles/Canon Selphy CP1200.ICC"
 
 
 class PrintError(Exception):
@@ -89,11 +88,18 @@ def _check_printer(printer: str) -> None:
 
 
 def _icc_convert(img: Image.Image, icc_profile: str) -> Image.Image:
-    """Apply ICC device link profile via Pillow/lcms2."""
+    """Apply ICC profile via Pillow/lcms2.
+
+    Handles both standard printer profiles (prtr) and device link profiles (link).
+    """
     try:
         profile = ImageCms.getOpenProfile(icc_profile)
-        transform = ImageCms.buildTransform(profile, profile, "RGB", "RGB")
-        return ImageCms.applyTransform(img, transform)
+        if profile.profile.device_class == "link":
+            transform = ImageCms.buildTransform(profile, profile, "RGB", "RGB")
+            return ImageCms.applyTransform(img, transform)
+        else:
+            srgb = ImageCms.createProfile("sRGB")
+            return ImageCms.profileToProfile(img, srgb, profile)
     except (OSError, ImageCms.PyCMSError) as exc:
         raise PrintError(f"Color conversion failed: {exc}")
 
@@ -119,30 +125,25 @@ def print_cover(
     printer: str | None = None,
     icc_profile: str | None = None,
 ) -> None:
-    """Full print pipeline: validate, crop, ICC convert, print.
+    """Full print pipeline: validate, crop, optionally ICC convert, print.
 
     Args:
         cover_path: Path to cover.png
         printer: CUPS printer name (default: YOTO_PRINTER env or Canon_SELPHY_CP1300)
-        icc_profile: Path to ICC profile (default: YOTO_ICC_PROFILE env or Canon Selphy CP1200.ICC)
+        icc_profile: Path to ICC profile, or None to skip color management
     """
     _check_platform()
 
     printer = printer or os.environ.get("YOTO_PRINTER", DEFAULT_PRINTER)
-    icc_profile = icc_profile or os.environ.get(
-        "YOTO_ICC_PROFILE",
-        os.path.expanduser(DEFAULT_ICC_PROFILE),
-    )
-
     _check_printer(printer)
 
-    if not Path(icc_profile).exists():
-        raise PrintError(f"ICC profile not found: {icc_profile}")
-
-    # Validate, crop, ICC convert
+    # Validate and crop
     img = validate_cover(cover_path)
     img = crop_for_print(img)
-    img = _icc_convert(img, icc_profile)
+
+    # ICC convert if profile provided
+    if icc_profile:
+        img = _icc_convert(img, icc_profile)
 
     # Save to temp file and print
     print_tmp = None

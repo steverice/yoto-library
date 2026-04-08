@@ -301,8 +301,12 @@ def sync(path, dry_run, no_trim, ignore_album_art, print_cover_flag):
             if should_print is None:
                 should_print = click.confirm("Cover was generated. Print it?", default=False)
             if should_print:
+                icc_profile = os.environ.get("YOTO_ICC_PROFILE")
+                if icc_profile and not Path(icc_profile).exists():
+                    _warning(f"ICC profile not found: {icc_profile}")
+                    icc_profile = None
                 try:
-                    print_cover(cover_path)
+                    print_cover(cover_path, icc_profile=icc_profile)
                     _success("Sent to printer")
                 except PrintError as exc:
                     _warning(f"Print failed: {exc}")
@@ -1230,10 +1234,11 @@ def cover(path, force, backup, ignore_album_art):
 @cli.command(name="print")
 @click.argument("path", default=".", type=click.Path(exists=True), shell_complete=_complete_dirs)
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
-def print_cmd(path, yes):
+@click.option("--profile", type=click.Path(), default=None, help="ICC color profile for the printer")
+def print_cmd(path, yes, profile):
     """Print cover art to a photo printer."""
-    logger.debug("command: print path=%s yes=%s", path, yes)
-    from yoto_cli.progress import _console, success as _success
+    logger.debug("command: print path=%s yes=%s profile=%s", path, yes, profile)
+    from yoto_cli.progress import _console, success as _success, warning as _warning
 
     folder = Path(path)
     playlist = load_playlist(folder)
@@ -1247,13 +1252,21 @@ def print_cmd(path, yes):
         if not cover_path.exists():
             raise click.ClickException("Cover generation failed.")
 
+    # Resolve ICC profile: --profile flag > env var > None (skip)
+    icc_profile = profile or os.environ.get("YOTO_ICC_PROFILE")
+    if icc_profile and not Path(icc_profile).exists():
+        _warning(f"ICC profile not found: {icc_profile}")
+        if not click.confirm("Continue without color management?", default=True):
+            return
+        icc_profile = None
+
     if not yes:
         title = playlist.title or folder.name
         if not click.confirm(f"Print cover for '{title}'?", default=False):
             return
 
     try:
-        print_cover(cover_path)
+        print_cover(cover_path, icc_profile=icc_profile)
     except PrintError as exc:
         raise click.ClickException(str(exc))
 

@@ -609,7 +609,7 @@ class TestPrintCommand:
             result = runner.invoke(cli, ["print", str(folder)], input="y\n")
 
         assert result.exit_code == 0
-        mock_print.assert_called_once_with(folder / "cover.png")
+        mock_print.assert_called_once_with(folder / "cover.png", icc_profile=None)
 
     def test_print_yes_skips_confirm(self, runner, tmp_path):
         """print --yes skips the confirmation prompt."""
@@ -655,6 +655,41 @@ class TestPrintCommand:
         mock_gen.assert_not_called()
         assert result.exit_code == 0
 
+    def test_print_with_profile(self, runner, tmp_path):
+        """print --profile passes ICC profile to print_cover."""
+        folder = tmp_path / "album"
+        folder.mkdir()
+        (folder / "playlist.jsonl").write_text('"track.mka"\n')
+        (folder / "track.mka").write_bytes(b"\x00" * 16)
+        from PIL import Image
+        img = Image.new("RGB", (638, 1011), "blue")
+        img.save(folder / "cover.png")
+        fake_profile = tmp_path / "test.icc"
+        fake_profile.write_bytes(b"fake")
+
+        with patch("yoto_cli.main.print_cover") as mock_print:
+            result = runner.invoke(cli, ["print", "--yes", "--profile", str(fake_profile), str(folder)])
+
+        assert result.exit_code == 0
+        mock_print.assert_called_once_with(folder / "cover.png", icc_profile=str(fake_profile))
+
+    def test_print_missing_profile_warns(self, runner, tmp_path):
+        """print warns and offers to continue when profile not found."""
+        folder = tmp_path / "album"
+        folder.mkdir()
+        (folder / "playlist.jsonl").write_text('"track.mka"\n')
+        (folder / "track.mka").write_bytes(b"\x00" * 16)
+        from PIL import Image
+        img = Image.new("RGB", (638, 1011), "blue")
+        img.save(folder / "cover.png")
+
+        with patch("yoto_cli.main.print_cover") as mock_print:
+            # Answer "y" to continue without color management, "y" to print
+            result = runner.invoke(cli, ["print", "--profile", "/nonexistent.icc", str(folder)], input="y\ny\n")
+
+        assert result.exit_code == 0
+        mock_print.assert_called_once_with(folder / "cover.png", icc_profile=None)
+
     def test_print_error_shows_message(self, runner, tmp_path):
         """PrintError is surfaced as a ClickException."""
         folder = tmp_path / "album"
@@ -692,7 +727,7 @@ class TestSyncPrint:
             result = runner.invoke(cli, ["sync", "--print", str(folder)])
 
         assert result.exit_code == 0
-        mock_print.assert_called_once_with(folder / "cover.png")
+        mock_print.assert_called_once_with(folder / "cover.png", icc_profile=None)
 
     def test_sync_no_print_flag(self, runner, tmp_path):
         """sync --no-print skips printing even when cover was uploaded."""
