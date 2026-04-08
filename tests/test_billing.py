@@ -168,7 +168,7 @@ class TestBillingCommand:
         runner = CliRunner()
         result = runner.invoke(cli, ["billing"])
         assert result.exit_code == 0
-        assert "Lifetime spend:" in result.output
+        assert "Lifetime spend" in result.output
         assert "RetroDiffusion" in result.output
         assert "OpenAI" in result.output
 

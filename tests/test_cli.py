@@ -126,7 +126,7 @@ class TestSyncCommand:
             result = runner.invoke(cli, ["sync", "--dry-run", str(folder)])
 
         assert result.exit_code == 0
-        mock_sync.assert_called_once_with(folder, dry_run=True, trim=True)
+        mock_sync.assert_called_once_with(folder, dry_run=True, trim=True, ignore_album_art=False, force_cover=False)
         assert "[Dry run]" in result.output
         assert "2 tracks" in result.output
 
