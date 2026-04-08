@@ -10,6 +10,8 @@ import pytest
 from yoto_lib.icon_llm import (
     match_icon_llm,
     compare_icons_llm,
+    describe_icons_llm,
+    summarize_lyrics_for_icon,
     CONFIDENCE_HIGH,
     CONFIDENCE_LOW,
 )
@@ -75,6 +77,52 @@ def _make_red_png() -> bytes:
     buf = io.BytesIO()
     Image.new("RGB", (16, 16), "red").save(buf, format="PNG")
     return buf.getvalue()
+
+
+class TestSummarizeLyricsForIcon:
+    def test_returns_summary_on_success(self):
+        with patch("yoto_lib.icon_llm._call_claude", return_value="A bear climbing a tall oak tree to reach a beehive"):
+            result = summarize_lyrics_for_icon(
+                "Old MacDonald had a farm, E-I-E-I-O, and on his farm he had a cow",
+                "Old MacDonald",
+            )
+        assert result == "A bear climbing a tall oak tree to reach a beehive"
+
+    def test_returns_none_on_failure(self):
+        with patch("yoto_lib.icon_llm._call_claude", return_value=None):
+            result = summarize_lyrics_for_icon("some lyrics", "Some Song")
+        assert result is None
+
+    def test_returns_none_for_empty_response(self):
+        with patch("yoto_lib.icon_llm._call_claude", return_value=""):
+            result = summarize_lyrics_for_icon("some lyrics", "Some Song")
+        assert result is None
+
+
+class TestDescribeIconsWithLyrics:
+    def test_includes_lyrics_summary_in_prompt(self):
+        response_json = json.dumps(["bear in tree", "beehive", "farm animals"])
+
+        with patch("yoto_lib.icon_llm._call_claude", return_value=response_json) as mock_claude:
+            result = describe_icons_llm(
+                "Old MacDonald",
+                lyrics_summary="Farm animals including cows, pigs, and chickens on a green pasture",
+            )
+
+        assert len(result) == 3
+        # Verify the prompt included the lyrics summary
+        call_prompt = mock_claude.call_args[0][0]
+        assert "Farm animals including cows, pigs, and chickens" in call_prompt
+
+    def test_works_without_lyrics_summary(self):
+        response_json = json.dumps(["concept 1", "concept 2", "concept 3"])
+
+        with patch("yoto_lib.icon_llm._call_claude", return_value=response_json) as mock_claude:
+            result = describe_icons_llm("Some Track")
+
+        assert len(result) == 3
+        call_prompt = mock_claude.call_args[0][0]
+        assert "Lyrics context" not in call_prompt
 
 
 class TestCompareIconsLlm:
