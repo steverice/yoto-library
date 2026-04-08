@@ -871,7 +871,7 @@ def select_icon(tracks):
     from yoto_lib.icons import generate_retrodiffusion_icons, download_icon, set_macos_file_icon
     from yoto_lib.mka import get_attachment
     from yoto_lib.icon_catalog import get_catalog
-    from yoto_lib.icon_llm import match_icon_llm, compare_icons_llm, describe_icons_llm, log_icon_feedback
+    from yoto_lib.icon_llm import match_icon_llm, compare_icons_llm, describe_icons_llm, log_icon_feedback, summarize_lyrics_for_icon
 
     from yoto_cli.progress import make_progress, _console, success as _success, warning as _warning
     from rich.rule import Rule
@@ -889,6 +889,16 @@ def select_icon(tracks):
         desc_path = track_path.resolve().parent / "description.txt"
         if desc_path.exists():
             album_desc = desc_path.read_text(encoding="utf-8")
+
+        # Lyrics summary for icon prompt enrichment
+        track_tags = read_tags(track_path)
+        lyrics_summary = track_tags.get("lyrics_summary")
+        if not lyrics_summary:
+            raw_lyrics = track_tags.get("lyrics")
+            if raw_lyrics:
+                lyrics_summary = summarize_lyrics_for_icon(raw_lyrics, title)
+                if lyrics_summary:
+                    write_tags(track_path, {"lyrics_summary": lyrics_summary})
 
         if len(tracks) > 1:
             _console.print(Rule(title=f"{track_path.name} ({i + 1}/{len(tracks)})"))
@@ -928,7 +938,7 @@ def select_icon(tracks):
             skipped = False
 
             inner = progress.add_task("Describing icons", total=None, status="")
-            descriptions = describe_icons_llm(title, album_description=album_desc)
+            descriptions = describe_icons_llm(title, album_description=album_desc, lyrics_summary=lyrics_summary)
             progress.remove_task(inner)
             if not descriptions:
                 descriptions = [title, title, title]  # fallback to raw title
@@ -1029,7 +1039,7 @@ def select_icon(tracks):
                     task = progress.add_task(title, total=5, status="describing icons")
 
                     inner = progress.add_task("Describing icons", total=None, status="")
-                    descriptions = describe_icons_llm(title, album_description=album_desc)
+                    descriptions = describe_icons_llm(title, album_description=album_desc, lyrics_summary=lyrics_summary)
                     progress.remove_task(inner)
                     if not descriptions:
                         descriptions = [title, title, title]
