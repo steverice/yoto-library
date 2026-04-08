@@ -174,12 +174,10 @@ Lightroom handles color-managed printing:
 
 1. **Validate** — check cover.png exists and has the expected portrait aspect ratio (~0.628)
 2. **Crop** — center-crop to exact 54:86mm proportions (typically a few pixels of adjustment)
-3. **ICC convert** — `sips --matchToWithIntent` converts from sRGB to the printer's ICC
-   profile using macOS ColorSync with relative colorimetric intent
-4. **Print** — `lpr` sends the JPEG to the printer via CUPS with borderless 54x86mm paper
-
-JPEG is used for the final output because the Selphy accepts it as a direct passthrough
-with zero CUPS filter overhead (PNG would go through three conversion steps).
+3. **ICC convert** — Pillow's `ImageCms` applies the Canon Selphy ICC device link profile
+   via lcms2. The profile is a pre-baked color transform (device link class), so it's
+   applied directly with `buildTransform(profile, profile, "RGB", "RGB")`.
+4. **Print** — `lpr` sends the PNG to the printer via CUPS with borderless 54x86mm paper
 
 Configuration via environment variables: `YOTO_PRINTER` (CUPS name) and `YOTO_ICC_PROFILE`
 (ICC profile path).

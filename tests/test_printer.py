@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageCms
 
 from yoto_lib.printer import (
     PRINT_RATIO,
@@ -124,39 +124,32 @@ class TestCheckPrinter:
 
 
 class TestIccConvert:
-    def test_calls_sips_correctly(self, tmp_path):
-        """sips is called with correct ICC profile and rendering intent."""
-        input_png = _make_png(tmp_path / "input.png", 100, 160)
-        output_jpg = tmp_path / "output.jpg"
-        profile = "/path/to/profile.icc"
+    def test_applies_profile_transform(self):
+        """ICC conversion applies device link profile via ImageCms."""
+        img = Image.new("RGB", (100, 160), color="blue")
 
-        with patch("yoto_lib.printer.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0)
-            _icc_convert(input_png, output_jpg, profile)
+        with patch("yoto_lib.printer.ImageCms") as mock_cms:
+            mock_profile = MagicMock()
+            mock_transform = MagicMock()
+            mock_cms.getOpenProfile.return_value = mock_profile
+            mock_cms.buildTransform.return_value = mock_transform
+            mock_cms.applyTransform.return_value = img
 
-        mock_run.assert_called_once()
-        cmd = mock_run.call_args[0][0]
-        assert cmd[0] == "sips"
-        assert "-s" in cmd
-        assert "format" in cmd
-        assert "jpeg" in cmd
-        assert "formatOptions" in cmd
-        assert "100" in cmd
-        assert "--matchToWithIntent" in cmd
-        assert profile in cmd
-        assert "relative" in cmd
-        assert str(input_png) in cmd
-        assert str(output_jpg) in cmd
+            result = _icc_convert(img, "/path/to/profile.icc")
 
-    def test_sips_failure_raises(self, tmp_path):
-        """PrintError when sips returns non-zero."""
-        input_png = _make_png(tmp_path / "input.png", 100, 160)
-        output_jpg = tmp_path / "output.jpg"
+        mock_cms.getOpenProfile.assert_called_once_with("/path/to/profile.icc")
+        mock_cms.buildTransform.assert_called_once_with(mock_profile, mock_profile, "RGB", "RGB")
+        mock_cms.applyTransform.assert_called_once_with(img, mock_transform)
 
-        with patch("yoto_lib.printer.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=1, stderr="bad profile")
+    def test_profile_error_raises(self):
+        """PrintError when ICC profile can't be applied."""
+        img = Image.new("RGB", (100, 160), color="blue")
+
+        with patch("yoto_lib.printer.ImageCms") as mock_cms:
+            mock_cms.PyCMSError = ImageCms.PyCMSError
+            mock_cms.getOpenProfile.side_effect = OSError("bad profile")
             with pytest.raises(PrintError, match="Color conversion failed"):
-                _icc_convert(input_png, output_jpg, "/bad/profile.icc")
+                _icc_convert(img, "/bad/profile.icc")
 
 
 class TestSendToPrinter:
@@ -189,20 +182,21 @@ class TestSendToPrinter:
 
 class TestPrintCover:
     def test_full_pipeline(self, tmp_path):
-        """print_cover calls validate → crop → sips → lpr → cleanup."""
+        """print_cover calls validate → crop → ICC convert → lpr → cleanup."""
         cover = _make_png(tmp_path / "cover.png", 638, 1011)
         fake_profile = tmp_path / "test.icc"
         fake_profile.write_bytes(b"fake")
+        fake_img = Image.new("RGB", (635, 1011), "blue")
 
         with patch("yoto_lib.printer._check_platform"), \
              patch("yoto_lib.printer._check_printer"), \
-             patch("yoto_lib.printer._icc_convert") as mock_sips, \
+             patch("yoto_lib.printer._icc_convert", return_value=fake_img) as mock_icc, \
              patch("yoto_lib.printer._send_to_printer") as mock_lpr:
             print_cover(cover, icc_profile=str(fake_profile))
 
-        mock_sips.assert_called_once()
+        mock_icc.assert_called_once()
+        assert mock_icc.call_args[0][1] == str(fake_profile)
         mock_lpr.assert_called_once()
-        # Verify printer name default
         assert mock_lpr.call_args[0][1] == DEFAULT_PRINTER
 
     def test_icc_profile_not_found(self, tmp_path):
@@ -220,9 +214,10 @@ class TestPrintCover:
         fake_profile = tmp_path / "custom.icc"
         fake_profile.write_bytes(b"fake")
 
+        fake_img = Image.new("RGB", (635, 1011), "blue")
         with patch("yoto_lib.printer._check_platform"), \
              patch("yoto_lib.printer._check_printer") as mock_check, \
-             patch("yoto_lib.printer._icc_convert") as mock_sips, \
+             patch("yoto_lib.printer._icc_convert", return_value=fake_img) as mock_icc, \
              patch("yoto_lib.printer._send_to_printer") as mock_lpr, \
              patch.dict(os.environ, {
                  "YOTO_PRINTER": "My_Printer",
@@ -233,5 +228,5 @@ class TestPrintCover:
         mock_check.assert_called_once_with("My_Printer")
         mock_lpr.assert_called_once()
         assert mock_lpr.call_args[0][1] == "My_Printer"
-        mock_sips.assert_called_once()
-        assert mock_sips.call_args[0][2] == str(fake_profile)
+        mock_icc.assert_called_once()
+        assert mock_icc.call_args[0][1] == str(fake_profile)
