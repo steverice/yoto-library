@@ -741,9 +741,10 @@ def import_cmd(source, output):
 @cli.command()
 @click.argument("playlist", type=click.Path(exists=True), shell_complete=_complete_dirs)
 @click.option("--force", is_flag=True, help="Re-fetch lyrics even if already present")
-def lyrics(playlist, force):
+@click.option("--show", is_flag=True, help="Display stored lyrics for each track")
+def lyrics(playlist, force, show):
     """Fetch and store lyrics for tracks in a playlist folder."""
-    logger.debug("command: lyrics playlist=%s force=%s", playlist, force)
+    logger.debug("command: lyrics playlist=%s force=%s show=%s", playlist, force, show)
     from yoto_cli.progress import _console
 
     playlist_path = Path(playlist)
@@ -751,6 +752,29 @@ def lyrics(playlist, force):
 
     if not mka_files:
         _console.print("[dim]No MKA files found.[/dim]")
+        return
+
+    if show:
+        from rich.panel import Panel
+        from rich.text import Text
+        with _console.pager(styles=True):
+            for mka_path in mka_files:
+                tags = read_tags(mka_path)
+                title = tags.get("title", mka_path.stem)
+                artist = tags.get("artist", "")
+                text = tags.get("lyrics")
+                if not text:
+                    _console.print(f"[dim]{mka_path.name}: no lyrics stored[/dim]")
+                    continue
+                subtitle = artist if artist else None
+                _console.print(Panel(
+                    Text(text),
+                    title=title,
+                    subtitle=subtitle,
+                    border_style="cyan",
+                    padding=(1, 2),
+                    width=min(120, _console.width),
+                ))
         return
 
     for mka_path in mka_files:
@@ -923,23 +947,23 @@ def select_icon(tracks):
 
         with make_progress() as progress:
             task = progress.add_task(title, total=6, status="matching Yoto icon")
-
-            inner = progress.add_task("Matching catalog", total=None, status="")
-            yoto_media_id, yoto_confidence = match_icon_llm(title, catalog)
-            progress.remove_task(inner)
-
-            if yoto_media_id:
-                yoto_bytes = download_icon(yoto_media_id)
-                if yoto_bytes:
-                    yoto_img = Image.open(io.BytesIO(yoto_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)
-                    for icon in catalog:
-                        if icon.get("mediaId") == yoto_media_id:
-                            yoto_title = icon.get("title", "") or icon.get("name", "")
-                            break
-
-            progress.update(task, advance=1, status="describing icons")
             tmpdir = Path(tempfile.mkdtemp(prefix="yoto-icon-"))
             skipped = False
+
+            # Run Yoto catalog matching in parallel with icon description + generation
+            from concurrent.futures import Future
+            yoto_executor = ThreadPoolExecutor(max_workers=1)
+
+            def _match_yoto() -> tuple:
+                inner = progress.add_task("Matching catalog", total=None, status="")
+                mid, conf = match_icon_llm(title, catalog)
+                progress.remove_task(inner)
+                return mid, conf
+
+            yoto_future: Future = yoto_executor.submit(_match_yoto)
+
+            # Meanwhile, describe and generate icons
+            progress.update(task, advance=1, status="describing icons")
 
             inner = progress.add_task("Describing icons", total=None, status="")
             descriptions = describe_icons_llm(title, album_description=album_desc, lyrics_summary=lyrics_summary)
@@ -970,6 +994,20 @@ def select_icon(tracks):
                 on_icon_start=on_icon_start,
                 on_icon_done=on_icon_done,
             )
+
+            # Collect Yoto matching result (should be done by now)
+            yoto_media_id, yoto_confidence = yoto_future.result()
+            yoto_executor.shutdown(wait=False)
+
+            if yoto_media_id:
+                yoto_bytes = download_icon(yoto_media_id)
+                if yoto_bytes:
+                    yoto_img = Image.open(io.BytesIO(yoto_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)
+                    for icon in catalog:
+                        if icon.get("mediaId") == yoto_media_id:
+                            yoto_title = icon.get("title", "") or icon.get("name", "")
+                            break
+
             if not batch:
                 progress.console.print(f"[red]✗[/red] Icon generation failed for {track_path.name}")
                 skipped = True
@@ -983,6 +1021,8 @@ def select_icon(tracks):
                     album_description=album_desc,
                 )
                 progress.remove_task(inner)
+                if not scores:
+                    progress.console.print("[yellow]⚠ Icon evaluation timed out, scores unavailable[/yellow]")
         # progress bar closed — interactive prompt starts below
 
         if skipped:
@@ -1083,6 +1123,8 @@ def select_icon(tracks):
                             album_description=album_desc,
                         )
                         progress.remove_task(inner)
+                        if not scores:
+                            progress.console.print("[yellow]⚠ Icon evaluation timed out, scores unavailable[/yellow]")
                 if skipped:
                     break
                 continue
