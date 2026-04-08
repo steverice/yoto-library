@@ -263,6 +263,8 @@ Each AI task uses a specific provider chosen for best results at that task:
 - **OpenAI** — sign up at [platform.openai.com](https://platform.openai.com/), create key in API Keys
 - **Claude CLI** — install from [docs.anthropic.com](https://docs.anthropic.com/en/docs/claude-code), uses your Claude subscription
 
+> **Important:** If `ANTHROPIC_API_KEY` is set in your environment, the Claude CLI will use it for API-key billing instead of your subscription. This can result in significant per-token charges. Make sure `ANTHROPIC_API_KEY` is **not** set (or excluded from your `.env`) to use your Claude subscription.
+
 ## iTerm2 icon display
 
 If you use iTerm2, the `select-icon` command can improve pixel art rendering by fixing a color space issue in some iTerm2 color presets (notably "Dark Background"). To enable this:
