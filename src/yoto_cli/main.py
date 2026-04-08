@@ -740,15 +740,92 @@ def import_cmd(source, output):
 
 
 @cli.command()
-@click.argument("playlist", type=click.Path(exists=True), shell_complete=_complete_dirs)
+@click.argument("playlist", type=click.Path(), required=False, default=None, shell_complete=_complete_dirs)
 @click.option("--force", is_flag=True, help="Re-fetch lyrics even if already present")
 @click.option("--show", is_flag=True, help="Display stored lyrics for each track")
-def lyrics(playlist, force, show):
+@click.option("--add-source", "add_source_url", default=None, metavar="URL",
+              help="Analyze a lyrics website and generate a scraping config.")
+def lyrics(playlist, force, show, add_source_url):
     """Fetch and store lyrics for tracks in a playlist folder."""
-    logger.debug("command: lyrics playlist=%s force=%s show=%s", playlist, force, show)
-    from yoto_cli.progress import _console
+    logger.debug("command: lyrics playlist=%s force=%s show=%s add_source_url=%s", playlist, force, show, add_source_url)
+    from yoto_cli.progress import _console, error as _error, success as _success
+
+    if add_source_url:
+        import shutil
+        import subprocess
+        import json
+
+        # 1. Check node is on PATH
+        if not shutil.which("node"):
+            _error("'node' not found on PATH. Install Node.js (v18+) to use lyrics scraping.")
+            return
+
+        # 2. Check jsdom is installed (run from yoto_lib dir so Node resolves local node_modules)
+        jsdom_check = subprocess.run(
+            ["node", "-e", "require('jsdom')"],
+            capture_output=True,
+            cwd=str(Path(__file__).parent.parent / "yoto_lib"),
+        )
+        if jsdom_check.returncode != 0:
+            _error("jsdom not installed. Run: npm install jsdom")
+            return
+
+        # 3. Run the wizard
+        try:
+            from yoto_lib.lyrics_source_wizard import run_wizard
+            config = run_wizard(add_source_url)
+        except ValueError as exc:
+            _error(str(exc))
+            return
+
+        # 4. Show preview
+        from rich.panel import Panel
+        from rich.text import Text
+        from rich.prompt import Confirm
+
+        sample_lyrics = config.get("_sample_lyrics", "")
+        preview_text = (
+            f"Sample: {config['_sample_song']}\n\n"
+            f"{sample_lyrics[:500]}{'...' if len(sample_lyrics) > 500 else ''}"
+        )
+        _console.print(Panel(
+            Text(preview_text),
+            title=config["name"],
+            subtitle=config["url"],
+            border_style="cyan",
+            padding=(1, 2),
+            width=min(100, _console.width),
+        ))
+
+        # 5. Confirm
+        if not Confirm.ask("Save this lyrics source config?", console=_console):
+            return
+
+        # 6. Save the config
+        lyrics_dir = Path.home() / ".yoto" / "lyrics"
+        lyrics_dir.mkdir(parents=True, exist_ok=True)
+
+        slug = re.sub(r"[^\w\s-]", "", config["name"].lower())
+        slug = re.sub(r"[\s_]+", "-", slug).strip("-")
+        config_path = lyrics_dir / f"{slug}.json"
+
+        save_config = {k: v for k, v in config.items() if not k.startswith("_")}
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(save_config, f, indent=2)
+
+        # 7. Report success
+        _success(f"Saved to ~/.yoto/lyrics/{slug}.json")
+        _console.print("Use 'yoto lyrics --force <playlist>' to fetch lyrics using the new source.")
+        return
+
+    if playlist is None:
+        _error("Missing argument 'PLAYLIST'. Run 'yoto lyrics --help' for usage.")
+        return
 
     playlist_path = Path(playlist)
+    if not playlist_path.exists():
+        _error(f"Playlist path does not exist: {playlist}")
+        return
     mka_files = sorted(playlist_path.glob("*.mka"))
 
     if not mka_files:
