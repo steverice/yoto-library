@@ -17,6 +17,7 @@ from PIL import Image
 
 from yoto_lib.providers import get_provider
 from yoto_lib import mka
+from yoto_lib.providers.base import check_status_on_error
 from yoto_lib.providers.claude_provider import ClaudeProvider
 
 _claude = ClaudeProvider()
@@ -320,6 +321,7 @@ def try_shared_album_art(
     return True
 
 
+@check_status_on_error(ClaudeProvider)
 def generate_cover_if_missing(
     playlist: "Playlist",
     log: "Callable[[str], None] | None" = None,
