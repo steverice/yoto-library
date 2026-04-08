@@ -1332,10 +1332,12 @@ def billing(reset_group):
 
     # Section 1: Balances
     _print_balances(balances)
+    click.echo()
 
     # Section 2: Subscription
     if subscription_usage:
         _print_subscription_usage(subscription_usage)
+        click.echo()
 
     # Section 3: Lifetime spend
     _print_lifetime_spend()
@@ -1343,6 +1345,9 @@ def billing(reset_group):
 
 def _print_balances(balances: dict) -> None:
     """Print the Balances section."""
+    from rich.table import Table
+    from yoto_cli.progress import _console
+
     # Determine which providers are active (have env vars set)
     active_providers = []
     if os.environ.get("RETRODIFFUSION_API_KEY"):
@@ -1351,32 +1356,39 @@ def _print_balances(balances: dict) -> None:
         active_providers.append("OpenAI")
     if os.environ.get("TOGETHER_AI_KEY") or os.environ.get("TOGETHER_API_KEY"):
         active_providers.append("Together AI")
-    if os.environ.get("GOOGLE_API_KEY"):
+    if os.environ.get("GEMINI_API_KEY"):
         active_providers.append("Google Gemini")
 
     if not active_providers:
         return
 
-    click.echo("Balances:")
+    table = Table(title="Balances", title_style="bold", title_justify="left", show_header=False, box=None, padding=(0, 1))
+    table.add_column(style="cyan", min_width=26)
+    table.add_column()
+
     for name in active_providers:
         if name in balances:
             info = balances[name]
             if "balance" in info:
-                click.echo(f"  {name:<24}${info['balance']:.2f} remaining")
+                table.add_row(name, f"${info['balance']:.2f} remaining")
             elif "error" in info:
-                click.echo(click.style(f"  {name:<24}error: {info['error']}", fg="yellow"))
+                table.add_row(name, f"[yellow]error: {info['error']}[/yellow]")
         elif name in DASHBOARD_URLS:
-            click.echo(click.style(
-                f"  {name:<24}check dashboard \u2192 {DASHBOARD_URLS[name]}", dim=True,
-            ))
-    click.echo()
+            table.add_row(name, f"[dim]check dashboard \u2192 {DASHBOARD_URLS[name]}[/dim]")
+
+    _console.print(table)
 
 
 def _print_subscription_usage(usage: dict) -> None:
     """Print the Subscription section."""
     from datetime import datetime, timezone
+    from rich.table import Table
+    from yoto_cli.progress import _console
 
-    click.echo("Subscription:")
+    table = Table(title="Subscription", title_style="bold", title_justify="left", show_header=False, box=None, padding=(0, 1))
+    table.add_column(style="cyan", min_width=26)
+    table.add_column(justify="right")
+    table.add_column(style="dim")
 
     for key, label in [("session", "Claude (session)"), ("weekly", "Claude (weekly)"), ("weekly_sonnet", "Claude (weekly Sonnet)")]:
         if key not in usage:
@@ -1401,22 +1413,27 @@ def _print_subscription_usage(usage: dict) -> None:
             except ValueError:
                 pass
 
-        click.echo(f"  {label:<24}{pct:>3.0f}% used    {reset_str}")
+        table.add_row(label, f"{pct:.0f}% used", reset_str)
 
-    click.echo()
+    _console.print(table)
 
 
 def _print_lifetime_spend() -> None:
     """Print the Lifetime spend section."""
+    from rich.table import Table
+    from yoto_cli.progress import _console
     from yoto_lib.costs import COSTS, is_subscription
 
     totals = read_totals()
     if not totals:
-        click.echo("Lifetime spend:")
-        click.echo("  No data yet. Run some commands first.")
+        _console.print("[bold]Lifetime spend[/bold]")
+        _console.print("  No data yet. Run some commands first.")
         return
 
-    click.echo("Lifetime spend:")
+    table = Table(title="Lifetime spend", title_style="bold", title_justify="left", show_header=False, box=None, padding=(0, 1))
+    table.add_column(style="cyan", min_width=26)
+    table.add_column(justify="right")
+    table.add_column(style="dim")
 
     billable_total = 0.0
     for key in COSTS:
@@ -1427,15 +1444,16 @@ def _print_lifetime_spend() -> None:
         calls = entry["calls"]
 
         if is_subscription(key):
-            click.echo(f"  {label:<20}    \u2014   ({calls} calls, subscription)")
+            table.add_row(label, "\u2014", f"{calls} calls, subscription")
         else:
             cost = entry["cost"]
             billable_total += cost
-            click.echo(f"  {label:<20}${cost:<7.2f} ({calls} calls)")
+            table.add_row(label, f"${cost:.2f}", f"{calls} calls")
 
-    divider = "\u2500" * 25
-    click.echo(f"  {divider}")
-    click.echo(f"  {'Total':<20}${billable_total:.2f}")
+    table.add_section()
+    table.add_row("[bold]Total[/bold]", f"[bold]${billable_total:.2f}[/bold]", "")
+
+    _console.print(table)
 
 
 # ── completions ──────────────────────────────────────────────────────────────
