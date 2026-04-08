@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from yoto_lib.icon_catalog import (
+from yoto_lib.icons.icon_catalog import (
     CATALOG_FILENAME,
     CATALOG_TTL_SECONDS,
     _filter_catalog,

@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PIL import Image
 
-from yoto_lib.cover import (
+from yoto_lib.covers.cover import (
     COVER_HEIGHT,
     COVER_WIDTH,
     build_cover_prompt,
@@ -122,7 +122,7 @@ class TestGenerateCoverIfMissing:
         playlist = MagicMock()
         playlist.has_cover = True
 
-        with patch("yoto_lib.cover.get_provider") as mock_get_provider:
+        with patch("yoto_lib.covers.cover.get_provider") as mock_get_provider:
             generate_cover_if_missing(playlist)
 
         mock_get_provider.assert_not_called()
@@ -150,10 +150,10 @@ class TestGenerateCoverIfMissing:
         mock_provider = MagicMock()
         mock_provider.generate.return_value = fake_png_bytes
 
-        with patch("yoto_lib.cover.get_provider", return_value=mock_provider), \
-             patch("yoto_lib.cover.build_cover_prompt", return_value="test prompt") as mock_prompt, \
-             patch("yoto_lib.cover.add_title_to_illustration", return_value=fake_png_bytes), \
-             patch("yoto_lib.cover.mka.read_tags") as mock_read_tags:
+        with patch("yoto_lib.covers.cover.get_provider", return_value=mock_provider), \
+             patch("yoto_lib.covers.cover.build_cover_prompt", return_value="test prompt") as mock_prompt, \
+             patch("yoto_lib.covers.cover.add_title_to_illustration", return_value=fake_png_bytes), \
+             patch("yoto_lib.covers.cover.mka.read_tags") as mock_read_tags:
 
             mock_read_tags.side_effect = [
                 {"title": "Chapter One", "artist": "Jane Doe"},
@@ -205,7 +205,7 @@ class TestTrySharedAlbumArt:
         playlist.path = tmp_path
         (tmp_path / "track01.mka").touch()
 
-        with patch("yoto_lib.cover.mka.extract_album_art", return_value=None):
+        with patch("yoto_lib.covers.cover.mka.extract_album_art", return_value=None):
             assert not try_shared_album_art(playlist)
 
     def test_returns_false_when_art_differs(self, tmp_path):
@@ -219,7 +219,7 @@ class TestTrySharedAlbumArt:
         art_a = _make_png_bytes(500, 500, "red")
         art_b = _make_png_bytes(500, 500, "blue")
 
-        with patch("yoto_lib.cover.mka.extract_album_art", side_effect=[art_a, art_b]):
+        with patch("yoto_lib.covers.cover.mka.extract_album_art", side_effect=[art_a, art_b]):
             assert not try_shared_album_art(playlist)
 
     def test_returns_false_when_some_tracks_missing_art(self, tmp_path):
@@ -232,7 +232,7 @@ class TestTrySharedAlbumArt:
 
         art = _make_png_bytes(500, 500)
 
-        with patch("yoto_lib.cover.mka.extract_album_art", side_effect=[art, None]):
+        with patch("yoto_lib.covers.cover.mka.extract_album_art", side_effect=[art, None]):
             assert not try_shared_album_art(playlist)
 
     def test_returns_true_and_saves_cover_when_all_match(self, tmp_path):
@@ -249,8 +249,8 @@ class TestTrySharedAlbumArt:
         shared_art = _make_png_bytes(500, 500)
 
         with (
-            patch("yoto_lib.cover.mka.extract_album_art", return_value=shared_art),
-            patch("yoto_lib.cover.reframe_album_art") as mock_reframe,
+            patch("yoto_lib.covers.cover.mka.extract_album_art", return_value=shared_art),
+            patch("yoto_lib.covers.cover.reframe_album_art") as mock_reframe,
         ):
             result = try_shared_album_art(playlist)
 
@@ -262,8 +262,8 @@ class TestTrySharedAlbumArt:
         playlist = MagicMock()
         playlist.has_cover = False
 
-        with patch("yoto_lib.cover.try_shared_album_art", return_value=True) as mock_shared, \
-             patch("yoto_lib.cover.get_provider") as mock_provider:
+        with patch("yoto_lib.covers.cover.try_shared_album_art", return_value=True) as mock_shared, \
+             patch("yoto_lib.covers.cover.get_provider") as mock_provider:
             generate_cover_if_missing(playlist)
 
         mock_shared.assert_called_once_with(playlist, log=None)
@@ -322,7 +322,7 @@ class TestReframeAlbumArt:
 
         with (
             patch("yoto_lib.providers.flux_provider.FluxProvider", return_value=mock_provider),
-            patch("yoto_lib.cover.check_recompose_quality", return_value=True),
+            patch("yoto_lib.covers.cover.check_recompose_quality", return_value=True),
         ):
             reframe_album_art(art_bytes, output)
 
@@ -339,7 +339,7 @@ class TestReframeAlbumArt:
 
         with (
             patch("yoto_lib.providers.flux_provider.FluxProvider", return_value=mock_provider),
-            patch("yoto_lib.cover.check_recompose_quality", side_effect=[False, True]),
+            patch("yoto_lib.covers.cover.check_recompose_quality", side_effect=[False, True]),
         ):
             reframe_album_art(art_bytes, output)
 
@@ -356,9 +356,9 @@ class TestReframeAlbumArt:
 
         with (
             patch("yoto_lib.providers.flux_provider.FluxProvider", return_value=mock_provider),
-            patch("yoto_lib.cover.check_recompose_quality", return_value=False),
-            patch("yoto_lib.cover.repair_text", return_value=_make_png_bytes(638, 1011, "red")) as mock_repair,
-            patch("yoto_lib.cover.pick_best_candidate", return_value=_make_png_bytes(638, 1011, "red")),
+            patch("yoto_lib.covers.cover.check_recompose_quality", return_value=False),
+            patch("yoto_lib.covers.cover.repair_text", return_value=_make_png_bytes(638, 1011, "red")) as mock_repair,
+            patch("yoto_lib.covers.cover.pick_best_candidate", return_value=_make_png_bytes(638, 1011, "red")),
         ):
             reframe_album_art(art_bytes, output)
 
@@ -376,9 +376,9 @@ class TestReframeAlbumArt:
 
         with (
             patch("yoto_lib.providers.flux_provider.FluxProvider", return_value=mock_provider),
-            patch("yoto_lib.cover.check_recompose_quality", return_value=False),
-            patch("yoto_lib.cover.repair_text", return_value=_make_png_bytes(638, 1011, "blue")),
-            patch("yoto_lib.cover.pick_best_candidate", return_value=best) as mock_pick,
+            patch("yoto_lib.covers.cover.check_recompose_quality", return_value=False),
+            patch("yoto_lib.covers.cover.repair_text", return_value=_make_png_bytes(638, 1011, "blue")),
+            patch("yoto_lib.covers.cover.pick_best_candidate", return_value=best) as mock_pick,
         ):
             reframe_album_art(art_bytes, output)
 
@@ -400,9 +400,9 @@ class TestTrySharedAlbumArtReframe:
         shared_art = _make_png_bytes(500, 500)
 
         with (
-            patch("yoto_lib.cover.mka.extract_album_art", return_value=shared_art),
-            patch("yoto_lib.cover.reframe_album_art") as mock_reframe,
-            patch("yoto_lib.cover.resize_cover") as mock_resize,
+            patch("yoto_lib.covers.cover.mka.extract_album_art", return_value=shared_art),
+            patch("yoto_lib.covers.cover.reframe_album_art") as mock_reframe,
+            patch("yoto_lib.covers.cover.resize_cover") as mock_resize,
         ):
             result = try_shared_album_art(playlist)
 

@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PIL import Image
 
-from yoto_lib.icon_llm import CONFIDENCE_HIGH, CONFIDENCE_LOW
+from yoto_lib.icons.icon_llm import CONFIDENCE_HIGH, CONFIDENCE_LOW
 from yoto_lib.icons import (
     ICNS_SIZES,
     ICNS_TYPE_MAP,

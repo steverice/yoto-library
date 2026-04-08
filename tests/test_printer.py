@@ -9,7 +9,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 from PIL import Image, ImageCms
 
-from yoto_lib.printer import (
+from yoto_lib.covers.printer import (
     PRINT_RATIO,
     ASPECT_TOLERANCE,
     PrintError,
@@ -85,13 +85,13 @@ class TestCropForPrint:
 class TestCheckPlatform:
     def test_darwin_passes(self):
         """No error on macOS."""
-        with patch("yoto_lib.printer.sys") as mock_sys:
+        with patch("yoto_lib.covers.printer.sys") as mock_sys:
             mock_sys.platform = "darwin"
             _check_platform()
 
     def test_linux_raises(self):
         """Non-macOS raises PrintError."""
-        with patch("yoto_lib.printer.sys") as mock_sys:
+        with patch("yoto_lib.covers.printer.sys") as mock_sys:
             mock_sys.platform = "linux"
             with pytest.raises(PrintError, match="only supported on macOS"):
                 _check_platform()
@@ -100,7 +100,7 @@ class TestCheckPlatform:
 class TestCheckPrinter:
     def test_printer_found(self):
         """No error when lpstat succeeds."""
-        with patch("yoto_lib.printer.subprocess.run") as mock_run:
+        with patch("yoto_lib.covers.printer.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
             _check_printer("Canon_SELPHY_CP1300")
         mock_run.assert_called_once_with(
@@ -110,7 +110,7 @@ class TestCheckPrinter:
 
     def test_printer_not_found(self):
         """PrintError when lpstat fails."""
-        with patch("yoto_lib.printer.subprocess.run") as mock_run:
+        with patch("yoto_lib.covers.printer.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=1, stderr="not found")
             with pytest.raises(PrintError, match="not found"):
                 _check_printer("NoSuchPrinter")
@@ -121,7 +121,7 @@ class TestIccConvert:
         """Device link profile uses buildTransform."""
         img = Image.new("RGB", (100, 160), color="blue")
 
-        with patch("yoto_lib.printer.ImageCms") as mock_cms:
+        with patch("yoto_lib.covers.printer.ImageCms") as mock_cms:
             mock_profile = MagicMock()
             mock_profile.profile.device_class = "link"
             mock_transform = MagicMock()
@@ -138,7 +138,7 @@ class TestIccConvert:
         """Standard printer profile uses profileToProfile."""
         img = Image.new("RGB", (100, 160), color="blue")
 
-        with patch("yoto_lib.printer.ImageCms") as mock_cms:
+        with patch("yoto_lib.covers.printer.ImageCms") as mock_cms:
             mock_profile = MagicMock()
             mock_profile.profile.device_class = "prtr"
             mock_cms.getOpenProfile.return_value = mock_profile
@@ -154,7 +154,7 @@ class TestIccConvert:
         """PrintError when ICC profile can't be applied."""
         img = Image.new("RGB", (100, 160), color="blue")
 
-        with patch("yoto_lib.printer.ImageCms") as mock_cms:
+        with patch("yoto_lib.covers.printer.ImageCms") as mock_cms:
             mock_cms.PyCMSError = ImageCms.PyCMSError
             mock_cms.getOpenProfile.side_effect = OSError("bad profile")
             with pytest.raises(PrintError, match="Color conversion failed"):
@@ -167,7 +167,7 @@ class TestSendToPrinter:
         png = tmp_path / "test.png"
         png.write_bytes(b"\x89PNG")
 
-        with patch("yoto_lib.printer.subprocess.run") as mock_run:
+        with patch("yoto_lib.covers.printer.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
             _send_to_printer(png, "Canon_SELPHY_CP1300")
 
@@ -183,7 +183,7 @@ class TestSendToPrinter:
         png = tmp_path / "test.png"
         png.write_bytes(b"\x89PNG")
 
-        with patch("yoto_lib.printer.subprocess.run") as mock_run:
+        with patch("yoto_lib.covers.printer.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=1, stderr="offline")
             with pytest.raises(PrintError, match="Print failed"):
                 _send_to_printer(png, "Canon_SELPHY_CP1300")
@@ -197,20 +197,20 @@ class TestGetJobStatus:
             "\tStatus: Looking for printer.\n"
             "\tAlerts: job-printing\n"
         )
-        with patch("yoto_lib.printer.subprocess.run") as mock_run:
+        with patch("yoto_lib.covers.printer.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout=output)
             assert _get_job_status("Canon_SELPHY_CP1300") == "Looking for printer."
 
     def test_no_jobs_returns_none(self):
         """Returns None when no jobs in queue."""
-        with patch("yoto_lib.printer.subprocess.run") as mock_run:
+        with patch("yoto_lib.covers.printer.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="")
             assert _get_job_status("Canon_SELPHY_CP1300") is None
 
     def test_job_without_status_returns_queued(self):
         """Returns 'Queued' when job exists but has no Status line."""
         output = "Canon_SELPHY_CP1300-385 smrice 1665024\n"
-        with patch("yoto_lib.printer.subprocess.run") as mock_run:
+        with patch("yoto_lib.covers.printer.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout=output)
             assert _get_job_status("Canon_SELPHY_CP1300") == "Queued"
 
@@ -219,23 +219,23 @@ class TestWaitForJob:
     def test_calls_on_status(self):
         """on_status is called with each new status."""
         statuses = []
-        with patch("yoto_lib.printer._get_job_status", side_effect=["Queued", "Sending data", None]), \
-             patch("yoto_lib.printer.time.sleep"):
+        with patch("yoto_lib.covers.printer._get_job_status", side_effect=["Queued", "Sending data", None]), \
+             patch("yoto_lib.covers.printer.time.sleep"):
             wait_for_job("Canon_SELPHY_CP1300", on_status=statuses.append)
         assert statuses == ["Queued", "Sending data"]
 
     def test_deduplicates_status(self):
         """Repeated same status only calls on_status once."""
         statuses = []
-        with patch("yoto_lib.printer._get_job_status", side_effect=["Queued", "Queued", "Queued", None]), \
-             patch("yoto_lib.printer.time.sleep"):
+        with patch("yoto_lib.covers.printer._get_job_status", side_effect=["Queued", "Queued", "Queued", None]), \
+             patch("yoto_lib.covers.printer.time.sleep"):
             wait_for_job("Canon_SELPHY_CP1300", on_status=statuses.append)
         assert statuses == ["Queued"]
 
     def test_returns_immediately_when_no_job(self):
         """Returns immediately if no job in queue."""
-        with patch("yoto_lib.printer._get_job_status", return_value=None), \
-             patch("yoto_lib.printer.time.sleep") as mock_sleep:
+        with patch("yoto_lib.covers.printer._get_job_status", return_value=None), \
+             patch("yoto_lib.covers.printer.time.sleep") as mock_sleep:
             wait_for_job("Canon_SELPHY_CP1300")
         mock_sleep.assert_not_called()
 
@@ -248,10 +248,10 @@ class TestPrintCover:
         fake_profile.write_bytes(b"fake")
         fake_img = Image.new("RGB", (635, 1011), "blue")
 
-        with patch("yoto_lib.printer._check_platform"), \
-             patch("yoto_lib.printer._check_printer"), \
-             patch("yoto_lib.printer._icc_convert", return_value=fake_img) as mock_icc, \
-             patch("yoto_lib.printer._send_to_printer") as mock_lpr:
+        with patch("yoto_lib.covers.printer._check_platform"), \
+             patch("yoto_lib.covers.printer._check_printer"), \
+             patch("yoto_lib.covers.printer._icc_convert", return_value=fake_img) as mock_icc, \
+             patch("yoto_lib.covers.printer._send_to_printer") as mock_lpr:
             print_cover(cover, icc_profile=str(fake_profile))
 
         mock_icc.assert_called_once()
@@ -261,10 +261,10 @@ class TestPrintCover:
         """print_cover skips ICC conversion when no profile provided."""
         cover = _make_png(tmp_path / "cover.png", 638, 1011)
 
-        with patch("yoto_lib.printer._check_platform"), \
-             patch("yoto_lib.printer._check_printer"), \
-             patch("yoto_lib.printer._icc_convert") as mock_icc, \
-             patch("yoto_lib.printer._send_to_printer") as mock_lpr:
+        with patch("yoto_lib.covers.printer._check_platform"), \
+             patch("yoto_lib.covers.printer._check_printer"), \
+             patch("yoto_lib.covers.printer._icc_convert") as mock_icc, \
+             patch("yoto_lib.covers.printer._send_to_printer") as mock_lpr:
             print_cover(cover)
 
         mock_icc.assert_not_called()
@@ -274,9 +274,9 @@ class TestPrintCover:
         """YOTO_PRINTER env var overrides default printer."""
         cover = _make_png(tmp_path / "cover.png", 638, 1011)
 
-        with patch("yoto_lib.printer._check_platform"), \
-             patch("yoto_lib.printer._check_printer") as mock_check, \
-             patch("yoto_lib.printer._send_to_printer") as mock_lpr, \
+        with patch("yoto_lib.covers.printer._check_platform"), \
+             patch("yoto_lib.covers.printer._check_printer") as mock_check, \
+             patch("yoto_lib.covers.printer._send_to_printer") as mock_lpr, \
              patch.dict(os.environ, {"YOTO_PRINTER": "My_Printer"}):
             print_cover(cover)
 

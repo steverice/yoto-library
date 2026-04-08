@@ -51,7 +51,7 @@ class OpenAIProvider(StatusPageMixin, Provider):
         b64_data = response.data[0].b64_json
         result = base64.b64decode(b64_data)
         logger.debug("openai: generated %d bytes", len(result))
-        from yoto_lib.costs import get_tracker
+        from yoto_lib.billing.costs import get_tracker
         get_tracker().record(f"openai_generate_{quality}")
         return result
 
@@ -77,7 +77,7 @@ class OpenAIProvider(StatusPageMixin, Provider):
         b64_data = response.data[0].b64_json
         result = base64.b64decode(b64_data)
         logger.debug("openai: edited %d bytes", len(result))
-        from yoto_lib.costs import get_tracker
+        from yoto_lib.billing.costs import get_tracker
         get_tracker().record(f"openai_edit_{quality}")
         return result
 

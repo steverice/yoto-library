@@ -50,6 +50,6 @@ class RetroDiffusionProvider(Provider):
         data = response.json()
         images = [base64.b64decode(b64) for b64 in data["base64_images"]]
         logger.debug("retrodiffusion: generated %d images", len(images))
-        from yoto_lib.costs import get_tracker
+        from yoto_lib.billing.costs import get_tracker
         get_tracker().record("retrodiffusion", count=len(images))
         return images

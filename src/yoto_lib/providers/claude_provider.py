@@ -73,7 +73,7 @@ class ClaudeProvider(StatusPageMixin, Provider):
             if extract_json:
                 text = _extract_json(text)
             logger.debug("claude_provider.call response: %s", text[:500])
-            from yoto_lib.costs import get_tracker, is_subscription
+            from yoto_lib.billing.costs import get_tracker, is_subscription
             get_tracker().record(f"claude_{model}", subscription=is_subscription(f"claude_{model}"))
             return text
         except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:

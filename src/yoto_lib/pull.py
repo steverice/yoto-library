@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 WORKERS = int(os.environ.get("YOTO_WORKERS", "4"))
 
-from yoto_lib.api import YotoAPI
+from yoto_lib.yoto.api import YotoAPI
 from yoto_lib.icons import ICON_CACHE_DIR, apply_icon_to_mka, download_icon
 from yoto_lib.mka import wrap_in_mka
 from yoto_lib.playlist import write_jsonl

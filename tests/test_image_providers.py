@@ -43,7 +43,7 @@ def test_openai_generate_passes_quality(mock_openai_client):
     from yoto_lib.providers.openai_provider import OpenAIProvider
 
     with patch("yoto_lib.providers.openai_provider.OpenAI", return_value=mock_openai_client), \
-         patch("yoto_lib.costs.COSTS", {
+         patch("yoto_lib.billing.costs.COSTS", {
              "openai_generate_low": {"cost": 0.016, "label": "OpenAI generation (low)"},
          }):
         provider = OpenAIProvider()
@@ -65,7 +65,7 @@ def test_openai_edit_passes_quality(mock_openai_client):
     fake_mask = b""
 
     with patch("yoto_lib.providers.openai_provider.OpenAI", return_value=mock_openai_client), \
-         patch("yoto_lib.costs.COSTS", {
+         patch("yoto_lib.billing.costs.COSTS", {
              "openai_edit_high": {"cost": 0.08, "label": "OpenAI edit (high)"},
          }):
         provider = OpenAIProvider()

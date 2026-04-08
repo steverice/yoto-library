@@ -770,8 +770,8 @@ def resolve_icons(
 
 # Late imports — placed after all definitions to avoid circular dependency
 # with icon_catalog.py (which imports download_icon from this module).
-from yoto_lib.icon_catalog import get_catalog  # noqa: E402
-from yoto_lib.icon_llm import (  # noqa: E402
+from .icon_catalog import get_catalog  # noqa: E402
+from .icon_llm import (  # noqa: E402
     CONFIDENCE_HIGH,
     CONFIDENCE_LOW,
     compare_icons_llm,

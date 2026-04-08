@@ -39,7 +39,7 @@ class FluxProvider(Provider):
 
         result = base64.b64decode(response.data[0].b64_json)
         logger.debug("flux: generated %d bytes", len(result))
-        from yoto_lib.costs import get_tracker
+        from yoto_lib.billing.costs import get_tracker
         get_tracker().record("flux_generate")
         return result
 
@@ -77,6 +77,6 @@ class FluxProvider(Provider):
         result = base64.b64decode(response.data[0].b64_json)
         with PILImage.open(io.BytesIO(result)) as img:
             logger.debug("flux: recomposed %d bytes, size=%dx%d", len(result), img.width, img.height)
-        from yoto_lib.costs import get_tracker
+        from yoto_lib.billing.costs import get_tracker
         get_tracker().record("flux_recompose")
         return result

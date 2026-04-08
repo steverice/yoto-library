@@ -106,9 +106,9 @@ class TestSelectIconLyricsSummary:
         write_tags(mka, {"title": "Old MacDonald", "lyrics": "Had a farm E-I-E-I-O"})
 
         with (
-            patch("yoto_lib.icon_llm.describe_icons_llm", return_value=["cow", "barn", "tractor"]) as mock_describe,
-            patch("yoto_lib.icon_llm.summarize_lyrics_for_icon", return_value="A farm with cows and a red barn") as mock_summarize,
-            patch("yoto_lib.icon_llm.match_icon_llm", return_value=(None, 0.0)),
+            patch("yoto_lib.icons.icon_llm.describe_icons_llm", return_value=["cow", "barn", "tractor"]) as mock_describe,
+            patch("yoto_lib.icons.icon_llm.summarize_lyrics_for_icon", return_value="A farm with cows and a red barn") as mock_summarize,
+            patch("yoto_lib.icons.icon_llm.match_icon_llm", return_value=(None, 0.0)),
             patch("yoto_lib.icons.generate_retrodiffusion_icons", return_value=None),
         ):
             runner = CliRunner()
@@ -136,9 +136,9 @@ class TestSelectIconLyricsSummary:
         })
 
         with (
-            patch("yoto_lib.icon_llm.describe_icons_llm", return_value=["cow", "barn", "tractor"]) as mock_describe,
-            patch("yoto_lib.icon_llm.summarize_lyrics_for_icon") as mock_summarize,
-            patch("yoto_lib.icon_llm.match_icon_llm", return_value=(None, 0.0)),
+            patch("yoto_lib.icons.icon_llm.describe_icons_llm", return_value=["cow", "barn", "tractor"]) as mock_describe,
+            patch("yoto_lib.icons.icon_llm.summarize_lyrics_for_icon") as mock_summarize,
+            patch("yoto_lib.icons.icon_llm.match_icon_llm", return_value=(None, 0.0)),
             patch("yoto_lib.icons.generate_retrodiffusion_icons", return_value=None),
         ):
             runner = CliRunner()

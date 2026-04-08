@@ -7,7 +7,7 @@ import httpx
 import pytest
 from click.testing import CliRunner
 
-from yoto_lib.itunes import search_itunes_album, match_album, _artwork_url, embed_album_art, enrich_from_itunes
+from yoto_lib.covers.itunes import search_itunes_album, match_album, _artwork_url, embed_album_art, enrich_from_itunes
 from yoto_lib.mka import wrap_in_mka, extract_album_art
 
 
@@ -29,7 +29,7 @@ class TestSearchItunesAlbum:
         }
         mock_response.raise_for_status = MagicMock()
 
-        with patch("yoto_lib.itunes.httpx.get", return_value=mock_response) as mock_get:
+        with patch("yoto_lib.covers.itunes.httpx.get", return_value=mock_response) as mock_get:
             results = search_itunes_album("Daniel Tiger", "Life's Little Lessons")
 
         mock_get.assert_called_once()
@@ -40,7 +40,7 @@ class TestSearchItunesAlbum:
         assert results[0]["collectionName"] == "Life's Little Lessons"
 
     def test_returns_empty_on_network_error(self):
-        with patch("yoto_lib.itunes.httpx.get", side_effect=httpx.HTTPError("network")):
+        with patch("yoto_lib.covers.itunes.httpx.get", side_effect=httpx.HTTPError("network")):
             results = search_itunes_album("Artist", "Album")
         assert results == []
 
@@ -171,7 +171,7 @@ class TestEnrichFromItunes:
         mka.touch()
         cache = {}
 
-        with patch("yoto_lib.itunes.extract_album_art", return_value=b"existing art"):
+        with patch("yoto_lib.covers.itunes.extract_album_art", return_value=b"existing art"):
             enrich_from_itunes(mka, {"artist": "A", "album": "B"}, cache)
 
         # Should not have queried the API
@@ -182,7 +182,7 @@ class TestEnrichFromItunes:
         mka.touch()
         cache = {}
 
-        with patch("yoto_lib.itunes.extract_album_art", return_value=None):
+        with patch("yoto_lib.covers.itunes.extract_album_art", return_value=None):
             enrich_from_itunes(mka, {"artist": "A"}, cache)  # no album
             enrich_from_itunes(mka, {"album": "B"}, cache)   # no artist
             enrich_from_itunes(mka, {}, cache)                # neither
@@ -204,12 +204,12 @@ class TestEnrichFromItunes:
         }
 
         with (
-            patch("yoto_lib.itunes.extract_album_art", return_value=None),
-            patch("yoto_lib.itunes.search_itunes_album", return_value=[api_result]),
-            patch("yoto_lib.itunes.match_album", return_value=api_result),
-            patch("yoto_lib.itunes.httpx.get") as mock_get,
-            patch("yoto_lib.itunes.embed_album_art", return_value=True) as mock_embed,
-            patch("yoto_lib.itunes.write_tags") as mock_write_tags,
+            patch("yoto_lib.covers.itunes.extract_album_art", return_value=None),
+            patch("yoto_lib.covers.itunes.search_itunes_album", return_value=[api_result]),
+            patch("yoto_lib.covers.itunes.match_album", return_value=api_result),
+            patch("yoto_lib.covers.itunes.httpx.get") as mock_get,
+            patch("yoto_lib.covers.itunes.embed_album_art", return_value=True) as mock_embed,
+            patch("yoto_lib.covers.itunes.write_tags") as mock_write_tags,
         ):
             mock_response = MagicMock()
             mock_response.content = b"fake jpeg bytes"
@@ -238,12 +238,12 @@ class TestEnrichFromItunes:
         mock_response.raise_for_status = MagicMock()
 
         with (
-            patch("yoto_lib.itunes.extract_album_art", return_value=None),
-            patch("yoto_lib.itunes.search_itunes_album", return_value=[api_result]) as mock_search,
-            patch("yoto_lib.itunes.match_album", return_value=api_result),
-            patch("yoto_lib.itunes.httpx.get", return_value=mock_response) as mock_get,
-            patch("yoto_lib.itunes.embed_album_art", return_value=True),
-            patch("yoto_lib.itunes.write_tags"),
+            patch("yoto_lib.covers.itunes.extract_album_art", return_value=None),
+            patch("yoto_lib.covers.itunes.search_itunes_album", return_value=[api_result]) as mock_search,
+            patch("yoto_lib.covers.itunes.match_album", return_value=api_result),
+            patch("yoto_lib.covers.itunes.httpx.get", return_value=mock_response) as mock_get,
+            patch("yoto_lib.covers.itunes.embed_album_art", return_value=True),
+            patch("yoto_lib.covers.itunes.write_tags"),
         ):
             enrich_from_itunes(mka1, {"artist": "Artist", "album": "Album"}, cache)
             enrich_from_itunes(mka2, {"artist": "Artist", "album": "Album"}, cache)
@@ -260,8 +260,8 @@ class TestEnrichFromItunes:
         cache = {}
 
         with (
-            patch("yoto_lib.itunes.extract_album_art", return_value=None),
-            patch("yoto_lib.itunes.search_itunes_album", return_value=[]) as mock_search,
+            patch("yoto_lib.covers.itunes.extract_album_art", return_value=None),
+            patch("yoto_lib.covers.itunes.search_itunes_album", return_value=[]) as mock_search,
         ):
             enrich_from_itunes(mka1, {"artist": "Artist", "album": "Album"}, cache)
             enrich_from_itunes(mka2, {"artist": "Artist", "album": "Album"}, cache)
@@ -287,12 +287,12 @@ class TestEnrichFromItunes:
         mock_response.raise_for_status = MagicMock()
 
         with (
-            patch("yoto_lib.itunes.extract_album_art", return_value=None),
-            patch("yoto_lib.itunes.search_itunes_album", return_value=[api_result]),
-            patch("yoto_lib.itunes.match_album", return_value=api_result),
-            patch("yoto_lib.itunes.httpx.get", return_value=mock_response),
-            patch("yoto_lib.itunes.embed_album_art", return_value=True),
-            patch("yoto_lib.itunes.write_tags") as mock_write_tags,
+            patch("yoto_lib.covers.itunes.extract_album_art", return_value=None),
+            patch("yoto_lib.covers.itunes.search_itunes_album", return_value=[api_result]),
+            patch("yoto_lib.covers.itunes.match_album", return_value=api_result),
+            patch("yoto_lib.covers.itunes.httpx.get", return_value=mock_response),
+            patch("yoto_lib.covers.itunes.embed_album_art", return_value=True),
+            patch("yoto_lib.covers.itunes.write_tags") as mock_write_tags,
         ):
             # tags already have genre but not date or copyright
             enrich_from_itunes(

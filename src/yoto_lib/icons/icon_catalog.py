@@ -81,7 +81,7 @@ def refresh_catalog(
     cache_dir: Path = _DEFAULT_CACHE_DIR,
 ) -> list[dict]:
     """Fetch the catalog from the API, save it, and download missing PNGs."""
-    from yoto_lib.icons import download_icon  # lazy to avoid circular import
+    from . import download_icon  # lazy to avoid circular import
 
     icons = _filter_catalog(api.get_public_icons())
     logger.debug("refresh_catalog: fetched %d icons from API", len(icons))

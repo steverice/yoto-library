@@ -3,7 +3,7 @@ import httpx
 import pytest
 from unittest.mock import MagicMock
 
-from yoto_lib.api import YotoAPI
+from yoto_lib.yoto.api import YotoAPI
 
 
 @pytest.fixture
@@ -11,7 +11,7 @@ def api(mocker):
     mock_token = mocker.Mock()
     mock_token.access_token = "test_token"
     mock_token.token_type = "Bearer"
-    mocker.patch("yoto_lib.api.get_valid_token", return_value=mock_token)
+    mocker.patch("yoto_lib.yoto.api.get_valid_token", return_value=mock_token)
     return YotoAPI()
 
 
