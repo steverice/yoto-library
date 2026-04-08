@@ -56,9 +56,33 @@ def _call_claude(prompt: str, *, allowed_tools: str = "", timeout: int = 120, mo
         return None
 
 
+def summarize_lyrics_for_icon(lyrics: str, track_title: str) -> str | None:
+    """Summarize lyrics into a short visual description for icon generation.
+
+    Returns 1-2 sentences of concrete visual imagery, or None on failure.
+    """
+    # Truncate very long lyrics to avoid blowing up the prompt
+    truncated = lyrics[:3000] if len(lyrics) > 3000 else lyrics
+
+    prompt = (
+        f'Given these lyrics for a children\'s audio track called "{track_title}", '
+        f'describe the key visual imagery in 1-2 sentences. '
+        f'Focus on concrete objects, animals, settings, and actions that could be '
+        f'depicted in a tiny 16x16 pixel art icon. No abstract themes or emotions.\n\n'
+        f'Lyrics:\n{truncated}\n\n'
+        f'Return ONLY the visual description, no explanation or preamble.'
+    )
+
+    text = _call_claude(prompt)
+    if not text or not text.strip():
+        return None
+    return text.strip()
+
+
 def describe_icons_llm(
     track_title: str,
     album_description: str | None = None,
+    lyrics_summary: str | None = None,
 ) -> list[str]:
     """Generate 3 visual descriptions for a track icon using Claude Haiku.
 
@@ -70,6 +94,9 @@ def describe_icons_llm(
     context = ""
     if album_description:
         context = f"\n\nAlbum/show description:\n{album_description}\n"
+
+    if lyrics_summary:
+        context += f"\n\nLyrics context: {lyrics_summary}\n"
 
     prompt = (
         f'I need 3 different visual concepts for a 16x16 pixel art icon '
