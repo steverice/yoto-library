@@ -7,11 +7,17 @@ import os
 
 import httpx
 
+from yoto_lib.providers.base import Provider, ProviderStatus
+
 logger = logging.getLogger(__name__)
 
 
-class TogetherProvider:
+class TogetherProvider(Provider):
     """Generates images via Together AI. Supports small output sizes."""
+
+    @classmethod
+    def check_status(cls) -> ProviderStatus:
+        return ProviderStatus(healthy=True)
 
     def __init__(self, model: str = "black-forest-labs/FLUX.1-schnell") -> None:
         self._api_key = os.environ.get("TOGETHER_AI_KEY") or os.environ.get("TOGETHER_API_KEY")
