@@ -28,7 +28,7 @@ def parse_webloc(path: Path) -> str | None:
 
 def _get_providers() -> list[Any]:
     """Return all registered source providers."""
-    from yoto_lib.sources.youtube import YouTubeProvider
+    from yoto_lib.track_sources.youtube import YouTubeProvider
     return [YouTubeProvider()]
 
 

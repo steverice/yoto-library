@@ -21,7 +21,7 @@ from yoto_lib.api import YotoAPI
 from yoto_lib.cover import generate_cover_if_missing
 from yoto_lib.description import generate_description
 from yoto_lib.icons import resolve_icons
-from yoto_lib.sources import resolve_weblocs
+from yoto_lib.track_sources import resolve_weblocs
 from yoto_lib.playlist import (
     AUDIO_EXTENSIONS,
     Playlist,

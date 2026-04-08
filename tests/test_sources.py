@@ -1,4 +1,4 @@
-"""Tests for yoto_lib.sources — URL source resolution."""
+"""Tests for yoto_lib.track_sources — URL source resolution."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from yoto_lib.sources import parse_webloc, resolve_weblocs
-from yoto_lib.sources.youtube import YouTubeProvider, _parse_silence_ranges, _trim_silence
+from yoto_lib.track_sources import parse_webloc, resolve_weblocs
+from yoto_lib.track_sources.youtube import YouTubeProvider, _parse_silence_ranges, _trim_silence
 
 
 class TestParseWebloc:
@@ -99,7 +99,7 @@ class TestYouTubeDownload:
             result.returncode = 0
             return result
 
-        with patch("yoto_lib.sources.youtube.subprocess.run", side_effect=fake_run):
+        with patch("yoto_lib.track_sources.youtube.subprocess.run", side_effect=fake_run):
             audio_path, metadata = provider.download(url, tmp_path, trim=False)
 
         assert audio_path.exists()
@@ -111,7 +111,7 @@ class TestYouTubeDownload:
         provider = YouTubeProvider()
 
         with patch(
-            "yoto_lib.sources.youtube.subprocess.run",
+            "yoto_lib.track_sources.youtube.subprocess.run",
             side_effect=FileNotFoundError("No such file: 'yt-dlp'"),
         ):
             with pytest.raises(RuntimeError, match="yt-dlp is required"):
@@ -183,7 +183,7 @@ class TestTrimSilence:
                 result.returncode = 0
                 return result
 
-        with patch("yoto_lib.sources.youtube.subprocess.run", side_effect=fake_run):
+        with patch("yoto_lib.track_sources.youtube.subprocess.run", side_effect=fake_run):
             trimmed = _trim_silence(audio)
 
         assert trimmed == audio  # same path, file replaced in-place
@@ -205,7 +205,7 @@ class TestTrimSilence:
             result.stderr = silence_stderr
             return result
 
-        with patch("yoto_lib.sources.youtube.subprocess.run", side_effect=fake_run):
+        with patch("yoto_lib.track_sources.youtube.subprocess.run", side_effect=fake_run):
             trimmed = _trim_silence(audio)
 
         assert trimmed == audio  # unchanged
@@ -229,9 +229,9 @@ class TestResolveWeblocs:
         mock_provider.download.return_value = (fake_audio, {"title": "My Song", "source_url": url})
 
         with (
-            patch("yoto_lib.sources._get_providers", return_value=[mock_provider]),
-            patch("yoto_lib.sources.wrap_in_mka") as mock_wrap,
-            patch("yoto_lib.sources.write_tags") as mock_tags,
+            patch("yoto_lib.track_sources._get_providers", return_value=[mock_provider]),
+            patch("yoto_lib.track_sources.wrap_in_mka") as mock_wrap,
+            patch("yoto_lib.track_sources.write_tags") as mock_tags,
         ):
             def fake_wrap(src, dst):
                 dst.write_bytes(b"fake mka")
@@ -258,7 +258,7 @@ class TestResolveWeblocs:
         mock_provider = MagicMock()
         mock_provider.can_handle.return_value = False
 
-        with patch("yoto_lib.sources._get_providers", return_value=[mock_provider]):
+        with patch("yoto_lib.track_sources._get_providers", return_value=[mock_provider]):
             results = resolve_weblocs(playlist_dir)
 
         assert results == []
@@ -276,7 +276,7 @@ class TestResolveWeblocs:
         mock_provider.can_handle.return_value = True
         mock_provider.download.side_effect = RuntimeError("video unavailable")
 
-        with patch("yoto_lib.sources._get_providers", return_value=[mock_provider]):
+        with patch("yoto_lib.track_sources._get_providers", return_value=[mock_provider]):
             results = resolve_weblocs(playlist_dir)
 
         assert results == []
@@ -300,9 +300,9 @@ class TestResolveWeblocs:
         mock_provider.download.return_value = (fake_audio, {"title": "My Song", "source_url": url})
 
         with (
-            patch("yoto_lib.sources._get_providers", return_value=[mock_provider]),
-            patch("yoto_lib.sources.wrap_in_mka") as mock_wrap,
-            patch("yoto_lib.sources.write_tags"),
+            patch("yoto_lib.track_sources._get_providers", return_value=[mock_provider]),
+            patch("yoto_lib.track_sources.wrap_in_mka") as mock_wrap,
+            patch("yoto_lib.track_sources.write_tags"),
         ):
             def fake_wrap(src, dst):
                 dst.write_bytes(b"fake mka")

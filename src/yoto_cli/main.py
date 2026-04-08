@@ -30,7 +30,7 @@ from yoto_lib.playlist import read_jsonl, write_jsonl, scan_audio_files, load_pl
 from yoto_lib.mka import wrap_in_mka, remove_attachment, set_attachment, read_source_tags, write_tags, generate_source_patch, extract_album_art, read_tags
 from yoto_lib.itunes import enrich_from_itunes
 from yoto_lib.lyrics import get_lyrics
-from yoto_lib.sources import resolve_weblocs
+from yoto_lib.track_sources import resolve_weblocs
 from yoto_lib.costs import get_tracker, reset_tracker
 from yoto_lib.billing import (
     fetch_balances, fetch_subscription_usage, read_totals, reset_totals,
