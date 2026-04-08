@@ -10,7 +10,7 @@ from pathlib import Path
 
 import httpx
 
-from yoto_lib.auth import get_valid_token
+from .auth import get_valid_token
 
 logger = logging.getLogger(__name__)
 

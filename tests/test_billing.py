@@ -7,7 +7,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 from click.testing import CliRunner
 
-from yoto_lib.costs import CostTracker
+from yoto_lib.billing.costs import CostTracker
 
 
 @pytest.fixture

@@ -2,7 +2,7 @@ import time
 
 import pytest
 
-from yoto_lib.auth import TokenSet
+from yoto_lib.yoto.auth import TokenSet
 
 
 class TestTokenSet:
@@ -77,7 +77,7 @@ class TestTokenStorage:
         mocker.patch("keyring.set_password", side_effect=lambda svc, acct, val: stored.update({(svc, acct): val}))
         mocker.patch("keyring.get_password", side_effect=lambda svc, acct: stored.get((svc, acct)))
 
-        from yoto_lib.auth import load_tokens, save_tokens
+        from yoto_lib.yoto.auth import load_tokens, save_tokens
 
         tokens = TokenSet(
             access_token="tok",
@@ -94,14 +94,14 @@ class TestTokenStorage:
     def test_load_returns_none_when_no_tokens(self, mocker):
         mocker.patch("keyring.get_password", return_value=None)
 
-        from yoto_lib.auth import load_tokens
+        from yoto_lib.yoto.auth import load_tokens
 
         assert load_tokens() is None
 
     def test_delete_tokens(self, mocker):
         mock_delete = mocker.patch("keyring.delete_password")
 
-        from yoto_lib.auth import delete_tokens
+        from yoto_lib.yoto.auth import delete_tokens
 
         delete_tokens()
         mock_delete.assert_called_once()
@@ -109,7 +109,7 @@ class TestTokenStorage:
 
 class TestDeviceCodeFlow:
     def test_request_device_code(self, mocker):
-        from yoto_lib.auth import request_device_code
+        from yoto_lib.yoto.auth import request_device_code
 
         mock_response = mocker.Mock()
         mock_response.json.return_value = {
@@ -132,7 +132,7 @@ class TestDeviceCodeFlow:
         assert call_kwargs[1]["json"]["client_id"] == "kT1e1feuj42SxERTSWearGDWWmNeQ15x"
 
     def test_poll_for_token_success(self, mocker):
-        from yoto_lib.auth import poll_for_token
+        from yoto_lib.yoto.auth import poll_for_token
 
         mock_response = mocker.Mock()
         mock_response.status_code = 200
@@ -152,7 +152,7 @@ class TestDeviceCodeFlow:
         assert tokens.refresh_token == "rt_ok"
 
     def test_poll_retries_on_authorization_pending(self, mocker):
-        from yoto_lib.auth import poll_for_token
+        from yoto_lib.yoto.auth import poll_for_token
 
         pending_response = mocker.Mock()
         pending_response.status_code = 403
@@ -175,7 +175,7 @@ class TestDeviceCodeFlow:
         assert tokens.access_token == "at_ok"
 
     def test_poll_slows_down_on_slow_down(self, mocker):
-        from yoto_lib.auth import poll_for_token
+        from yoto_lib.yoto.auth import poll_for_token
 
         slow_response = mocker.Mock()
         slow_response.status_code = 403
@@ -199,7 +199,7 @@ class TestDeviceCodeFlow:
         mock_sleep.assert_any_call(10)
 
     def test_poll_raises_on_expired_token(self, mocker):
-        from yoto_lib.auth import poll_for_token, AuthError
+        from yoto_lib.yoto.auth import poll_for_token, AuthError
 
         expired_response = mocker.Mock()
         expired_response.status_code = 403
@@ -212,7 +212,7 @@ class TestDeviceCodeFlow:
 
 class TestTokenRefresh:
     def test_refresh_tokens(self, mocker):
-        from yoto_lib.auth import refresh_tokens
+        from yoto_lib.yoto.auth import refresh_tokens
 
         mock_response = mocker.Mock()
         mock_response.status_code = 200
@@ -239,7 +239,7 @@ class TestTokenRefresh:
 
 class TestGetValidToken:
     def test_returns_valid_token_from_keychain(self, mocker):
-        from yoto_lib.auth import get_valid_token
+        from yoto_lib.yoto.auth import get_valid_token
 
         valid = TokenSet(
             access_token="at_ok",
@@ -247,13 +247,13 @@ class TestGetValidToken:
             token_type="Bearer",
             expires_at=time.time() + 3600,
         )
-        mocker.patch("yoto_lib.auth.load_tokens", return_value=valid)
+        mocker.patch("yoto_lib.yoto.auth.load_tokens", return_value=valid)
 
         token = get_valid_token(interactive=False)
         assert token.access_token == "at_ok"
 
     def test_refreshes_expiring_token(self, mocker):
-        from yoto_lib.auth import get_valid_token
+        from yoto_lib.yoto.auth import get_valid_token
 
         expiring = TokenSet(
             access_token="at_old",
@@ -267,17 +267,17 @@ class TestGetValidToken:
             token_type="Bearer",
             expires_at=time.time() + 3600,
         )
-        mocker.patch("yoto_lib.auth.load_tokens", return_value=expiring)
-        mocker.patch("yoto_lib.auth.refresh_tokens", return_value=refreshed)
-        mocker.patch("yoto_lib.auth.save_tokens")
+        mocker.patch("yoto_lib.yoto.auth.load_tokens", return_value=expiring)
+        mocker.patch("yoto_lib.yoto.auth.refresh_tokens", return_value=refreshed)
+        mocker.patch("yoto_lib.yoto.auth.save_tokens")
 
         token = get_valid_token(interactive=False)
         assert token.access_token == "at_new"
 
     def test_raises_when_no_token_and_not_interactive(self, mocker):
-        from yoto_lib.auth import get_valid_token, AuthError
+        from yoto_lib.yoto.auth import get_valid_token, AuthError
 
-        mocker.patch("yoto_lib.auth.load_tokens", return_value=None)
+        mocker.patch("yoto_lib.yoto.auth.load_tokens", return_value=None)
 
         with pytest.raises(AuthError, match="Not authenticated"):
             get_valid_token(interactive=False)

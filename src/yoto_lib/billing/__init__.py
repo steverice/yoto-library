@@ -11,7 +11,7 @@ from pathlib import Path
 
 import httpx
 
-from yoto_lib.costs import CostTracker
+from .costs import CostTracker
 
 logger = logging.getLogger(__name__)
 

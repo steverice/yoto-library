@@ -67,7 +67,7 @@ def _try_scrape_sources(artist: str, title: str) -> tuple[str, str] | tuple[None
     # Check if any .json configs exist before importing (node check happens inside)
     if not list(_LYRICS_DIR.glob("*.json")):
         return None, None
-    from yoto_lib.lyrics_scrape import fetch_lyrics_scrape
+    from .lyrics_scrape import fetch_lyrics_scrape
     return fetch_lyrics_scrape(artist, title)
 
 

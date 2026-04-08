@@ -12,7 +12,7 @@ from pathlib import Path
 import httpx
 
 from yoto_lib.providers.claude_provider import ClaudeProvider
-from yoto_lib.lyrics_scrape import _run_js
+from .lyrics_scrape import _run_js
 
 logger = logging.getLogger(__name__)
 

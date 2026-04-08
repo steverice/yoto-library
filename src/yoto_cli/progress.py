@@ -22,7 +22,7 @@ class CostColumn(ProgressColumn):
     max_refresh = 0.5
 
     def render(self, task):
-        from yoto_lib.costs import get_tracker
+        from yoto_lib.billing.costs import get_tracker
         total = get_tracker().total
         if total == 0:
             return Text("")

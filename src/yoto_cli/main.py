@@ -21,23 +21,23 @@ load_dotenv(find_dotenv(usecwd=True))
 
 logger = logging.getLogger(__name__)
 
-from yoto_lib.auth import AuthError, run_device_code_flow
-from yoto_lib.api import YotoAPI
+from yoto_lib.yoto.auth import AuthError, run_device_code_flow
+from yoto_lib.yoto.api import YotoAPI
 from yoto_lib.description import generate_description
 from yoto_lib.sync import sync_path
 from yoto_lib.pull import pull_playlist
 from yoto_lib.playlist import read_jsonl, write_jsonl, scan_audio_files, load_playlist, diff_playlists
 from yoto_lib.mka import wrap_in_mka, remove_attachment, set_attachment, read_source_tags, write_tags, generate_source_patch, extract_album_art, read_tags
-from yoto_lib.itunes import enrich_from_itunes
+from yoto_lib.covers.itunes import enrich_from_itunes
 from yoto_lib.lyrics import get_lyrics
 from yoto_lib.track_sources import resolve_weblocs
-from yoto_lib.costs import get_tracker, reset_tracker
+from yoto_lib.billing.costs import get_tracker, reset_tracker
 from yoto_lib.billing import (
     fetch_balances, fetch_subscription_usage, read_totals, reset_totals,
     persist_session, PROVIDER_GROUPS, DASHBOARD_URLS,
 )
-from yoto_lib.printer import PrintError, print_cover
-from yoto_lib.cover import generate_cover_if_missing
+from yoto_lib.covers.printer import PrintError, print_cover
+from yoto_lib.covers.cover import generate_cover_if_missing
 
 
 def _print_cost_summary():
@@ -804,7 +804,7 @@ def lyrics(path: str | None, force: bool, show: bool, add_source_url: str | None
 
         # 3. Run the wizard
         try:
-            from yoto_lib.lyrics_source_wizard import run_wizard
+            from yoto_lib.lyrics.lyrics_source_wizard import run_wizard
             from yoto_cli.progress import make_progress
             _WIZARD_STEPS = 6
             with make_progress() as progress:
@@ -1048,8 +1048,8 @@ def select_icon(tracks):
     from PIL import Image
     from yoto_lib.icons import generate_retrodiffusion_icons, download_icon, set_macos_file_icon
     from yoto_lib.mka import get_attachment
-    from yoto_lib.icon_catalog import get_catalog
-    from yoto_lib.icon_llm import match_icon_llm, compare_icons_llm, describe_icons_llm, log_icon_feedback, summarize_lyrics_for_icon
+    from yoto_lib.icons.icon_catalog import get_catalog
+    from yoto_lib.icons.icon_llm import match_icon_llm, compare_icons_llm, describe_icons_llm, log_icon_feedback, summarize_lyrics_for_icon
 
     from yoto_cli.progress import make_progress, _console, success as _success, warning as _warning
     from rich.rule import Rule
@@ -1370,7 +1370,7 @@ def cover(path, force, backup, ignore_album_art):
         raise click.UsageError("--force and --backup are mutually exclusive")
     logger.debug("command: cover path=%s force=%s backup=%s ignore_album_art=%s", path, force, backup, ignore_album_art)
     reset_tracker()
-    from yoto_lib.cover import build_cover_prompt, resize_cover, try_shared_album_art, add_title_to_illustration
+    from yoto_lib.covers.cover import build_cover_prompt, resize_cover, try_shared_album_art, add_title_to_illustration
     from yoto_lib.providers import get_provider
     from yoto_lib import mka
     import tempfile
@@ -1403,7 +1403,7 @@ def cover(path, force, backup, ignore_album_art):
         )
 
     from yoto_cli.progress import make_progress, success as _success
-    from yoto_lib.cover import RECOMPOSE_MAX_ATTEMPTS
+    from yoto_lib.covers.cover import RECOMPOSE_MAX_ATTEMPTS
 
     cover_name = playlist.title or folder.name
     title_steps = 1 if playlist.title else 0
@@ -1564,7 +1564,7 @@ def print_cmd(path, yes, profile):
 def billing(reset_group):
     """Show provider balances, subscription usage, and lifetime costs."""
     logger.debug("command: billing reset=%s", reset_group)
-    from yoto_lib.costs import is_subscription
+    from yoto_lib.billing.costs import is_subscription
 
     # Handle --reset
     if reset_group is not None:
@@ -1684,7 +1684,7 @@ def _print_lifetime_spend() -> None:
     """Print the Lifetime spend section."""
     from rich.table import Table
     from yoto_cli.progress import _console
-    from yoto_lib.costs import COSTS, is_subscription
+    from yoto_lib.billing.costs import COSTS, is_subscription
 
     totals = read_totals()
     if not totals:

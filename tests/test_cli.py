@@ -11,10 +11,10 @@ import pytest
 from click.testing import CliRunner
 
 from yoto_cli.main import cli, _is_card_id, _strip_track_number
-from yoto_lib.auth import AuthError
+from yoto_lib.yoto.auth import AuthError
 from yoto_lib.pull import PullResult
 from yoto_lib.sync import SyncResult
-from yoto_lib.printer import PrintError
+from yoto_lib.covers.printer import PrintError
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────

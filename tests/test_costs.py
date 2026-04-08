@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from yoto_lib.costs import COSTS, CostTracker, _COSTS_FILE
+from yoto_lib.billing.costs import COSTS, CostTracker, _COSTS_FILE
 
 
 def test_costs_json_valid():

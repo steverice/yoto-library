@@ -42,8 +42,8 @@ class TestClaudeProviderCall:
         with patch("yoto_lib.providers.claude_provider.ClaudeProvider.call.__wrapped__", None, create=True):
             pass
         with (
-            patch("yoto_lib.costs.get_tracker", return_value=_noop_tracker()),
-            patch("yoto_lib.costs.is_subscription", return_value=False),
+            patch("yoto_lib.billing.costs.get_tracker", return_value=_noop_tracker()),
+            patch("yoto_lib.billing.costs.is_subscription", return_value=False),
         ):
             yield
 
