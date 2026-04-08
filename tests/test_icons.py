@@ -200,7 +200,7 @@ class TestGenerateTrackIcon:
 
         with (
             patch("yoto_lib.icons.generate_retrodiffusion_icon", return_value=(None, None)),
-            patch("yoto_lib.image_providers.get_provider", return_value=mock_provider),
+            patch("yoto_lib.providers.get_provider", return_value=mock_provider),
         ):
             result = generate_track_icon("Test Song")
 
@@ -212,7 +212,7 @@ class TestGenerateTrackIcon:
         """Returns None if no image provider is configured."""
         with (
             patch("yoto_lib.icons.generate_retrodiffusion_icon", return_value=(None, None)),
-            patch("yoto_lib.image_providers.get_provider", side_effect=ValueError("no key")),
+            patch("yoto_lib.providers.get_provider", side_effect=ValueError("no key")),
         ):
             result = generate_track_icon("Test Song")
         assert result is None
@@ -224,7 +224,7 @@ class TestGenerateTrackIcon:
 
         with (
             patch("yoto_lib.icons.generate_retrodiffusion_icon", return_value=(None, None)),
-            patch("yoto_lib.image_providers.get_provider", return_value=mock_provider),
+            patch("yoto_lib.providers.get_provider", return_value=mock_provider),
         ):
             result = generate_track_icon("Test Song")
         assert result is None

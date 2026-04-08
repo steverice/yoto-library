@@ -321,7 +321,7 @@ class TestReframeAlbumArt:
         mock_provider.recompose.return_value = _make_png_bytes(638, 1011, "blue")
 
         with (
-            patch("yoto_lib.image_providers.flux_provider.FluxProvider", return_value=mock_provider),
+            patch("yoto_lib.providers.flux_provider.FluxProvider", return_value=mock_provider),
             patch("yoto_lib.cover.check_recompose_quality", return_value=True),
         ):
             reframe_album_art(art_bytes, output)
@@ -338,7 +338,7 @@ class TestReframeAlbumArt:
         mock_provider.recompose.return_value = _make_png_bytes(638, 1011, "blue")
 
         with (
-            patch("yoto_lib.image_providers.flux_provider.FluxProvider", return_value=mock_provider),
+            patch("yoto_lib.providers.flux_provider.FluxProvider", return_value=mock_provider),
             patch("yoto_lib.cover.check_recompose_quality", side_effect=[False, True]),
         ):
             reframe_album_art(art_bytes, output)
@@ -355,7 +355,7 @@ class TestReframeAlbumArt:
         mock_provider.recompose.return_value = _make_png_bytes(638, 1011, "blue")
 
         with (
-            patch("yoto_lib.image_providers.flux_provider.FluxProvider", return_value=mock_provider),
+            patch("yoto_lib.providers.flux_provider.FluxProvider", return_value=mock_provider),
             patch("yoto_lib.cover.check_recompose_quality", return_value=False),
             patch("yoto_lib.cover.repair_text", return_value=_make_png_bytes(638, 1011, "red")) as mock_repair,
             patch("yoto_lib.cover.pick_best_candidate", return_value=_make_png_bytes(638, 1011, "red")),
@@ -375,7 +375,7 @@ class TestReframeAlbumArt:
         best = _make_png_bytes(638, 1011, "red")
 
         with (
-            patch("yoto_lib.image_providers.flux_provider.FluxProvider", return_value=mock_provider),
+            patch("yoto_lib.providers.flux_provider.FluxProvider", return_value=mock_provider),
             patch("yoto_lib.cover.check_recompose_quality", return_value=False),
             patch("yoto_lib.cover.repair_text", return_value=_make_png_bytes(638, 1011, "blue")),
             patch("yoto_lib.cover.pick_best_candidate", return_value=best) as mock_pick,
