@@ -40,10 +40,13 @@ Never use `click.echo()` or `print()` directly.
 - **Tables**: `rich.table.Table` printed via `_console.print(table)`
 - **Separators**: `rich.rule.Rule(title=name)` printed via `_console.print(rule)`
 
-Progress bars use `make_progress()` from `progress.py`. For commands with multi-step
-operations, use nested tasks (outer = command-level, inner = current operation).
-For parallel operations, add one inner task per concurrent job.
-Cost tracking is automatic — providers record costs via `get_tracker().record()`.
+**Progress display** — two patterns depending on the operation:
+
+- **Counted work** (N items to process): use `make_progress()` from `progress.py`. Add an outer task for the command (`total=N`) and inner tasks for sub-operations. Advance with `progress.update(task, advance=1, status=current_item)`. Cost tracking is automatic — providers record costs via `get_tracker().record()`. Use `progress.console.print()` for per-item result lines inside the `with make_progress()` block (not `_console.print()` — that would interleave with the live display). Any CLI loop over N items where each item might do I/O (network, subprocess, file read) should use this pattern.
+
+- **Sequential multi-step work** (wizard, analysis pipeline — known step count): use `make_progress()` with `total=N` where N is the number of steps. The `on_step` callback advances the task and sets the status label. Use `_console.status()` only for a single indeterminate wait with no meaningful sub-steps to show.
+
+**Library/CLI boundary for progress** — library functions must not call CLI or Rich directly. Instead, accept an `on_step: Callable[[str], None] | None = None` parameter and call it at each step (`if on_step: on_step("Doing X…")`). The CLI layer wraps the call in a status spinner and passes `lambda msg: spinner.update(msg)`. See `lyrics_source_wizard.py` / `main.py` `--add-source` for the reference implementation. Any library function that takes more than a second or has named phases should expose `on_step`.
 
 **iTerm2 integration** — `src/yoto_cli/iterm_colors.py` uses iTerm2's Python API (optional dependency) to fix color space rendering for pixel art icons. Pattern: detect iTerm2 via `TERM_PROGRAM` env var, attempt API connection (catch `SystemExit` on failure), apply session-local overrides via `LocalWriteOnlyProfile` (doesn't modify the underlying profile), restore after. Silent graceful degradation — never fails the command.
 
