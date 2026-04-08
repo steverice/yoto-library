@@ -179,15 +179,16 @@ Remove icon attachments from one or more MKA files. The next `yoto sync` will re
 
 ### `yoto print [path]`
 
-Print cover art to a photo printer. Uses macOS ColorSync for ICC color management and CUPS for printing. Requires a configured printer (default: Canon SELPHY CP1300).
+Print cover art to a photo printer via macOS CUPS. Optionally applies an ICC color profile for accurate color reproduction.
 
 ```
-yoto print                    # print cover in current directory
-yoto print "Bedtime Songs"   # print a specific playlist's cover
-yoto print --yes              # skip confirmation prompt
+yoto print                                  # print cover in current directory
+yoto print "Bedtime Songs"                  # print a specific playlist's cover
+yoto print --yes                             # skip confirmation prompt
+yoto print --profile /path/to/profile.icc   # use ICC color profile
 ```
 
-If no `cover.png` exists, offers to generate one first.
+If no `cover.png` exists, offers to generate one first. If a profile is specified but not found, warns and offers to continue without color management.
 
 ### `yoto completions [shell]`
 
@@ -211,7 +212,7 @@ Each service handles a specific part of the pipeline — see [AI providers](#ai-
 **Printing** — requires a photo printer configured in macOS System Settings:
 
 - `YOTO_PRINTER` — CUPS printer name (default: `Canon_SELPHY_CP1300`)
-- `YOTO_ICC_PROFILE` — path to ICC color profile (default: `~/Library/ColorSync/Profiles/Canon Selphy CP1200.ICC`)
+- `YOTO_ICC_PROFILE` — path to ICC color profile (optional; skips color management if unset)
 
 ## How it works
 
