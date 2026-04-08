@@ -1,4 +1,4 @@
-"""Print cover art to a photo printer via macOS sips + lpr."""
+"""Print cover art to a photo printer via macOS lpr + Pillow ICC."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageCms
 
 logger = logging.getLogger(__name__)
 
@@ -88,21 +88,14 @@ def _check_printer(printer: str) -> None:
         )
 
 
-def _icc_convert(input_path: Path, output_path: Path, icc_profile: str) -> None:
-    """Convert image color space via macOS sips."""
-    result = subprocess.run(
-        [
-            "sips",
-            "-s", "format", "jpeg",
-            "-s", "formatOptions", "100",
-            "--matchToWithIntent", icc_profile, "relative",
-            str(input_path),
-            "--out", str(output_path),
-        ],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        raise PrintError(f"Color conversion failed: {result.stderr.strip()}")
+def _icc_convert(img: Image.Image, icc_profile: str) -> Image.Image:
+    """Apply ICC device link profile via Pillow/lcms2."""
+    try:
+        profile = ImageCms.getOpenProfile(icc_profile)
+        transform = ImageCms.buildTransform(profile, profile, "RGB", "RGB")
+        return ImageCms.applyTransform(img, transform)
+    except (OSError, ImageCms.PyCMSError) as exc:
+        raise PrintError(f"Color conversion failed: {exc}")
 
 
 def _send_to_printer(file_path: Path, printer: str) -> None:
@@ -146,26 +139,20 @@ def print_cover(
     if not Path(icc_profile).exists():
         raise PrintError(f"ICC profile not found: {icc_profile}")
 
-    # Validate and crop
+    # Validate, crop, ICC convert
     img = validate_cover(cover_path)
     img = crop_for_print(img)
+    img = _icc_convert(img, icc_profile)
 
-    # Save cropped image to temp PNG, then ICC-convert to JPEG
-    cropped_tmp = None
+    # Save to temp file and print
     print_tmp = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-            cropped_tmp = Path(f.name)
+            print_tmp = Path(f.name)
             img.save(f, format="PNG")
 
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
-            print_tmp = Path(f.name)
-
-        _icc_convert(cropped_tmp, print_tmp, icc_profile)
         _send_to_printer(print_tmp, printer)
 
     finally:
-        if cropped_tmp:
-            cropped_tmp.unlink(missing_ok=True)
         if print_tmp:
             print_tmp.unlink(missing_ok=True)
