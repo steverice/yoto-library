@@ -15,6 +15,7 @@ Each playlist is a folder. Audio files live in MKA containers that carry metadat
 **Optional:**
 
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) — YouTube audio downloads (for `.webloc` support)
+- [bsdiff](https://github.com/nicupavel/bsdiff) — byte-perfect export patches (install via `brew install bsdiff`; `bspatch` ships with macOS)
 
 **AI services (for icon and cover art generation):**
 
@@ -166,6 +167,36 @@ yoto download                 # process .webloc files in current directory
 yoto download --no-trim       # skip silence trimming
 ```
 
+### `yoto export <playlist>`
+
+Export MKA tracks back to their original audio format. If a `source.patch` attachment exists, the export is byte-perfect via bspatch.
+
+```
+yoto export "Bedtime Songs"                    # export to Bedtime Songs-exported/
+yoto export "Bedtime Songs" -o ~/Music/out     # export to a specific folder
+```
+
+### `yoto lyrics <playlist>`
+
+Fetch and store lyrics for tracks in a playlist. Checks source tags first, then falls back to the LRCLIB API.
+
+```
+yoto lyrics "Bedtime Songs"           # fetch missing lyrics
+yoto lyrics "Bedtime Songs" --force   # re-fetch all lyrics
+yoto lyrics "Bedtime Songs" --show    # display stored lyrics in a pager
+```
+
+### `yoto cover [path]`
+
+Generate cover art for a playlist folder without syncing.
+
+```
+yoto cover                          # generate cover in current directory
+yoto cover --force                  # regenerate even if cover.png exists
+yoto cover --backup                 # rename existing cover.png before generating
+yoto cover --ignore-album-art       # skip album art reuse, generate from prompt
+```
+
 ### `yoto reorder [playlist]`
 
 Open `playlist.jsonl` in `$EDITOR` to reorder tracks. Validates JSON on save. Defaults to `playlist.jsonl` in the current directory.
@@ -199,6 +230,16 @@ Fetch and embed lyrics for tracks in a playlist folder. Tries embedded tags, the
 yoto lyrics                          # fetch lyrics for current directory
 yoto lyrics "Bedtime Songs"          # fetch lyrics for a specific folder
 yoto lyrics --add-source <url>       # analyze a website and add it as a lyrics source
+```
+
+### `yoto billing`
+
+Show provider balances, subscription usage, and lifetime cost tracking.
+
+```
+yoto billing                    # show all billing info
+yoto billing --reset            # reset all lifetime cost data
+yoto billing --reset openai     # reset costs for a specific provider group
 ```
 
 ### `yoto completions [shell]`
@@ -237,7 +278,7 @@ Each service handles a specific part of the pipeline — see [AI providers](#ai-
 
 **Cover art** — if `cover.png` is missing, the tool first checks whether all tracks share identical embedded album art (e.g., from a ripped CD or tagged album). If so, FLUX Kontext recomposes the square art into a 638x1011 portrait layout. Claude checks the result for text quality — if text is mangled after 3 attempts, a repair pipeline kicks in: Claude OCRs the original text, Gemini renders a styled text layer, Claude picks placement coordinates, and PIL composites the text onto the artwork. If no shared album art exists, OpenAI generates a cover from scratch using track metadata. Delete `cover.png` to regenerate.
 
-Use `--force` to regenerate an existing cover. Set `YOTO_RECOMPOSE_ATTEMPTS` (default 3) to control how many FLUX attempts before falling back to the text repair pipeline.
+Use `yoto cover --force` to regenerate an existing cover. Set `YOTO_RECOMPOSE_ATTEMPTS` (default 3) to control how many FLUX attempts before falling back to the text repair pipeline.
 
 - `YOTO_WORKERS` — max parallel workers for downloads, uploads, imports, exports (default: 4)
 
@@ -295,30 +336,45 @@ python -m pytest -m integration
 
 ## Architecture
 
-Two-layer design: `yoto_lib` is a standalone Python library; `yoto_cli` is a thin Click wrapper. The library is importable independently — no CLI framework dependency leaks into library code.
+Two-layer design: `yoto_lib` is a standalone Python library; `yoto_cli` is a thin Click wrapper. The library is importable independently -- no CLI framework dependency leaks into library code.
 
 ```
 src/
   yoto_lib/
-    auth.py              # OAuth device code flow, token refresh, Keychain storage
-    api.py               # Yoto API client (content CRUD, upload pipeline, media)
-    playlist.py          # local playlist model (folder ↔ Yoto content schema)
-    sync.py              # local → remote sync engine
-    pull.py              # remote → local pull engine
+    playlist.py          # local playlist model (folder <-> Yoto content schema)
+    sync.py              # local -> remote sync engine
+    pull.py              # remote -> local pull engine
     mka.py               # MKA container: wrap, tags, attachments
-    icons.py             # icon pipeline: matching, generation, ICNS
-    icon_llm.py          # LLM-based icon matching via Claude CLI
-    icon_catalog.py      # local cache for Yoto public icon catalog
-    cover.py             # AI cover art generation
     description.py       # auto-generated playlist descriptions
-    sources/             # source providers (.webloc → audio)
+    yoto/                # Yoto platform client
+      api.py             # API client (content CRUD, upload pipeline, media)
+      auth.py            # OAuth device code flow, token refresh, Keychain storage
+    billing/             # cost tracking and billing
+      costs.py           # per-call cost tracker
+      costs.json         # cost-per-operation lookup table
+    icons/               # icon pipeline
+      __init__.py        # matching, generation, ICNS building
+      icon_catalog.py    # local cache for Yoto public icon catalog
+      icon_llm.py        # LLM-based icon matching via Claude CLI
+    covers/              # cover art pipeline
+      cover.py           # AI cover art generation, recomposition, text repair
+      itunes.py          # iTunes Search API for album art and metadata
+      printer.py         # cover art printing via CUPS
+    lyrics/              # lyrics pipeline
+      __init__.py        # fetch pipeline (source tags + LRCLIB)
+      lyrics_scrape.py   # config-driven web scraping via Node.js/jsdom
+      lyrics_source_wizard.py  # Claude-powered wizard to generate scrape configs
+    track_sources/       # source providers (.webloc -> audio)
       youtube.py         # YouTube via yt-dlp
-    image_providers/     # pluggable AI image generation
-      openai_provider.py
-      gemini_provider.py
-      retrodiffusion_provider.py
-      together_provider.py
-      dalle2_provider.py
+    providers/           # AI service providers
+      base.py            # Provider ABC, StatusPageMixin, @check_status_on_error
+      openai_provider.py # text-to-image cover generation
+      flux_provider.py   # album art recomposition (FLUX Kontext via Together AI)
+      gemini_provider.py # text layer rendering (Gemini Flash)
+      retrodiffusion_provider.py  # 16x16 pixel art icon generation
+      claude_provider.py # Claude CLI wrapper for LLM tasks
   yoto_cli/
     main.py              # Click CLI: all commands
+    progress.py          # shared rich Console, progress bars, cost display
+    iterm_colors.py      # iTerm2 color space fix for pixel art rendering
 ```

@@ -8,12 +8,8 @@ Instructions for AI coding agents working on this codebase.
 src/
   yoto_lib/            # standalone Python library (no CLI dependencies)
   yoto_cli/            # thin Click CLI wrapper
-tests/                 # pytest test suite
-docs/superpowers/      # design specs and implementation plans
-  specs/               # rationale behind architectural decisions
-  plans/               # step-by-step implementation plans
+tests/                 # pytest test suite (flat — one test_*.py per module)
 validation/            # standalone validation scripts (MKA transcode, icon grid)
-data/                  # sample playlists (gitignored)
 ```
 
 ## Key conventions
@@ -52,9 +48,9 @@ Never use `click.echo()` or `print()` directly.
 
 **HTTP client** — httpx (not requests).
 
-**LLM calls** — go through the `claude` CLI as a subprocess (`claude -p <prompt> --output-format json`). See `icon_llm.py` for the pattern. Do not use the Anthropic Python SDK for LLM calls in this project. The `--add-source` wizard calls Claude with `allowed_tools="Read"` to analyze downloaded HTML files.
+**LLM calls** — go through the `claude` CLI via `ClaudeProvider` in `providers/claude_provider.py`. The provider wraps `claude -p <prompt> --output-format json` as a subprocess. See `icon_llm.py` and `description.py` for usage patterns. Do not use the Anthropic Python SDK for LLM calls in this project. The `--add-source` wizard calls Claude with `allowed_tools="Read"` to analyze downloaded HTML files.
 
-**Image generation** — pluggable providers in `image_providers/`. Provider selected by `YOTO_IMAGE_PROVIDER` env var. Follow the existing provider interface when adding new providers.
+**Image generation** — provider classes live in `providers/`. Each AI task uses a hardcoded provider chosen for best results (not user-selectable). All providers extend the `Provider` ABC in `providers/base.py`. Follow the existing provider interface when adding new providers.
 
 **Environment** — API keys loaded from `.env` via `python-dotenv`. No other config files.
 
@@ -63,7 +59,7 @@ Never use `click.echo()` or `print()` directly.
 ## Architecture rules
 
 - **Library/CLI separation** — `yoto_lib` must be importable without Click. No CLI framework imports in library code. The library is designed to be called by other tools (e.g., a Quick Look plugin).
-- **No global config file** — env vars for provider selection, Keychain for auth. This is a deliberate choice, not an oversight. **Exception: `~/.yoto/lyrics/*.json` are per-source scraping configs (not a central config file — each is self-contained).**
+- **No global config file** — env vars for API keys, Keychain for auth. This is a deliberate choice, not an oversight. **Exception: `~/.yoto/lyrics/*.json` are per-source scraping configs (not a central config file — each is self-contained).**
 - **Sync is one-directional** — `sync` is always local→remote (local wins). `pull` is always remote→local (remote wins). There is no conflict resolution, and none should be added.
 - **One chapter per track** — each track maps to one Yoto chapter, giving the user dial control per song on the physical player. Do not collapse tracks into shared chapters.
 - **Cover art dimensions** — 638x1011 pixels (portrait). Print-ready at 300dpi for 54x86mm physical cards.
@@ -107,11 +103,12 @@ Tests mock external calls (Yoto API, subprocess, Claude CLI). See `conftest.py` 
 | ffmpeg | audio processing, MKA muxing, silence detection | yes |
 | mkvtoolnix | MKA metadata tag and attachment read/write | yes |
 | yt-dlp | YouTube audio download | for `.webloc` support |
-| claude CLI | auto-descriptions, LLM-based icon matching | for AI features |
+| claude CLI | auto-descriptions, LLM-based icon matching, cover evaluation | for AI features |
 | `node` + `jsdom` | Web scraping lyrics sources via `scrape_runner.js` | for lyrics scraping |
+| bsdiff | byte-perfect export patches at import time | optional (export won't be byte-perfect without it) |
 
 These are invoked as subprocesses, not Python bindings.
 
 ## Design specs
 
-Architectural rationale and feature designs live in `docs/superpowers/specs/`. Read these before making changes to understand why things are the way they are — the code shows what, the specs explain why.
+Architectural rationale and feature designs live in `~/Documents/www/agent-specs/` (outside this repo). Read these before making changes to understand why things are the way they are -- the code shows what, the specs explain why.

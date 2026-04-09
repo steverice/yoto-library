@@ -123,17 +123,17 @@ This produces byte-identical output regardless of what tags, icons, or other att
 
 All external service integrations extend the `Provider` abstract base class
 (`src/yoto_lib/providers/base.py`). Each provider implements a `check_status()`
-classmethod that reports its health — this might check a statuspage.io API,
+classmethod that reports its health -- this might check a statuspage.io API,
 verify a CLI tool is on PATH, or simply return healthy.
 
 ```
 Provider (ABC)
-  ├── check_status() → ProviderStatus   (classmethod, abstract)
-  └── subclasses: OpenAI, DallE2, Flux, Together, RetroDiffusion, Claude
+  ├── check_status() -> ProviderStatus   (classmethod, abstract)
+  └── subclasses: OpenAI, Flux, RetroDiffusion, Claude
 
 StatusPageMixin
   └── check_status() via _fetch_statuspage()   (cached 5 min, thread-safe)
-  └── Used by: OpenAIProvider, DallE2Provider, ClaudeProvider
+  └── Used by: OpenAIProvider, ClaudeProvider
 ```
 
 The `@check_status_on_error` decorator goes on **logic functions** that use
@@ -162,7 +162,7 @@ Each AI-powered feature uses a hardcoded provider chosen for best results at tha
 3. **Claude CLI** (Sonnet) — compares padded vs recomposed versions, picks the better one.
 4. If text is mangled after all attempts, the repair pipeline runs:
    - **Claude CLI** (Sonnet) — OCRs original album text
-   - **Gemini 2.5 Flash Image** (AI Studio) — renders styled text on black background
+   - **Gemini 2.5 Flash Image** (AI Studio) — renders styled text on black background (called inline via `google-genai` SDK, not through a Provider subclass)
    - **Claude CLI** (Sonnet) — picks placement coordinates on the portrait image
    - **PIL** — chroma keys black background and composites text at coordinates
 
