@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from yoto_lib.providers.base import Provider, ProviderStatus
+from yoto_lib.providers.base import Provider
 
 logger = logging.getLogger(__name__)
 
@@ -12,10 +12,6 @@ class GeminiProvider(Provider):
     """Generates images using Google Gemini."""
 
     MODEL = "gemini-2.5-flash-image"
-
-    @classmethod
-    def check_status(cls) -> ProviderStatus:
-        return ProviderStatus(healthy=True)
 
     def generate(self, prompt: str, reference_image: bytes | None = None) -> bytes:
         """Generate an image from a text prompt.

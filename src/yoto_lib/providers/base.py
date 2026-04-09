@@ -35,14 +35,14 @@ class Provider(ABC):
     """Base class for all external service providers."""
 
     @classmethod
-    @abstractmethod
-    def check_status(cls) -> ProviderStatus:
+    def check_status(cls) -> ProviderStatus | None:
         """Check provider health.
 
-        Implementations may check status pages, CLI availability,
-        API key validity, credit balance, etc.
+        Returns ProviderStatus if the provider can report its health,
+        or None if it has no way to check. Subclasses override this
+        to check status pages, CLI availability, API key validity, etc.
         """
-        ...
+        return None
 
 
 class ImageProvider(Provider):
@@ -146,6 +146,8 @@ def _warn_unhealthy(provider_classes: tuple[type[Provider], ...]) -> None:
     for cls in provider_classes:
         try:
             status = cls.check_status()
+            if status is None:
+                continue
             if not status.healthy:
                 msg = status.message or "service issues detected"
                 if status.url:

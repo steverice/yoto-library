@@ -6,17 +6,13 @@ import logging
 from PIL import Image as PILImage
 from together import Together
 
-from yoto_lib.providers.base import ImageProvider, ProviderStatus
+from yoto_lib.providers.base import ImageProvider
 
 logger = logging.getLogger(__name__)
 
 
 class FluxProvider(ImageProvider):
     """Generates and recomposes images using FLUX models on Together AI."""
-
-    @classmethod
-    def check_status(cls) -> ProviderStatus:
-        return ProviderStatus(healthy=True)
 
     def __init__(self) -> None:
         self._client = Together()
