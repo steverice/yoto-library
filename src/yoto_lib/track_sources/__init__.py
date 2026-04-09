@@ -116,6 +116,7 @@ def resolve_weblocs(
     on_track_done: Callable[[str], None] | None = None,
     on_track_start: Callable[[str], None] | None = None,
     on_download_progress: Callable[[str, float, int, int | None, str], None] | None = None,
+    webloc_files: list[Path] | None = None,
 ) -> list[Path]:
     """Resolve .webloc files in a playlist directory into .mka tracks.
 
@@ -133,8 +134,9 @@ def resolve_weblocs(
         on_track_start: Called with the webloc stem when a download begins.
         on_download_progress: Called with (name, pct, downloaded, total, speed) during download.
         on_track_done: Called with the mka filename when a track is fully resolved.
+        webloc_files: Specific .webloc files to resolve. If None, globs playlist_dir.
     """
-    weblocs = sorted(playlist_dir.glob("*.webloc"))
+    weblocs = sorted(webloc_files) if webloc_files is not None else sorted(playlist_dir.glob("*.webloc"))
     if not weblocs:
         return []
 

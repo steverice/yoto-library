@@ -232,7 +232,7 @@ class TestDownloadCommand:
             result = runner.invoke(cli, ["download", str(folder)])
 
         assert result.exit_code == 0
-        mock_resolve.assert_called_once_with(folder, trim=True)
+        mock_resolve.assert_called_once_with(folder, trim=True, webloc_files=None)
 
     def test_download_no_trim(self, runner, tmp_path):
         """download --no-trim passes trim=False."""
@@ -243,7 +243,7 @@ class TestDownloadCommand:
             result = runner.invoke(cli, ["download", "--no-trim", str(folder)])
 
         assert result.exit_code == 0
-        mock_resolve.assert_called_once_with(folder, trim=False)
+        mock_resolve.assert_called_once_with(folder, trim=False, webloc_files=None)
 
     def test_download_reports_created_files(self, runner, tmp_path):
         """download prints the names of created .mka files."""
@@ -256,6 +256,19 @@ class TestDownloadCommand:
 
         assert result.exit_code == 0
         assert "Cool Song.mka" in result.output
+
+    def test_download_single_webloc_file(self, runner, tmp_path):
+        """download accepts a single .webloc file path."""
+        folder = tmp_path / "playlist"
+        folder.mkdir()
+        webloc = folder / "song.webloc"
+        webloc.write_bytes(b"fake")
+
+        with patch("yoto_cli.commands.import_cmd.resolve_weblocs", return_value=[]) as mock_resolve:
+            result = runner.invoke(cli, ["download", str(webloc)])
+
+        assert result.exit_code == 0
+        mock_resolve.assert_called_once_with(folder, trim=True, webloc_files=[webloc])
 
 
 # ── test_helpers ─────────────────────────────────────────────────────────────
