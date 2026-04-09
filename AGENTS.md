@@ -117,6 +117,7 @@ Do not skip or bypass these checks.
 | ffmpeg | audio processing, MKA muxing, silence detection | yes |
 | mkvtoolnix | MKA metadata tag and attachment read/write | yes |
 | yt-dlp | YouTube audio download | for `.webloc` support |
+| deno | JavaScript runtime required by yt-dlp for YouTube extraction | for `.webloc` support |
 | claude CLI | auto-descriptions, LLM-based icon matching, cover evaluation | for AI features |
 | `node` + `jsdom` | Web scraping lyrics sources via `scrape_runner.js` | for lyrics scraping |
 | bsdiff | byte-perfect export patches at import time | optional (export won't be byte-perfect without it) |
