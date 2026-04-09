@@ -666,10 +666,10 @@ class TestPrintCommand:
 
         with (
             patch("yoto_cli.commands.cover.generate_cover_if_missing") as mock_gen,
-            patch("yoto_cli.commands.cover.print_cover") as mock_print,
+            patch("yoto_cli.commands.cover.print_cover"),
         ):
             # Answer "y" to generate, then "y" to print
-            result = runner.invoke(cli, ["print", str(folder)], input="y\ny\n")
+            runner.invoke(cli, ["print", str(folder)], input="y\ny\n")
 
         mock_gen.assert_called_once()
 
@@ -760,7 +760,7 @@ class TestSyncPrint:
         fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1, cover_uploaded=True, folder=folder)]
 
         with (
-            patch("yoto_cli.commands.sync.sync_path", return_value=fake_results) as mock_sync,
+            patch("yoto_cli.commands.sync.sync_path", return_value=fake_results),
             patch("yoto_cli.commands.sync.print_cover") as mock_print,
         ):
             result = runner.invoke(cli, ["sync", "--print", str(folder)])
@@ -778,7 +778,7 @@ class TestSyncPrint:
         fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1, cover_uploaded=True, folder=folder)]
 
         with (
-            patch("yoto_cli.commands.sync.sync_path", return_value=fake_results) as mock_sync,
+            patch("yoto_cli.commands.sync.sync_path", return_value=fake_results),
             patch("yoto_cli.commands.sync.print_cover") as mock_print,
         ):
             result = runner.invoke(cli, ["sync", "--no-print", str(folder)])
@@ -799,10 +799,10 @@ class TestSyncPrint:
         fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1, cover_uploaded=True, folder=folder)]
 
         with (
-            patch("yoto_cli.commands.sync.sync_path", return_value=fake_results) as mock_sync,
+            patch("yoto_cli.commands.sync.sync_path", return_value=fake_results),
             patch("yoto_cli.commands.sync.print_cover") as mock_print,
         ):
-            result = runner.invoke(cli, ["sync", str(folder)], input="y\n")
+            runner.invoke(cli, ["sync", str(folder)], input="y\n")
 
         mock_print.assert_called_once()
 
@@ -815,7 +815,7 @@ class TestSyncPrint:
         fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1, cover_uploaded=False, folder=folder)]
 
         with (
-            patch("yoto_cli.commands.sync.sync_path", return_value=fake_results) as mock_sync,
+            patch("yoto_cli.commands.sync.sync_path", return_value=fake_results),
             patch("yoto_cli.commands.sync.print_cover") as mock_print,
         ):
             result = runner.invoke(cli, ["sync", str(folder)])
@@ -832,7 +832,7 @@ class TestSyncPrint:
         fake_results = [SyncResult(card_id=None, tracks_uploaded=2, dry_run=True, cover_uploaded=True, folder=folder)]
 
         with (
-            patch("yoto_cli.commands.sync.sync_path", return_value=fake_results) as mock_sync,
+            patch("yoto_cli.commands.sync.sync_path", return_value=fake_results),
             patch("yoto_cli.commands.sync.print_cover") as mock_print,
         ):
             result = runner.invoke(cli, ["sync", "--dry-run", "--print", str(folder)])

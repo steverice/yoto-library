@@ -17,7 +17,7 @@ from .lyrics_scrape import _run_js
 
 logger = logging.getLogger(__name__)
 
-_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"  # noqa: E501
 
 
 def _analyze_index_page(html_path: Path) -> dict[str, str]:

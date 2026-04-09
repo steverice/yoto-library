@@ -219,14 +219,13 @@ def enrich_from_itunes(
     result, image_bytes = cached
 
     # Embed artwork
-    if image_bytes is not None:
-        if embed_album_art(mka_path, image_bytes):
-            logger.info(
-                "Embedded iTunes artwork in %s (%s - %s)",
-                mka_path.name,
-                artist,
-                album,
-            )
+    if image_bytes is not None and embed_album_art(mka_path, image_bytes):
+        logger.info(
+            "Embedded iTunes artwork in %s (%s - %s)",
+            mka_path.name,
+            artist,
+            album,
+        )
 
     # Backfill missing metadata
     backfill = {}

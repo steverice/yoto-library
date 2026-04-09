@@ -160,8 +160,8 @@ class YouTubeProvider:
                 capture_output=True,
                 text=True,
             )
-        except FileNotFoundError:
-            raise RuntimeError("yt-dlp is required for YouTube downloads. Install with: brew install yt-dlp")
+        except FileNotFoundError as exc:
+            raise RuntimeError("yt-dlp is required for YouTube downloads. Install with: brew install yt-dlp") from exc
 
         if meta_result.returncode != 0:
             raise RuntimeError(f"yt-dlp metadata fetch failed: {meta_result.stderr}")
@@ -180,7 +180,7 @@ class YouTubeProvider:
             "0",
             "--newline",
             "--progress-template",
-            "download:%(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.speed)s %(progress.percentage)s",
+            "download:%(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.speed)s %(progress.percentage)s",  # noqa: E501
             "-o",
             output_template,
             url,
@@ -195,8 +195,8 @@ class YouTubeProvider:
                 stderr=subprocess.PIPE,
                 text=True,
             )
-        except FileNotFoundError:
-            raise RuntimeError("yt-dlp is required for YouTube downloads. Install with: brew install yt-dlp")
+        except FileNotFoundError as exc:
+            raise RuntimeError("yt-dlp is required for YouTube downloads. Install with: brew install yt-dlp") from exc
 
         assert proc.stderr is not None
         for line in proc.stderr:

@@ -65,7 +65,7 @@ def sample_wav(tmp_path):
 def _ffmpeg_encode(wav_path: Path, output_path: Path, codec_args: list[str]) -> Path:
     """Helper: encode a WAV to another format via ffmpeg."""
     subprocess.run(
-        ["ffmpeg", "-y", "-i", str(wav_path)] + codec_args + [str(output_path)],
+        ["ffmpeg", "-y", "-i", str(wav_path), *codec_args, str(output_path)],
         capture_output=True,
         check=True,
     )

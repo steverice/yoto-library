@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import httpx
+import httpx as httpx_client
 import pytest
 from click.testing import CliRunner
 
@@ -34,7 +35,7 @@ class TestSearchItunesAlbum:
             results = search_itunes_album("Daniel Tiger", "Life's Little Lessons")
 
         mock_get.assert_called_once()
-        args, kwargs = mock_get.call_args
+        _args, kwargs = mock_get.call_args
         assert "Daniel Tiger" in kwargs["params"]["term"]
         assert kwargs["params"]["entity"] == "album"
         assert len(results) == 1
@@ -232,7 +233,7 @@ class TestEnrichFromItunes:
             patch("yoto_lib.covers.itunes.match_album", return_value=api_result),
             patch("yoto_lib.covers.itunes.httpx.get") as mock_get,
             patch("yoto_lib.covers.itunes.embed_album_art", return_value=True) as mock_embed,
-            patch("yoto_lib.covers.itunes.write_tags") as mock_write_tags,
+            patch("yoto_lib.covers.itunes.write_tags"),
         ):
             mock_response = MagicMock()
             mock_response.content = b"fake jpeg bytes"
@@ -422,8 +423,6 @@ class TestImportIntegration:
         assert len(lyrics_calls) >= 1
         assert lyrics_calls[0][0][1]["lyrics"] == "La la la"
 
-
-import httpx as httpx_client
 
 needs_network = pytest.mark.skipif(
     os.environ.get("SKIP_NETWORK_TESTS", "0") == "1",

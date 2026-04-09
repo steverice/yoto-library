@@ -45,9 +45,11 @@ def test_analyze_index_page_claude_failure(tmp_path):
 
     mock_class = _make_claude_mock(None)
 
-    with patch("yoto_lib.lyrics.lyrics_source_wizard.ClaudeProvider", mock_class):
-        with pytest.raises(ValueError, match="no response"):
-            _analyze_index_page(html_file)
+    with (
+        patch("yoto_lib.lyrics.lyrics_source_wizard.ClaudeProvider", mock_class),
+        pytest.raises(ValueError, match="no response"),
+    ):
+        _analyze_index_page(html_file)
 
 
 def test_analyze_index_page_invalid_json(tmp_path):
@@ -59,9 +61,11 @@ def test_analyze_index_page_invalid_json(tmp_path):
 
     mock_class = _make_claude_mock("not json")
 
-    with patch("yoto_lib.lyrics.lyrics_source_wizard.ClaudeProvider", mock_class):
-        with pytest.raises(ValueError, match="not valid JSON"):
-            _analyze_index_page(html_file)
+    with (
+        patch("yoto_lib.lyrics.lyrics_source_wizard.ClaudeProvider", mock_class),
+        pytest.raises(ValueError, match="not valid JSON"),
+    ):
+        _analyze_index_page(html_file)
 
 
 # ---------------------------------------------------------------------------
@@ -95,9 +99,11 @@ def test_analyze_lyrics_page_missing_key(tmp_path):
     payload = '{"wrong_key": "x"}'
     mock_class = _make_claude_mock(payload)
 
-    with patch("yoto_lib.lyrics.lyrics_source_wizard.ClaudeProvider", mock_class):
-        with pytest.raises(ValueError, match="lyrics_js"):
-            _analyze_lyrics_page(html_file)
+    with (
+        patch("yoto_lib.lyrics.lyrics_source_wizard.ClaudeProvider", mock_class),
+        pytest.raises(ValueError, match="lyrics_js"),
+    ):
+        _analyze_lyrics_page(html_file)
 
 
 # ---------------------------------------------------------------------------
@@ -191,9 +197,9 @@ def test_run_wizard_index_js_no_results():
         patch("yoto_lib.lyrics.lyrics_source_wizard.httpx.get", return_value=index_response),
         patch("yoto_lib.lyrics.lyrics_source_wizard._analyze_index_page", return_value=index_analysis),
         patch("yoto_lib.lyrics.lyrics_source_wizard._run_js", return_value=[]),
+        pytest.raises(ValueError, match="no results"),
     ):
-        with pytest.raises(ValueError, match="no results"):
-            run_wizard("https://example.com/songs")
+        run_wizard("https://example.com/songs")
 
 
 def test_run_wizard_lyrics_js_no_content():
@@ -229,6 +235,6 @@ def test_run_wizard_lyrics_js_no_content():
         patch("yoto_lib.lyrics.lyrics_source_wizard._analyze_index_page", return_value=index_analysis),
         patch("yoto_lib.lyrics.lyrics_source_wizard._analyze_lyrics_page", return_value=lyrics_analysis),
         patch("yoto_lib.lyrics.lyrics_source_wizard._run_js", side_effect=run_js_results),
+        pytest.raises(ValueError, match="no content"),
     ):
-        with pytest.raises(ValueError, match="no content"):
-            run_wizard(index_url)
+        run_wizard(index_url)

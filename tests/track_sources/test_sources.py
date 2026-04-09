@@ -398,7 +398,7 @@ class TestYouTubeIntegration:
         provider = YouTubeProvider()
         url = "https://www.youtube.com/watch?v=GxtknJ9KFKY"
 
-        audio_path, metadata = provider.download(url, tmp_path, trim=True)
+        audio_path, _metadata = provider.download(url, tmp_path, trim=True)
 
         assert audio_path.exists()
         assert audio_path.stat().st_size > 1000

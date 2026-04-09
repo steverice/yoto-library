@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
@@ -423,8 +424,6 @@ def remove_attachment(mka_path: Path, name: str) -> None:
 
 
 # ── Source patch (bsdiff/bspatch) ────────────────────────────────────────────
-
-import shutil
 
 PATCH_ATTACHMENT_NAME = "source.patch"
 

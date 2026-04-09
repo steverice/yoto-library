@@ -15,20 +15,42 @@ from PIL import Image
 from yoto_lib import mka
 from yoto_lib.icons.download import (
     ICON_CACHE_DIR,
-    _download_bytes,
     download_icon,
-    extract_icon_hash,
+)
+from yoto_lib.icons.download import (
+    _download_bytes as _download_bytes,
+)
+from yoto_lib.icons.download import (
+    extract_icon_hash as extract_icon_hash,
 )
 from yoto_lib.icons.generate import (
-    CANVAS_SIZE,
-    GRID_SIZE,
-    TILE_SIZE,
-    RetroDiffusionProvider,
-    _build_pixelart_prompt,
-    build_icon_prompt,
-    crop_icon_from_grid,
-    generate_raw_grid,
-    generate_retrodiffusion_icon,
+    CANVAS_SIZE as CANVAS_SIZE,
+)
+from yoto_lib.icons.generate import (
+    GRID_SIZE as GRID_SIZE,
+)
+from yoto_lib.icons.generate import (
+    TILE_SIZE as TILE_SIZE,
+)
+from yoto_lib.icons.generate import (
+    RetroDiffusionProvider as RetroDiffusionProvider,
+)
+from yoto_lib.icons.generate import (
+    _build_pixelart_prompt as _build_pixelart_prompt,
+)
+from yoto_lib.icons.generate import (
+    build_icon_prompt as build_icon_prompt,
+)
+from yoto_lib.icons.generate import (
+    crop_icon_from_grid as crop_icon_from_grid,
+)
+from yoto_lib.icons.generate import (
+    generate_raw_grid as generate_raw_grid,
+)
+from yoto_lib.icons.generate import (
+    generate_retrodiffusion_icon as generate_retrodiffusion_icon,
+)
+from yoto_lib.icons.generate import (
     generate_retrodiffusion_icons,
     generate_track_icon,
 )
@@ -41,23 +63,43 @@ from yoto_lib.icons.icon_llm import (
     match_icon_llm,
 )
 from yoto_lib.icons.image import (
-    ICNS_SIZES,
-    ICNS_TYPE_MAP,
-    ICON_SIZE,
-    _color_distance,
-    _dominant_color_downscale,
-    build_icns,
-    generate_icns_sizes,
-    nearest_neighbor_upscale,
-    remove_solid_background,
+    ICNS_SIZES as ICNS_SIZES,
+)
+from yoto_lib.icons.image import (
+    ICNS_TYPE_MAP as ICNS_TYPE_MAP,
+)
+from yoto_lib.icons.image import (
+    ICON_SIZE as ICON_SIZE,
+)
+from yoto_lib.icons.image import (
+    _color_distance as _color_distance,
+)
+from yoto_lib.icons.image import (
+    _dominant_color_downscale as _dominant_color_downscale,
+)
+from yoto_lib.icons.image import (
+    build_icns as build_icns,
+)
+from yoto_lib.icons.image import (
+    generate_icns_sizes as generate_icns_sizes,
+)
+from yoto_lib.icons.image import (
+    nearest_neighbor_upscale as nearest_neighbor_upscale,
+)
+from yoto_lib.icons.image import (
+    remove_solid_background as remove_solid_background,
 )
 from yoto_lib.icons.macos import (
-    _run_osascript,
+    _run_osascript as _run_osascript,
+)
+from yoto_lib.icons.macos import (
     apply_icon_to_mka,
-    clear_macos_file_icon,
     set_macos_file_icon,
 )
-from yoto_lib.mka import sanitize_filename as _sanitize_title
+from yoto_lib.icons.macos import (
+    clear_macos_file_icon as clear_macos_file_icon,
+)
+from yoto_lib.mka import sanitize_filename as _sanitize_title  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +160,7 @@ def _pick_ai_icon(
         return None, None, None
 
     raw_images = [raw for raw, _ in batch]
-    winner, scores = compare_icons_llm(
+    winner, _scores = compare_icons_llm(
         track_title,
         raw_images,
         yoto_icon=yoto_icon_bytes,
@@ -138,7 +180,7 @@ def _pick_ai_icon(
     # AI icon won
     logger.debug("_pick_ai_icon: AI option %d won for '%s'", winner, track_title)
     idx = winner - 1
-    raw_bytes, processed_img = batch[idx]
+    _raw_bytes, processed_img = batch[idx]
     buf = io.BytesIO()
     processed_img.save(buf, format="PNG")
     return buf.getvalue(), processed_img, None
@@ -248,7 +290,7 @@ def resolve_icons(
                 descriptions = describe_icons_llm(track_title, album_description=album_desc)
                 batch = generate_retrodiffusion_icons(descriptions) if descriptions else []
 
-                icon_bytes_result, icon_img, yoto_won_id = _pick_ai_icon(
+                icon_bytes_result, _icon_img, yoto_won_id = _pick_ai_icon(
                     track_title,
                     batch,
                     yoto_icon_bytes=yoto_bytes,
@@ -281,7 +323,7 @@ def resolve_icons(
                 batch = generate_retrodiffusion_icons(descriptions) if descriptions else []
 
                 if batch:
-                    icon_bytes_result, icon_img, _ = _pick_ai_icon(
+                    icon_bytes_result, _icon_img, _ = _pick_ai_icon(
                         track_title,
                         batch,
                         descriptions=descriptions,

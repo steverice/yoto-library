@@ -267,7 +267,6 @@ def diff_playlists(playlist: Playlist, remote: dict[str, Any] | None) -> Playlis
     remote_set = set(remote_tracks)
 
     # Report new/removed using filenames for local, titles for remote
-    title_to_file = {_title_from_filename(f): f for f in playlist.track_files}
     new_tracks = [f for f in playlist.track_files if _title_from_filename(f) not in remote_set]
     removed_tracks = [t for t in remote_tracks if t not in local_set]
 

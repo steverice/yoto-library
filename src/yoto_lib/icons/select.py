@@ -128,7 +128,7 @@ def _get_existing_icon(track_path: Path) -> Image.Image | None:
         existing_bytes = get_attachment(track_path, "icon")
         if existing_bytes:
             return Image.open(io.BytesIO(existing_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)
-    except Exception:
+    except Exception:  # noqa: S110
         pass
     return None
 
@@ -189,7 +189,7 @@ def _generate_round(
     )
 
     # Collect Yoto result
-    yoto_media_id, yoto_confidence = yoto_future.result()
+    yoto_media_id, _yoto_confidence = yoto_future.result()
     yoto_executor.shutdown(wait=False)
 
     yoto_img: Image.Image | None = None
@@ -371,9 +371,8 @@ def select_icons_for_tracks(
                 on_skipped(track_path)
             continue
 
-        if not round_result.scores:
-            if on_scores_missing:
-                on_scores_missing()
+        if not round_result.scores and on_scores_missing:
+            on_scores_missing()
 
         if on_round_ready:
             on_round_ready()
@@ -401,9 +400,8 @@ def select_icons_for_tracks(
                     _error_fn(f"Icon generation failed for {track_path.name}")
                     skipped = True
                     break
-                if not round_result.scores:
-                    if on_scores_missing:
-                        on_scores_missing()
+                if not round_result.scores and on_scores_missing:
+                    on_scores_missing()
                 continue
 
             try:
@@ -441,6 +439,5 @@ def select_icons_for_tracks(
         if on_round_cleanup:
             on_round_cleanup()
 
-        if skipped:
-            if on_skipped:
-                on_skipped(track_path)
+        if skipped and on_skipped:
+            on_skipped(track_path)

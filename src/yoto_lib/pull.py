@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import subprocess
 from collections.abc import Callable
@@ -12,14 +13,13 @@ from pathlib import Path
 import httpx
 
 from yoto_lib.config import WORKERS
-
-logger = logging.getLogger(__name__)
-
 from yoto_lib.icons import ICON_CACHE_DIR, apply_icon_to_mka, download_icon
 from yoto_lib.mka import sanitize_filename as _sanitize_filename
 from yoto_lib.mka import wrap_in_mka
 from yoto_lib.playlist import write_jsonl
 from yoto_lib.yoto.api import YotoAPI
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -48,10 +48,8 @@ def _download_file(
         total: int | None = None
         content_length = response.headers.get("content-length")
         if content_length is not None:
-            try:
+            with contextlib.suppress(ValueError):
                 total = int(content_length)
-            except ValueError:
-                pass
         downloaded = 0
         for chunk in response.iter_bytes(chunk_size=65536):
             chunks.append(chunk)
