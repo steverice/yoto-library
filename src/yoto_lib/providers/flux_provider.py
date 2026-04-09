@@ -37,6 +37,8 @@ class FluxProvider(Provider):
             response_format="base64",
         )
 
+        if not response.data:
+            raise RuntimeError("FLUX returned no images")
         result = base64.b64decode(response.data[0].b64_json)
         logger.debug("flux: generated %d bytes", len(result))
         from yoto_lib.billing.costs import get_tracker
@@ -74,6 +76,8 @@ class FluxProvider(Provider):
             response_format="base64",
         )
 
+        if not response.data:
+            raise RuntimeError("FLUX returned no images")
         result = base64.b64decode(response.data[0].b64_json)
         with PILImage.open(io.BytesIO(result)) as img:
             logger.debug("flux: recomposed %d bytes, size=%dx%d", len(result), img.width, img.height)

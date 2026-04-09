@@ -48,6 +48,8 @@ class OpenAIProvider(StatusPageMixin, Provider):
             quality=quality,
         )
 
+        if not response.data:
+            raise RuntimeError("OpenAI returned no images")
         b64_data = response.data[0].b64_json
         result = base64.b64decode(b64_data)
         logger.debug("openai: generated %d bytes", len(result))
@@ -74,6 +76,8 @@ class OpenAIProvider(StatusPageMixin, Provider):
 
         response = self._client.images.edit(**kwargs)
 
+        if not response.data:
+            raise RuntimeError("OpenAI returned no images")
         b64_data = response.data[0].b64_json
         result = base64.b64decode(b64_data)
         logger.debug("openai: edited %d bytes", len(result))
