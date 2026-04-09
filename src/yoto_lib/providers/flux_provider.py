@@ -6,12 +6,12 @@ import logging
 from PIL import Image as PILImage
 from together import Together
 
-from yoto_lib.providers.base import Provider, ProviderStatus
+from yoto_lib.providers.base import ImageProvider, ProviderStatus
 
 logger = logging.getLogger(__name__)
 
 
-class FluxProvider(Provider):
+class FluxProvider(ImageProvider):
     """Generates and recomposes images using FLUX models on Together AI."""
 
     @classmethod
