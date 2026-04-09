@@ -141,8 +141,8 @@ def reframe_album_art(
     debug_dir = Path(tempfile.mkdtemp(prefix="yoto-reframe-"))
 
     try:
-        from yoto_lib.providers.flux_provider import FluxProvider
-        provider = FluxProvider()
+        from yoto_lib.providers.together_provider import TogetherAIProvider
+        provider = TogetherAIProvider()
 
         for attempt in range(1, max_attempts + 1):
             _log(f"Recomposing album art for cover (attempt {attempt}/{max_attempts})...")

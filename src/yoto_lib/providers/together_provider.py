@@ -1,4 +1,6 @@
-"""FLUX image provider via Together AI."""
+"""Together AI image provider — FLUX models for generation and recomposition."""
+from __future__ import annotations
+
 import base64
 import io
 import logging
@@ -6,13 +8,15 @@ import logging
 from PIL import Image as PILImage
 from together import Together
 
-from yoto_lib.providers.base import ImageProvider
+from yoto_lib.providers.base import BetterStackMixin, ImageProvider
 
 logger = logging.getLogger(__name__)
 
 
-class FluxProvider(ImageProvider):
+class TogetherAIProvider(BetterStackMixin, ImageProvider):
     """Generates and recomposes images using FLUX models on Together AI."""
+
+    status_page_url = "https://status.together.ai"
 
     def __init__(self) -> None:
         self._client = Together()
@@ -22,7 +26,7 @@ class FluxProvider(ImageProvider):
         # Round to nearest multiple of 16
         w = round(width / 16) * 16
         h = round(height / 16) * 16
-        logger.debug("flux: generating %dx%d, prompt=%.80s...", w, h, prompt)
+        logger.debug("together: generating %dx%d, prompt=%.80s...", w, h, prompt)
 
         response = self._client.images.generate(
             model="black-forest-labs/FLUX.1.1-pro",
@@ -34,9 +38,9 @@ class FluxProvider(ImageProvider):
         )
 
         if not response.data:
-            raise RuntimeError("FLUX returned no images")
+            raise RuntimeError("Together AI returned no images")
         result = base64.b64decode(response.data[0].b64_json)
-        logger.debug("flux: generated %d bytes", len(result))
+        logger.debug("together: generated %d bytes", len(result))
         from yoto_lib.billing.costs import get_tracker
         get_tracker().record("flux_generate")
         return result
@@ -62,7 +66,7 @@ class FluxProvider(ImageProvider):
         padded_b64 = base64.b64encode(buf.getvalue()).decode()
         data_uri = f"data:image/png;base64,{padded_b64}"
 
-        logger.debug("flux: recomposing with kontext, canvas=%dx%d", width, height)
+        logger.debug("together: recomposing with kontext, canvas=%dx%d", width, height)
 
         response = self._client.images.generate(
             model="black-forest-labs/FLUX.1-kontext-pro",
@@ -73,10 +77,10 @@ class FluxProvider(ImageProvider):
         )
 
         if not response.data:
-            raise RuntimeError("FLUX returned no images")
+            raise RuntimeError("Together AI returned no images")
         result = base64.b64decode(response.data[0].b64_json)
         with PILImage.open(io.BytesIO(result)) as img:
-            logger.debug("flux: recomposed %d bytes, size=%dx%d", len(result), img.width, img.height)
+            logger.debug("together: recomposed %d bytes, size=%dx%d", len(result), img.width, img.height)
         from yoto_lib.billing.costs import get_tracker
         get_tracker().record("flux_recompose")
         return result

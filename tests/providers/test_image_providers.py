@@ -77,7 +77,7 @@ def test_openai_edit_passes_quality(mock_openai_client):
     assert call_kwargs.get("size") == "1024x1024"
 
 
-class TestFluxProvider:
+class TestTogetherAIProvider:
     def test_recompose_uploads_and_returns_bytes(self):
         """recompose() uploads padded image and returns FLUX result."""
         from PIL import Image as PILImage
@@ -96,9 +96,9 @@ class TestFluxProvider:
         mock_client = MagicMock()
         mock_client.images.generate.return_value = mock_response
 
-        with patch("yoto_lib.providers.flux_provider.Together", return_value=mock_client):
-            from yoto_lib.providers.flux_provider import FluxProvider
-            provider = FluxProvider()
+        with patch("yoto_lib.providers.together_provider.Together", return_value=mock_client):
+            from yoto_lib.providers.together_provider import TogetherAIProvider
+            provider = TogetherAIProvider()
             from PIL import Image as PILImage
             import io
             test_img = PILImage.new("RGB", (100, 100), color="green")

@@ -107,6 +107,54 @@ class StatusPageMixin:
         return result
 
 
+# ── BetterStackMixin ────────────────────────────────────────────────────────
+
+
+class BetterStackMixin:
+    """Mixin for providers backed by a Better Stack status page.
+
+    Subclasses set ``status_page_url`` to the status page root
+    (e.g. ``https://status.together.ai``). The JSON endpoint at
+    ``/index.json`` is queried for aggregate state.
+    """
+    status_page_url: str
+
+    @classmethod
+    def check_status(cls) -> ProviderStatus:
+        return cls._fetch_betterstack(cls.status_page_url)
+
+    @staticmethod
+    def _fetch_betterstack(url: str) -> ProviderStatus:
+        """Fetch and cache Better Stack status. Thread-safe, 5-min TTL."""
+        json_url = url.rstrip("/") + "/index.json"
+        host = urlparse(url).hostname
+
+        now = time.monotonic()
+        with _lock:
+            if json_url in _cache:
+                cached, ts = _cache[json_url]
+                if now - ts < _TTL:
+                    return cached
+
+        try:
+            resp = httpx.get(json_url, timeout=3, follow_redirects=True)
+            resp.raise_for_status()
+            state = resp.json()["data"]["attributes"]["aggregate_state"]
+            healthy = state == "operational"
+            name = resp.json()["data"]["attributes"].get("company_name", "Service")
+            result = ProviderStatus(
+                healthy=healthy,
+                message=None if healthy else f"{name}: {state}",
+                url=host,
+            )
+        except Exception:
+            result = ProviderStatus(healthy=True, url=host)
+
+        with _lock:
+            _cache[json_url] = (result, now)
+        return result
+
+
 # ── @check_status_on_error ───────────────────────────────────────────────────
 
 
