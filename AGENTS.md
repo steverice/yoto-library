@@ -7,9 +7,16 @@ Instructions for AI coding agents working on this codebase.
 ```
 src/
   yoto_lib/            # standalone Python library (no CLI dependencies)
+    billing/           # cost tracking, billing persistence, provider balances
+    covers/            # cover art generation, iTunes metadata, printing
+    icons/             # icon matching, generation, ICNS building
+    lyrics/            # lyrics fetch, web scraping, source wizard
+    providers/         # AI service providers (OpenAI, FLUX, Gemini, RetroD, Claude)
+    track_sources/     # .webloc URL resolution (YouTube via yt-dlp)
+    yoto/              # Yoto API client and OAuth authentication
   yoto_cli/            # thin Click CLI wrapper
-tests/                 # pytest test suite (flat — one test_*.py per module)
-validation/            # standalone validation scripts (MKA transcode, icon grid)
+tests/                 # pytest suite (mirrors src/ subpackage structure)
+validation/            # standalone validation scripts
 ```
 
 ## Key conventions
