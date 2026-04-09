@@ -30,11 +30,13 @@ _PROVIDERS = [
 def _check_all_status() -> dict[str, tuple[bool | None, str | None]]:
     """Check status of all providers. Returns {name: (healthy, status_page_host)}."""
     from yoto_lib.providers.openai_provider import OpenAIProvider
+    from yoto_lib.providers.together_provider import TogetherAIProvider
     from yoto_lib.providers.claude_provider import ClaudeProvider
 
     # Map display names to provider classes (only those with real checks)
-    provider_classes = {
+    provider_classes: dict[str, type] = {
         "OpenAI": OpenAIProvider,
+        "FLUX (Together)": TogetherAIProvider,
         "Claude": ClaudeProvider,
     }
 
@@ -49,9 +51,8 @@ def _check_all_status() -> dict[str, tuple[bool | None, str | None]]:
         if status is None:
             results[name] = (None, None)
         else:
-            # Extract hostname from status_page_url for display
-            host = None
-            if hasattr(cls, "status_page_url"):
+            host = status.url
+            if not host and hasattr(cls, "status_page_url"):
                 host = urlparse(cls.status_page_url).hostname
             results[name] = (status.healthy, host)
 
