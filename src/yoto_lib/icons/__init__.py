@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import io
 import logging
-import struct
 import subprocess
 import tempfile
 from pathlib import Path
@@ -15,7 +14,51 @@ from PIL import Image
 
 from yoto_lib import mka
 from yoto_lib.mka import sanitize_filename as _sanitize_title
-from yoto_lib.providers.base import check_status_on_error
+
+from yoto_lib.icons.download import (
+    ICON_CACHE_DIR,
+    _download_bytes,
+    download_icon,
+    extract_icon_hash,
+)
+from yoto_lib.icons.image import (
+    ICON_SIZE,
+    ICNS_SIZES,
+    ICNS_TYPE_MAP,
+    _color_distance,
+    _dominant_color_downscale,
+    build_icns,
+    generate_icns_sizes,
+    nearest_neighbor_upscale,
+    remove_solid_background,
+)
+from yoto_lib.icons.macos import (
+    _run_osascript,
+    apply_icon_to_mka,
+    clear_macos_file_icon,
+    set_macos_file_icon,
+)
+from yoto_lib.icons.generate import (
+    CANVAS_SIZE,
+    GRID_SIZE,
+    TILE_SIZE,
+    RetroDiffusionProvider,
+    _build_pixelart_prompt,
+    build_icon_prompt,
+    crop_icon_from_grid,
+    generate_raw_grid,
+    generate_retrodiffusion_icon,
+    generate_retrodiffusion_icons,
+    generate_track_icon,
+)
+from yoto_lib.icons.icon_catalog import get_catalog
+from yoto_lib.icons.icon_llm import (
+    CONFIDENCE_HIGH,
+    CONFIDENCE_LOW,
+    compare_icons_llm,
+    describe_icons_llm,
+    match_icon_llm,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,498 +69,12 @@ if TYPE_CHECKING:
     from yoto_lib.providers import ImageProvider
     from yoto_lib.playlist import Playlist
 
-try:
-    from yoto_lib.providers.retrodiffusion_provider import RetroDiffusionProvider
-except ImportError:
-    RetroDiffusionProvider = None  # type: ignore[assignment,misc]
 
-# ── Constants ─────────────────────────────────────────────────────────────────
-
-ICON_SIZE = 16
-ICON_BASE_URL = "https://media-secure-v2.api.yotoplay.com/icons"
-ICON_CACHE_DIR = Path.home() / ".cache" / "yoto" / "icons"
-
-ICNS_SIZES = [16, 32, 64, 128, 256, 512]
-
-ICNS_TYPE_MAP = {
-    16: b"icp4",
-    32: b"icp5",
-    64: b"icp6",
-    128: b"ic07",
-    256: b"ic08",
-    512: b"ic09",
-}
-
-
-# ── Image helpers ─────────────────────────────────────────────────────────────
-
-
-def nearest_neighbor_upscale(img: Image.Image, target_size: int) -> Image.Image:
-    """Resize img to target_size x target_size using nearest-neighbor to preserve crisp pixel grid."""
-    return img.resize((target_size, target_size), Image.NEAREST)
-
-
-def _color_distance(a: tuple[int, ...], b: tuple[int, ...]) -> int:
-    """Manhattan distance between two RGB colors."""
-    return abs(a[0] - b[0]) + abs(a[1] - b[1]) + abs(a[2] - b[2])
-
-
-def remove_solid_background(
-    img: Image.Image, threshold: float = 0.5, tolerance: int = 80,
-) -> Image.Image:
-    """Flood-fill the dominant border color to transparency.
-
-    Examines the outermost ring of pixels. Groups similar border colors
-    (within *tolerance* Manhattan distance) to find the dominant background.
-    Flood-fills from every matching border pixel inward, treating any color
-    within *tolerance* of the dominant as background.
-    """
-    img = img.convert("RGBA")
-    w, h = img.size
-
-    # Collect border pixel positions and colors
-    border_positions: list[tuple[int, int]] = []
-    for x in range(w):
-        border_positions.append((x, 0))
-        border_positions.append((x, h - 1))
-    for y in range(1, h - 1):
-        border_positions.append((0, y))
-        border_positions.append((w - 1, y))
-
-    pixels = img.load()
-    border_colors: list[tuple[int, ...]] = [pixels[x, y] for x, y in border_positions]
-
-    # Group similar colors: count each color, then merge groups within tolerance
-    counts: dict[tuple[int, ...], int] = {}
-    for px in border_colors:
-        counts[px] = counts.get(px, 0) + 1
-
-    # Find the dominant group: start from most frequent color, absorb neighbors
-    dominant = max(counts, key=counts.get)  # type: ignore[arg-type]
-    group_total = sum(
-        c for color, c in counts.items() if _color_distance(color[:3], dominant[:3]) <= tolerance
-    )
-
-    if group_total / len(border_colors) < threshold:
-        return img  # no clear background color
-
-    bg_rgb = dominant[:3]
-
-    # Seed flood-fill from every border pixel within tolerance of dominant
-    visited: set[tuple[int, int]] = set()
-    queue: list[tuple[int, int]] = []
-    for pos, color in zip(border_positions, border_colors):
-        if _color_distance(color[:3], bg_rgb) <= tolerance:
-            queue.append(pos)
-            visited.add(pos)
-
-    while queue:
-        x, y = queue.pop()
-        pixels[x, y] = (0, 0, 0, 0)
-        for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
-            if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in visited:
-                visited.add((nx, ny))
-                if _color_distance(pixels[nx, ny][:3], bg_rgb) <= tolerance:
-                    queue.append((nx, ny))
-
-    return img
-
-
-
-def generate_icns_sizes(icon_16: Image.Image) -> dict[int, Image.Image]:
-    """Generate all ICNS sizes from a 16x16 source image using nearest-neighbor upscaling."""
-    return {size: nearest_neighbor_upscale(icon_16, size) for size in ICNS_SIZES}
-
-
-def _dominant_color_downscale(img: Image.Image, grid_size: int) -> Image.Image:
-    """Downscale by taking the most common color in each cell.
-
-    Divides *img* into a grid_size x grid_size grid of equal cells and picks
-    the single most-frequent RGB value per cell.  This cleanly collapses
-    anti-aliased pixel-art into hard-edged pixels.
-    """
-    w, h = img.size
-    cell_w = w // grid_size
-    cell_h = h // grid_size
-    out = Image.new("RGB", (grid_size, grid_size))
-
-    for gy in range(grid_size):
-        for gx in range(grid_size):
-            box = (gx * cell_w, gy * cell_h, (gx + 1) * cell_w, (gy + 1) * cell_h)
-            cell = img.crop(box)
-            # Count pixel frequencies
-            colors: dict[tuple, int] = {}
-            for pixel in cell.get_flattened_data():
-                colors[pixel] = colors.get(pixel, 0) + 1
-            dominant = max(colors, key=colors.get)  # type: ignore[arg-type]
-            out.putpixel((gx, gy), dominant)
-
-    return out
-
-
-# ── ICNS builder ──────────────────────────────────────────────────────────────
-
-
-def build_icns(icon_16: Image.Image) -> bytes:
-    """Build an ICNS file from a 16x16 icon image.
-
-    Each size is PNG-encoded and packed with a 4-byte type tag and 4-byte length
-    (covering the type, length, and data).  The file starts with the b"icns"
-    magic and a 4-byte total file length.
-    """
-    sized = generate_icns_sizes(icon_16)
-
-    chunks: list[bytes] = []
-    for size in ICNS_SIZES:
-        type_tag = ICNS_TYPE_MAP[size]
-        img = sized[size]
-
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        png_data = buf.getvalue()
-
-        # Entry length = 4 (type) + 4 (length field) + len(data)
-        entry_length = 8 + len(png_data)
-        chunks.append(type_tag + struct.pack(">I", entry_length) + png_data)
-
-    body = b"".join(chunks)
-    total_length = 8 + len(body)  # 4 (magic) + 4 (total length field) + body
-    return b"icns" + struct.pack(">I", total_length) + body
-
-
-# ── Icon download / cache ────────────────────────────────────────────────────
-
-
-def _download_bytes(url: str) -> bytes:
-    """Fetch raw bytes from a URL."""
-    response = httpx.get(url, follow_redirects=True, timeout=300.0)
-    response.raise_for_status()
-    return response.content
-
-
-def extract_icon_hash(icon_ref: str) -> str | None:
-    """Extract icon hash from either 'yoto:#hash' or a full URL."""
-    if not icon_ref:
-        return None
-    if icon_ref.startswith("yoto:#"):
-        return icon_ref[6:]
-    return icon_ref.rstrip("/").rsplit("/", 1)[-1] or None
-
-
-def download_icon(icon_ref: str, cache_dir: Path = ICON_CACHE_DIR) -> bytes | None:
-    """Download an icon by ref (yoto:#hash, URL, or bare mediaId), using file cache."""
-    icon_hash = extract_icon_hash(icon_ref) if ":" in icon_ref or "/" in icon_ref else icon_ref
-    if not icon_hash:
-        return None
-
-    cached = cache_dir / f"{icon_hash}.png"
-    if cached.exists():
-        logger.debug("download_icon: cache hit for %s", icon_hash)
-        return cached.read_bytes()
-
-    if icon_ref.startswith("http"):
-        url = icon_ref
-    else:
-        url = f"{ICON_BASE_URL}/{icon_hash}"
-
-    try:
-        logger.debug("download_icon: fetching %s", icon_hash)
-        data = _download_bytes(url)
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        cached.write_bytes(data)
-        return data
-    except (OSError, httpx.HTTPError):
-        return None
-
-
-def apply_icon_to_mka(mka_path: Path, icon_data: bytes) -> None:
-    """Attach icon PNG to MKA and set macOS Finder icon."""
-    if mka_path.suffix.lower() == ".mka":
-        icon_tmp = mka_path.parent / f".icon_tmp_{mka_path.stem}.png"
-        try:
-            icon_tmp.write_bytes(icon_data)
-            mka.set_attachment(mka_path, icon_tmp, name="icon", mime_type="image/png")
-        finally:
-            icon_tmp.unlink(missing_ok=True)
-
-    try:
-        img = Image.open(io.BytesIO(icon_data))
-        set_macos_file_icon(mka_path, img)
-    except OSError:
-        pass
-
-
-# ── macOS icon setter ─────────────────────────────────────────────────────────
-
-_OSASCRIPT_TEMPLATE = """\
-use framework "AppKit"
-use scripting additions
-set ws to current application's NSWorkspace's sharedWorkspace()
-set img to current application's NSImage's alloc()'s initWithContentsOfFile:"{icns_path}"
-ws's setIcon:img forFile:"{file_path}" options:0
-"""
-
-
-def _run_osascript(script: str) -> None:
-    """Run an AppleScript via a temp file to avoid shell escaping issues."""
-    with tempfile.NamedTemporaryFile(suffix=".scpt", mode="w", delete=False) as tmp:
-        tmp.write(script)
-        script_path = tmp.name
-    try:
-        subprocess.run(
-            ["osascript", "-l", "AppleScript", script_path],
-            capture_output=True,
-            check=True,
-        )
-    finally:
-        Path(script_path).unlink(missing_ok=True)
-
-
-def set_macos_file_icon(file_path: Path, icon_16: Image.Image) -> None:
-    """Set the macOS Finder icon for file_path using an ICNS built from icon_16."""
-    icns_data = build_icns(icon_16)
-
-    with tempfile.NamedTemporaryFile(suffix=".icns", delete=False) as tmp:
-        tmp.write(icns_data)
-        icns_path = tmp.name
-
-    try:
-        abs_file = str(Path(file_path).resolve()).replace('\\', '\\\\').replace('"', '\\"')
-        script = _OSASCRIPT_TEMPLATE.format(
-            icns_path=icns_path,
-            file_path=abs_file,
-        )
-        _run_osascript(script)
-    finally:
-        Path(icns_path).unlink(missing_ok=True)
-
-
-def clear_macos_file_icon(file_path: Path) -> None:
-    """Remove the custom Finder icon from a file."""
-    abs_file = str(Path(file_path).resolve()).replace('\\', '\\\\').replace('"', '\\"')
-    script = (
-        f'use framework "AppKit"\n'
-        f'use scripting additions\n'
-        f'set ws to current application\'s NSWorkspace\'s sharedWorkspace()\n'
-        f'ws\'s setIcon:(missing value) forFile:"{abs_file}" options:0\n'
-    )
-    _run_osascript(script)
-
-
-# ── AI icon generation ────────────────────────────────────────────────────────
-
-GRID_SIZE = 8
-TILE_SIZE = 128  # 1024 / 8
-CANVAS_SIZE = 1024
-
-
-def build_icon_prompt(track_title: str) -> str:
-    """Build a prompt for generating an 8x8 grid of identical 16x16-style icons."""
-    return (
-        f"Generate an 8x8 grid of identical icons on a 1024x1024 pixel canvas. "
-        f"Each icon is 128x128 pixels. Every cell in the grid shows the exact same icon. "
-        f"The icon depicts: {track_title}. "
-        f"Style: bold simple shapes, flat solid colors, minimal detail, high contrast. "
-        f"Suitable for a 16x16 pixel icon when downscaled. "
-        f"The subject must fill the entire icon area edge to edge — no empty margins, no padding, no whitespace around the subject. "
-        f"Do not include any text, letters, numbers, or lettering."
-    )
-
-
-def crop_icon_from_grid(img: Image.Image) -> tuple[Image.Image, Image.Image]:
-    """Crop the center tile from an 8x8 grid image and downscale to 16x16.
-
-    Returns (tile_128x128, icon_16x16).
-    """
-    center = GRID_SIZE // 2
-    left = center * TILE_SIZE
-    top = center * TILE_SIZE
-    tile = img.crop((left, top, left + TILE_SIZE, top + TILE_SIZE)).convert("RGB")
-    icon_16 = _dominant_color_downscale(tile, ICON_SIZE)
-    return tile, icon_16
-
-
-def generate_raw_grid(track_title: str) -> bytes | None:
-    """Generate the raw 1024x1024 grid image. Returns PNG bytes or None.
-
-    Also saves the raw image to ~/.cache/yoto/icons/raw/ for inspection.
-    """
-    try:
-        from yoto_lib.providers import get_provider
-        provider = get_provider()
-    except (ImportError, ValueError):
-        return None
-
-    prompt = build_icon_prompt(track_title)
-
-    try:
-        image_bytes = provider.generate(prompt, CANVAS_SIZE, CANVAS_SIZE)
-    except (OSError, httpx.HTTPError):
-        return None
-
-    try:
-        raw_dir = ICON_CACHE_DIR / "raw"
-        raw_dir.mkdir(parents=True, exist_ok=True)
-        (raw_dir / f"{_sanitize_title(track_title)}.png").write_bytes(image_bytes)
-    except OSError:
-        pass
-
-    return image_bytes
-
-
-def generate_track_icon(track_title: str) -> bytes | None:
-    """Generate a 16x16 icon. Returns PNG bytes or None.
-
-    Tries Retro Diffusion (native 16x16) first, falls back to the grid technique.
-    """
-    # Primary: Retro Diffusion — generates true 16x16 pixel art
-    logger.debug("generate_track_icon: trying retrodiffusion for '%s'", track_title)
-    try:
-        _, icon_bytes = generate_retrodiffusion_icon(track_title)
-        if icon_bytes:
-            return icon_bytes
-    except (OSError, httpx.HTTPError, ValueError):
-        pass
-
-    # Fallback: old grid technique (1024x1024 → crop → downscale)
-    logger.debug("generate_track_icon: retrodiffusion failed, trying grid technique for '%s'", track_title)
-    image_bytes = generate_raw_grid(track_title)
-    if image_bytes is None:
-        return None
-
-    try:
-        img = Image.open(io.BytesIO(image_bytes))
-        _, icon_16 = crop_icon_from_grid(img)
-        buf = io.BytesIO()
-        icon_16.save(buf, format="PNG")
-        return buf.getvalue()
-    except (OSError, ValueError):
-        return None
-
-
-
-def _build_pixelart_prompt(visual_description: str) -> str:
-    """Wrap a visual description in pixel-art style instructions."""
-    return (
-        f"Create a simple pixel art icon depicting: {visual_description}. "
-        f"Style: very low resolution pixel art, maximum 6-8 colors, large blocky shapes. "
-        f"Think original Game Boy or early NES sprite — extremely chunky pixels, no fine detail. "
-        f"The subject must fill the entire canvas edge to edge — no empty margins, no padding, no whitespace around the subject. "
-        f"Use a solid black (#000000) background. "
-        f"No text, letters, numbers, or lettering. No anti-aliasing. No gradients. "
-        f"Emoji style, bright colors, simple"
-    )
-
-
-def generate_retrodiffusion_icon(track_title: str) -> tuple[bytes | None, bytes | None]:
-    """Generate via Retro Diffusion at native 16x16. Returns (raw_bytes, icon_16_bytes).
-
-    Retro Diffusion is purpose-built for pixel art and generates true 16x16 output.
-    No downscaling needed — the raw output IS the icon.
-    Checks the cache first to avoid unnecessary API calls.
-    """
-    raw_dir = ICON_CACHE_DIR / "raw"
-    raw_dir.mkdir(parents=True, exist_ok=True)
-    cache_path = raw_dir / f"{_sanitize_title(track_title)}_retrodiffusion.png"
-
-    if cache_path.exists():
-        logger.debug("generate_retrodiffusion_icon: cache hit for '%s'", track_title)
-        image_bytes = cache_path.read_bytes()
-    else:
-        logger.debug("generate_retrodiffusion_icon: generating for '%s'", track_title)
-        from yoto_lib.providers.retrodiffusion_provider import RetroDiffusionProvider
-        provider = RetroDiffusionProvider()
-        prompt = _build_pixelart_prompt(track_title)
-
-        try:
-            image_bytes = provider.generate(prompt, ICON_SIZE, ICON_SIZE)
-        except (OSError, httpx.HTTPError):
-            return None, None
-
-        try:
-            cache_path.write_bytes(image_bytes)
-        except OSError:
-            pass
-
-    # The output IS 16x16 already — no downscaling needed
-    # Flood-fill near-black background to transparent
-    img = Image.open(io.BytesIO(image_bytes))
-    img = remove_solid_background(img)
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    icon_bytes = buf.getvalue()
-    return image_bytes, icon_bytes
-
-
-@check_status_on_error(RetroDiffusionProvider)
-def generate_retrodiffusion_icons(
-    descriptions: list[str],
-    on_progress: "Callable[[int], None] | None" = None,
-    on_icon_start: "Callable[[int, str], None] | None" = None,
-    on_icon_done: "Callable[[int], None] | None" = None,
-) -> list[tuple[bytes, Image.Image]]:
-    """Generate one 16x16 icon per visual description via Retro Diffusion.
-
-    Calls the API in parallel (one request per description) and reports
-    progress as each completes.
-    Returns list of (raw_bytes, processed_Image) pairs in input order.
-
-    on_icon_start(i, description) is called before each icon's API call.
-    on_icon_done(i) is called after each icon's API call completes.
-    on_progress(done_count) is called after each icon completes (for backwards compat).
-    """
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-
-    logger.debug("generate_retrodiffusion_icons: %d descriptions", len(descriptions))
-    try:
-        if RetroDiffusionProvider is None:
-            return []
-        provider = RetroDiffusionProvider()
-    except (OSError, ValueError):
-        return []
-
-    def _generate_one(idx: int, desc: str) -> tuple[int, tuple[bytes, Image.Image] | None]:
-        if on_icon_start:
-            on_icon_start(idx, desc)
-        prompt = _build_pixelart_prompt(desc)
-        try:
-            raw_bytes = provider.generate(prompt, ICON_SIZE, ICON_SIZE)
-        except (OSError, httpx.HTTPError):
-            if on_icon_done:
-                on_icon_done(idx)
-            return (idx, None)
-        img = Image.open(io.BytesIO(raw_bytes))
-        img = remove_solid_background(img)
-        if on_icon_done:
-            on_icon_done(idx)
-        return (idx, (raw_bytes, img))
-
-    # Submit all in parallel, track completion for progress
-    ordered: dict[int, tuple[bytes, Image.Image] | None] = {}
-    done_count = 0
-    with ThreadPoolExecutor(max_workers=len(descriptions)) as pool:
-        futures = [
-            pool.submit(_generate_one, i, desc)
-            for i, desc in enumerate(descriptions)
-        ]
-        for future in as_completed(futures):
-            idx, result = future.result()
-            ordered[idx] = result
-            done_count += 1
-            if on_progress:
-                on_progress(done_count)
-
-    return [ordered[i] for i in range(len(descriptions)) if ordered.get(i) is not None]
-
-
-# ── Strategy: textmodel (Claude CLI / OpenAI text model) ─────────────────────
-
-
-# ── resolve_icons ─────────────────────────────────────────────────────────────
+# ── resolve_icons ────────────────────────────────────────────────────────────
 
 
 def _derive_track_title(track_path: Path, filename: str) -> str:
-    """Get a human-readable title for matching: MKA tag → filename stem."""
+    """Get a human-readable title for matching: MKA tag -> filename stem."""
     title = Path(filename).stem
     try:
         tags = mka.read_tags(track_path)
@@ -602,14 +159,14 @@ def resolve_icons(
     """Resolve and embed icons for each track in the playlist.
 
     Resolution order:
-    1. MKA attachment named "icon" → already on disk, upload to API
+    1. MKA attachment named "icon" -> already on disk, upload to API
     2. LLM match against Yoto public icon catalog:
-       - High confidence (>= 0.8) → use Yoto icon directly
-       - Gray zone (0.4 - 0.8) → generate 3 AI, LLM picks best of 4
-       - Low confidence (< 0.4) → generate 3 AI, LLM picks best of 3
-    3. Fallback: lexical match → single AI generation (if LLM unavailable)
+       - High confidence (>= 0.8) -> use Yoto icon directly
+       - Gray zone (0.4 - 0.8) -> generate 3 AI, LLM picks best of 4
+       - Low confidence (< 0.4) -> generate 3 AI, LLM picks best of 3
+    3. Fallback: lexical match -> single AI generation (if LLM unavailable)
 
-    Returns dict mapping filename → mediaId.
+    Returns dict mapping filename -> mediaId.
     """
     _log = log or (lambda msg: None)
     result: dict[str, str] = {}
@@ -762,15 +319,3 @@ def resolve_icons(
             result[filename] = media_id
 
     return result
-
-
-# Late imports — placed after all definitions to avoid circular dependency
-# with icon_catalog.py (which imports download_icon from this module).
-from .icon_catalog import get_catalog  # noqa: E402
-from .icon_llm import (  # noqa: E402
-    CONFIDENCE_HIGH,
-    CONFIDENCE_LOW,
-    compare_icons_llm,
-    describe_icons_llm,
-    match_icon_llm,
-)

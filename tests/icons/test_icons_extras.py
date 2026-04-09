@@ -158,7 +158,7 @@ class TestDownloadIcon:
         """Fetches from network and saves to cache on miss."""
         cache_dir = tmp_path / "icons"
 
-        with patch("yoto_lib.icons._download_bytes", return_value=b"\x89PNG fresh") as mock_dl:
+        with patch("yoto_lib.icons.download._download_bytes", return_value=b"\x89PNG fresh") as mock_dl:
             result = download_icon("def456", cache_dir)
 
         assert result == b"\x89PNG fresh"
@@ -169,7 +169,7 @@ class TestDownloadIcon:
         """Returns None when download fails."""
         cache_dir = tmp_path / "icons"
 
-        with patch("yoto_lib.icons._download_bytes", side_effect=OSError("timeout")):
+        with patch("yoto_lib.icons.download._download_bytes", side_effect=OSError("timeout")):
             result = download_icon("ghi789", cache_dir)
 
         assert result is None
@@ -222,8 +222,8 @@ class TestApplyIconToMka:
         icon_data = buf.getvalue()
 
         with (
-            patch("yoto_lib.icons.mka.set_attachment") as mock_attach,
-            patch("yoto_lib.icons.set_macos_file_icon") as mock_set_icon,
+            patch("yoto_lib.icons.macos.mka.set_attachment") as mock_attach,
+            patch("yoto_lib.icons.macos.set_macos_file_icon") as mock_set_icon,
         ):
             apply_icon_to_mka(mka_path, icon_data)
 
@@ -241,8 +241,8 @@ class TestApplyIconToMka:
         icon_data = buf.getvalue()
 
         with (
-            patch("yoto_lib.icons.mka.set_attachment") as mock_attach,
-            patch("yoto_lib.icons.set_macos_file_icon") as mock_set_icon,
+            patch("yoto_lib.icons.macos.mka.set_attachment") as mock_attach,
+            patch("yoto_lib.icons.macos.set_macos_file_icon") as mock_set_icon,
         ):
             apply_icon_to_mka(mp3_path, icon_data)
 
