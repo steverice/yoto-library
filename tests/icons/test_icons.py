@@ -157,7 +157,7 @@ class TestGenerateTrackIcon:
         mock_provider.generate.return_value = fake_image
 
         with (
-            patch("yoto_lib.icons.generate_retrodiffusion_icon", return_value=(None, None)),
+            patch("yoto_lib.icons.generate.generate_retrodiffusion_icon", return_value=(None, None)),
             patch("yoto_lib.providers.get_provider", return_value=mock_provider),
         ):
             result = generate_track_icon("Test Song")
@@ -169,7 +169,7 @@ class TestGenerateTrackIcon:
     def test_returns_none_on_no_provider(self):
         """Returns None if no image provider is configured."""
         with (
-            patch("yoto_lib.icons.generate_retrodiffusion_icon", return_value=(None, None)),
+            patch("yoto_lib.icons.generate.generate_retrodiffusion_icon", return_value=(None, None)),
             patch("yoto_lib.providers.get_provider", side_effect=ValueError("no key")),
         ):
             result = generate_track_icon("Test Song")
@@ -181,7 +181,7 @@ class TestGenerateTrackIcon:
         mock_provider.generate.side_effect = OSError("API error")
 
         with (
-            patch("yoto_lib.icons.generate_retrodiffusion_icon", return_value=(None, None)),
+            patch("yoto_lib.icons.generate.generate_retrodiffusion_icon", return_value=(None, None)),
             patch("yoto_lib.providers.get_provider", return_value=mock_provider),
         ):
             result = generate_track_icon("Test Song")
@@ -201,7 +201,7 @@ class TestGenerateRetrodiffusionIcons:
         mock_provider.generate.return_value = fake_png_bytes
 
         with patch(
-            "yoto_lib.icons.RetroDiffusionProvider",
+            "yoto_lib.icons.generate.RetroDiffusionProvider",
             return_value=mock_provider,
         ):
             results = generate_retrodiffusion_icons(["desc1", "desc2", "desc3"])
@@ -214,7 +214,7 @@ class TestGenerateRetrodiffusionIcons:
     def test_returns_empty_on_provider_init_failure(self):
         """Returns empty list when provider init fails."""
         with patch(
-            "yoto_lib.icons.RetroDiffusionProvider",
+            "yoto_lib.icons.generate.RetroDiffusionProvider",
             side_effect=ValueError("no API key"),
         ):
             results = generate_retrodiffusion_icons(["desc"])
