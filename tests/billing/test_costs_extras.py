@@ -21,7 +21,8 @@ class TestIsSubscription:
     def test_image_provider_is_not_subscription(self):
         from yoto_lib.providers.openai_provider import OpenAIProvider
 
-        assert OpenAIProvider().is_subscription is False
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}):
+            assert OpenAIProvider().is_subscription is False
 
 
 class TestGetAndResetTracker:

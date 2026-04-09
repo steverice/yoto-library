@@ -268,12 +268,14 @@ class TestResolveIconsZones:
 
         icon_png = self._make_icon_png()
         catalog = [{"mediaId": "star-id", "title": "Star"}]
+        fake_descriptions = ["rocket ship", "star cluster", "galaxy swirl"]
 
         with (
             patch("yoto_lib.icons.mka.get_attachment", side_effect=OSError),
             patch("yoto_lib.icons.mka.read_tags", return_value={"title": "Quantum Physics"}),
             patch("yoto_lib.icons.get_catalog", return_value=catalog),
             patch("yoto_lib.icons.match_icon_llm", return_value=(None, 0.1)),
+            patch("yoto_lib.icons.describe_icons_llm", return_value=fake_descriptions),
             patch("yoto_lib.icons.generate_retrodiffusion_icons") as mock_gen,
             patch("yoto_lib.icons.compare_icons_llm", return_value=(2, [0.5, 0.9, 0.6])),
             patch("yoto_lib.icons.apply_icon_to_mka"),
@@ -297,6 +299,7 @@ class TestResolveIconsZones:
 
         icon_png = self._make_icon_png()
         catalog = [{"mediaId": "yoto-dino", "title": "Dinosaur"}]
+        fake_descriptions = ["dinosaur skeleton", "dino footprint", "jungle leaves"]
 
         with (
             patch("yoto_lib.icons.mka.get_attachment", side_effect=OSError),
@@ -304,6 +307,7 @@ class TestResolveIconsZones:
             patch("yoto_lib.icons.get_catalog", return_value=catalog),
             patch("yoto_lib.icons.match_icon_llm", return_value=("yoto-dino", 0.6)),
             patch("yoto_lib.icons.download_icon", return_value=icon_png),
+            patch("yoto_lib.icons.describe_icons_llm", return_value=fake_descriptions),
             patch("yoto_lib.icons.generate_retrodiffusion_icons") as mock_gen,
             patch("yoto_lib.icons.compare_icons_llm") as mock_compare,
             patch("yoto_lib.icons.apply_icon_to_mka"),

@@ -93,22 +93,30 @@ class TestYouTubeDownload:
         url = "https://www.youtube.com/watch?v=GxtknJ9KFKY"
 
         def fake_run(cmd, **kwargs):
-            if "--dump-json" in cmd:
-                result = MagicMock()
-                result.returncode = 0
-                result.stdout = json.dumps({"title": "My Cool Song"})
-                return result
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = json.dumps({"title": "My Cool Song"})
+            return result
+
+        # The download step uses Popen for streaming progress output.
+        # Write the audio file when Popen is called, then return a mock process.
+        def fake_popen(cmd, **kwargs):
             for i, arg in enumerate(cmd):
                 if arg == "-o":
                     tmpl = cmd[i + 1]
                     out = Path(tmpl.replace("%(ext)s", "wav"))
                     _make_wav(out)
                     break
-            result = MagicMock()
-            result.returncode = 0
-            return result
+            proc = MagicMock()
+            proc.stderr = iter([])  # no progress lines
+            proc.returncode = 0
+            proc.wait.return_value = 0
+            return proc
 
-        with patch("yoto_lib.track_sources.youtube.subprocess.run", side_effect=fake_run):
+        with (
+            patch("yoto_lib.track_sources.youtube.subprocess.run", side_effect=fake_run),
+            patch("yoto_lib.track_sources.youtube.subprocess.Popen", side_effect=fake_popen),
+        ):
             audio_path, metadata = provider.download(url, tmp_path, trim=False)
 
         assert audio_path.exists()

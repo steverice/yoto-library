@@ -253,6 +253,7 @@ class TestPrintCover:
             patch("yoto_lib.covers.printer._check_printer"),
             patch("yoto_lib.covers.printer._icc_convert", return_value=fake_img) as mock_icc,
             patch("yoto_lib.covers.printer._send_to_printer") as mock_lpr,
+            patch("yoto_lib.covers.printer.wait_for_job"),
         ):
             print_cover(cover, icc_profile=str(fake_profile))
 
@@ -268,6 +269,7 @@ class TestPrintCover:
             patch("yoto_lib.covers.printer._check_printer"),
             patch("yoto_lib.covers.printer._icc_convert") as mock_icc,
             patch("yoto_lib.covers.printer._send_to_printer") as mock_lpr,
+            patch("yoto_lib.covers.printer.wait_for_job"),
         ):
             print_cover(cover)
 
@@ -282,6 +284,7 @@ class TestPrintCover:
             patch("yoto_lib.covers.printer._check_platform"),
             patch("yoto_lib.covers.printer._check_printer") as mock_check,
             patch("yoto_lib.covers.printer._send_to_printer") as mock_lpr,
+            patch("yoto_lib.covers.printer.wait_for_job"),
             patch.dict(os.environ, {"YOTO_PRINTER": "My_Printer"}),
         ):
             print_cover(cover)
