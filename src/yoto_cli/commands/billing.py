@@ -155,6 +155,8 @@ def _print_balances(balances: dict) -> None:
         active_providers.append("RetroDiffusion")
     if os.environ.get("OPENAI_API_KEY"):
         active_providers.append("OpenAI")
+    if os.environ.get("TOGETHER_API_KEY"):
+        active_providers.append("Together AI")
     if os.environ.get("GEMINI_API_KEY"):
         active_providers.append("Google Gemini")
 
