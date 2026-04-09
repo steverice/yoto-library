@@ -1,9 +1,10 @@
-"""billing command and display helpers."""
+"""providers command — status, balances, and cost tracking."""
 
 from __future__ import annotations
 
 import logging
 import os
+from urllib.parse import urlparse
 
 import click
 
@@ -16,8 +17,48 @@ from yoto_cli.main import cli
 
 logger = logging.getLogger(__name__)
 
+# Map display names to (env_var, provider_class_import_path)
+_PROVIDERS = [
+    ("RetroDiffusion", "RETRODIFFUSION_API_KEY"),
+    ("OpenAI", "OPENAI_API_KEY"),
+    ("FLUX (Together)", "TOGETHER_API_KEY"),
+    ("Gemini", "GEMINI_API_KEY"),
+    ("Claude", None),  # always available (CLI-based)
+]
 
-@cli.command()
+
+def _check_all_status() -> dict[str, tuple[bool | None, str | None]]:
+    """Check status of all providers. Returns {name: (healthy, status_page_host)}."""
+    from yoto_lib.providers.openai_provider import OpenAIProvider
+    from yoto_lib.providers.claude_provider import ClaudeProvider
+
+    # Map display names to provider classes (only those with real checks)
+    provider_classes = {
+        "OpenAI": OpenAIProvider,
+        "Claude": ClaudeProvider,
+    }
+
+    results: dict[str, tuple[bool | None, str | None]] = {}
+    for name, _env_var in _PROVIDERS:
+        cls = provider_classes.get(name)
+        if cls is None:
+            results[name] = (None, None)
+            continue
+
+        status = cls.check_status()
+        if status is None:
+            results[name] = (None, None)
+        else:
+            # Extract hostname from status_page_url for display
+            host = None
+            if hasattr(cls, "status_page_url"):
+                host = urlparse(cls.status_page_url).hostname
+            results[name] = (status.healthy, host)
+
+    return results
+
+
+@cli.command("providers")
 @click.option(
     "--reset",
     "reset_group",
@@ -26,9 +67,9 @@ logger = logging.getLogger(__name__)
     default=None,
     help="Reset lifetime cost data. Optionally specify a provider group.",
 )
-def billing(reset_group):
-    """Show provider balances, subscription usage, and lifetime costs."""
-    logger.debug("command: billing reset=%s", reset_group)
+def providers(reset_group):
+    """Show provider status, balances, and lifetime costs."""
+    logger.debug("command: providers reset=%s", reset_group)
     from yoto_lib.billing.costs import is_subscription
 
     # Handle --reset
@@ -49,27 +90,58 @@ def billing(reset_group):
     # Fetch live data in parallel
     from concurrent.futures import ThreadPoolExecutor
 
-    balance_future = None
-    usage_future = None
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        status_future = pool.submit(_check_all_status)
         balance_future = pool.submit(fetch_balances)
+        usage_future = None
         if is_subscription("claude_haiku"):
             usage_future = pool.submit(fetch_subscription_usage)
 
+    statuses = status_future.result()
     balances = balance_future.result()
     subscription_usage = usage_future.result() if usage_future else None
 
-    # Section 1: Balances
+    # Section 1: Status
+    _print_status(statuses)
+    click.echo()
+
+    # Section 2: Balances
     _print_balances(balances)
     click.echo()
 
-    # Section 2: Subscription
+    # Section 3: Subscription
     if subscription_usage:
         _print_subscription_usage(subscription_usage)
         click.echo()
 
-    # Section 3: Lifetime spend
+    # Section 4: Lifetime spend
     _print_lifetime_spend()
+
+
+def _print_status(statuses: dict[str, tuple[bool | None, str | None]]) -> None:
+    """Print the Status section."""
+    from rich.table import Table
+    from yoto_cli.progress import _console
+
+    table = Table(title="Status", title_style="bold", title_justify="left", show_header=False, box=None, padding=(0, 1))
+    table.add_column(style="cyan", min_width=26)
+    table.add_column()
+    table.add_column(style="dim")
+
+    for name, _env_var in _PROVIDERS:
+        # Skip providers without API keys (except Claude which is always available)
+        if _env_var and not os.environ.get(_env_var):
+            continue
+
+        healthy, host = statuses.get(name, (None, None))
+        if healthy is None:
+            table.add_row(name, "[dim]--[/dim]", "")
+        elif healthy:
+            table.add_row(name, "[green]ok[/green]", host or "")
+        else:
+            table.add_row(name, "[red]degraded[/red]", host or "")
+
+    _console.print(table)
 
 
 def _print_balances(balances: dict) -> None:

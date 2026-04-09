@@ -166,7 +166,7 @@ class TestBillingCommand:
         persist_session(t)
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["billing"])
+        result = runner.invoke(cli, ["providers"])
         assert result.exit_code == 0
         assert "Lifetime spend" in result.output
         assert "RetroDiffusion" in result.output
@@ -181,7 +181,7 @@ class TestBillingCommand:
         persist_session(t)
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["billing", "--reset"], input="y\n")
+        result = runner.invoke(cli, ["providers", "--reset"], input="y\n")
         assert result.exit_code == 0
         assert "Reset all" in result.output
         assert read_totals() == {}
@@ -196,7 +196,7 @@ class TestBillingCommand:
         persist_session(t)
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["billing", "--reset", "openai"])
+        result = runner.invoke(cli, ["providers", "--reset", "openai"])
         assert result.exit_code == 0
         assert "Reset lifetime billing data for openai" in result.output
         totals = read_totals()
@@ -207,6 +207,6 @@ class TestBillingCommand:
         from yoto_cli.main import cli
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["billing", "--reset", "invalid"])
+        result = runner.invoke(cli, ["providers", "--reset", "invalid"])
         assert result.exit_code != 0
         assert "Unknown provider group" in result.output

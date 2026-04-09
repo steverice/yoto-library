@@ -7,17 +7,13 @@ import os
 
 import httpx
 
-from yoto_lib.providers.base import ImageProvider, ProviderStatus
+from yoto_lib.providers.base import ImageProvider
 
 logger = logging.getLogger(__name__)
 
 
 class RetroDiffusionProvider(ImageProvider):
     """Generates pixel art using Retro Diffusion API."""
-
-    @classmethod
-    def check_status(cls) -> ProviderStatus:
-        return ProviderStatus(healthy=True)
 
     def __init__(self, style: str = "rd_fast__low_res") -> None:
         self._api_key = os.environ.get("RETRODIFFUSION_API_KEY")
