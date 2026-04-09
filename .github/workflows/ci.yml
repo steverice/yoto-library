@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run linters
+        run: make lint
+
+  unit-test:
+    name: Unit Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.13"]
+        include:
+          - python-version: "3.11"
+            main-only: true
+          - python-version: "3.12"
+            main-only: true
+      fail-fast: false
+    steps:
+      - if: ${{ !matrix.main-only || github.event_name == 'push' }}
+        uses: actions/checkout@v4
+
+      - if: ${{ !matrix.main-only || github.event_name == 'push' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - if: ${{ !matrix.main-only || github.event_name == 'push' }}
+        name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - if: ${{ !matrix.main-only || github.event_name == 'push' }}
+        name: Run unit tests
+        run: make test
+
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ github.repository }}/integration:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      RETRODIFFUSION_API_KEY: ${{ secrets.RETRODIFFUSION_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run integration tests
+        run: make test-integ
