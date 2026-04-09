@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -12,13 +11,13 @@ from typing import Callable
 
 import httpx
 
-logger = logging.getLogger(__name__)
+from yoto_lib.config import WORKERS
 
-WORKERS = int(os.environ.get("YOTO_WORKERS", "4"))
+logger = logging.getLogger(__name__)
 
 from yoto_lib.yoto.api import YotoAPI
 from yoto_lib.icons import ICON_CACHE_DIR, apply_icon_to_mka, download_icon
-from yoto_lib.mka import wrap_in_mka
+from yoto_lib.mka import sanitize_filename as _sanitize_filename, wrap_in_mka
 from yoto_lib.playlist import write_jsonl
 
 
@@ -59,11 +58,6 @@ def _download_file(
             if on_progress:
                 on_progress(downloaded, total)
     return b"".join(chunks)
-
-
-def _sanitize_filename(name: str) -> str:
-    """Remove only characters that are illegal in filenames (/ : \\0)."""
-    return name.replace("/", "-").replace(":", "-").replace("\0", "").strip()
 
 
 @dataclass
