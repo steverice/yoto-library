@@ -291,9 +291,9 @@ def sync_playlist(
                 if error:
                     result.errors.append(error)
                 else:
-                    sha = transcode_result.get("transcodedSha256", "")
+                    sha = transcode_result.get("transcodedSha256", "")  # ty: ignore[unresolved-attribute]
                     track_hashes[filename] = sha
-                    transcoded_info = transcode_result.get("transcodedInfo", {})
+                    transcoded_info = transcode_result.get("transcodedInfo", {})  # ty: ignore[unresolved-attribute]
                     track_info[filename] = {
                         "format": transcoded_info.get("format", ""),
                         "channels": transcoded_info.get("channels", ""),

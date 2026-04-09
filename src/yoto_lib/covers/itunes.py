@@ -85,8 +85,8 @@ def match_album(results: list[dict[str, Any]], artist: str, album: str) -> dict[
     logger.debug(
         "iTunes match (score=%.2f): '%s' by '%s'",
         best_score,
-        best_result.get("collectionName"),
-        best_result.get("artistName"),
+        best_result.get("collectionName"),  # ty: ignore[unresolved-attribute]
+        best_result.get("artistName"),  # ty: ignore[unresolved-attribute]
     )
     return best_result
 
@@ -216,7 +216,7 @@ def enrich_from_itunes(
     if cached is _NO_MATCH:
         return
 
-    result, image_bytes = cached
+    result, image_bytes = cached  # ty: ignore[not-iterable]
 
     # Embed artwork
     if image_bytes is not None and embed_album_art(mka_path, image_bytes):

@@ -48,8 +48,8 @@ class OpenAIProvider(StatusPageMixin, ImageProvider):
         response = self._client.images.generate(
             model="gpt-image-1.5",
             prompt=prompt,
-            size=size_str,
-            quality=quality,
+            size=size_str,  # ty: ignore[invalid-argument-type]
+            quality=quality,  # ty: ignore[invalid-argument-type]
         )
 
         if not response.data:

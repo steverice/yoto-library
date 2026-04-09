@@ -97,10 +97,10 @@ def _icc_convert(img: Image.Image, icc_profile: str) -> Image.Image:
         profile = ImageCms.getOpenProfile(icc_profile)
         if profile.profile.device_class == "link":
             transform = ImageCms.buildTransform(profile, profile, "RGB", "RGB")
-            return ImageCms.applyTransform(img, transform)
+            return ImageCms.applyTransform(img, transform)  # ty: ignore[invalid-return-type]
         else:
             srgb = ImageCms.createProfile("sRGB")
-            return ImageCms.profileToProfile(img, srgb, profile)
+            return ImageCms.profileToProfile(img, srgb, profile)  # ty: ignore[invalid-return-type]
     except (OSError, ImageCms.PyCMSError) as exc:
         raise PrintError(f"Color conversion failed: {exc}") from exc
 

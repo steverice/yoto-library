@@ -93,8 +93,8 @@ def ensure_srgb() -> list | None:
 
     async def _apply(connection):
         app = await iterm2.async_get_app(connection)
-        session = app.current_terminal_window.current_tab.current_session
-        profile = await session.async_get_profile()
+        session = app.current_terminal_window.current_tab.current_session  # ty: ignore[unresolved-attribute]
+        profile = await session.async_get_profile()  # ty: ignore[unresolved-attribute]
 
         change = iterm2.LocalWriteOnlyProfile()
         for getter, setter in _COLOR_PROPS:
@@ -111,7 +111,7 @@ def ensure_srgb() -> list | None:
             )
             getattr(change, setter)(srgb_color)
 
-        await session.async_set_profile_properties(change)
+        await session.async_set_profile_properties(change)  # ty: ignore[unresolved-attribute]
 
     try:
         # Suppress iTerm2's "problem connecting" message on stderr
@@ -143,13 +143,13 @@ def restore_colors(originals: list) -> None:
 
     async def _restore(connection):
         app = await iterm2.async_get_app(connection)
-        session = app.current_terminal_window.current_tab.current_session
+        session = app.current_terminal_window.current_tab.current_session  # ty: ignore[unresolved-attribute]
 
         change = iterm2.LocalWriteOnlyProfile()
         for setter, color in originals:
             getattr(change, setter)(color)
 
-        await session.async_set_profile_properties(change)
+        await session.async_set_profile_properties(change)  # ty: ignore[unresolved-attribute]
 
     try:
         import io

@@ -8,8 +8,12 @@ import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
+
+if TYPE_CHECKING:
+    from rich.progress import TaskID
 
 from yoto_cli.main import _complete_unimported_dirs, _complete_weblocs, _print_cost_summary, cli
 from yoto_lib.billing.costs import reset_tracker
@@ -55,7 +59,7 @@ def download(path, no_trim):
 
         with make_progress() as progress:
             task = progress.add_task(folder.name, total=webloc_count, status="")
-            inner_tasks: dict[str, int] = {}
+            inner_tasks: dict[str, TaskID] = {}
 
             def on_track_start(name: str) -> None:
                 inner_task = progress.add_task(name, total=100, status="")

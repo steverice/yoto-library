@@ -14,7 +14,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from yoto_lib.api import YotoAPI
+    from yoto_lib.yoto.api import YotoAPI
 
 CATALOG_FILENAME = "catalog.json"
 CATALOG_TTL_SECONDS = 24 * 60 * 60  # 24 hours

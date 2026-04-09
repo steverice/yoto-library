@@ -127,7 +127,7 @@ def _get_existing_icon(track_path: Path) -> Image.Image | None:
     try:
         existing_bytes = get_attachment(track_path, "icon")
         if existing_bytes:
-            return Image.open(io.BytesIO(existing_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)
+            return Image.open(io.BytesIO(existing_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)  # ty: ignore[unresolved-attribute]
     except Exception:  # noqa: S110
         pass
     return None
@@ -199,7 +199,7 @@ def _generate_round(
     if yoto_media_id:
         yoto_bytes = download_icon(yoto_media_id)
         if yoto_bytes:
-            yoto_img = Image.open(io.BytesIO(yoto_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)
+            yoto_img = Image.open(io.BytesIO(yoto_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)  # ty: ignore[unresolved-attribute]
             for icon in catalog:
                 if icon.get("mediaId") == yoto_media_id:
                     yoto_title = icon.get("title", "") or icon.get("name", "")

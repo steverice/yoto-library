@@ -202,7 +202,7 @@ def check_status_on_error(*provider_classes: type[Provider]) -> Callable[[_F], _
                 _warn_unhealthy(provider_classes)
                 raise
 
-        return wrapper  # type: ignore[return-value]
+        return wrapper  # type: ignore[return-value]  # ty: ignore[invalid-return-type]
 
     return decorator
 

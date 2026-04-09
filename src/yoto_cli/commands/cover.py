@@ -5,8 +5,12 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
+
+if TYPE_CHECKING:
+    from rich.progress import TaskID
 
 from yoto_cli.main import _complete_dirs, _print_cost_summary, cli
 from yoto_lib.billing.costs import reset_tracker
@@ -77,7 +81,7 @@ def cover(path, force, backup, ignore_album_art):
         task = progress.add_task(cover_name, total=total_steps, status=initial_status)
 
         # Tracks the current inner task for nested progress
-        _inner_task: list[int | None] = [None]
+        _inner_task: list[TaskID | None] = [None]
 
         def _cover_log(msg: str) -> None:
             if msg.startswith("WARNING:"):

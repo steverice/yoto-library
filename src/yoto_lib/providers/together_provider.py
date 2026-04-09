@@ -41,7 +41,7 @@ class TogetherAIProvider(BetterStackMixin, ImageProvider):
 
         if not response.data:
             raise RuntimeError("Together AI returned no images")
-        result = base64.b64decode(response.data[0].b64_json)
+        result = base64.b64decode(response.data[0].b64_json)  # ty: ignore[unresolved-attribute]
         logger.debug("together: generated %d bytes", len(result))
         from yoto_lib.billing.costs import get_tracker
 
@@ -59,7 +59,7 @@ class TogetherAIProvider(BetterStackMixin, ImageProvider):
         scale = min(width / art.width, height / art.height)
         new_w = int(art.width * scale)
         new_h = int(art.height * scale)
-        scaled = art.resize((new_w, new_h), PILImage.LANCZOS)
+        scaled = art.resize((new_w, new_h), PILImage.LANCZOS)  # ty: ignore[unresolved-attribute]
         canvas = PILImage.new("RGB", (width, height), (0, 0, 0))
         x_off = (width - new_w) // 2
         y_off = (height - new_h) // 2
@@ -81,7 +81,7 @@ class TogetherAIProvider(BetterStackMixin, ImageProvider):
 
         if not response.data:
             raise RuntimeError("Together AI returned no images")
-        result = base64.b64decode(response.data[0].b64_json)
+        result = base64.b64decode(response.data[0].b64_json)  # ty: ignore[unresolved-attribute]
         with PILImage.open(io.BytesIO(result)) as img:
             logger.debug("together: recomposed %d bytes, size=%dx%d", len(result), img.width, img.height)
         from yoto_lib.billing.costs import get_tracker

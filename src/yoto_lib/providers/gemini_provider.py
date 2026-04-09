@@ -57,11 +57,11 @@ class GeminiProvider(Provider):
 
         for part in candidate.content.parts:
             if part.inline_data is not None:
-                logger.debug("gemini: generated %d bytes", len(part.inline_data.data))
+                logger.debug("gemini: generated %d bytes", len(part.inline_data.data))  # ty: ignore[invalid-argument-type]
                 from yoto_lib.billing.costs import get_tracker
 
                 get_tracker().record("gemini_flash_image")
-                return part.inline_data.data
+                return part.inline_data.data  # ty: ignore[invalid-return-type]
             if hasattr(part, "text") and part.text:
                 logger.debug("gemini: got text instead of image: %s", part.text[:200])
 
