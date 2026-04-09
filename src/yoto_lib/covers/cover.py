@@ -55,7 +55,7 @@ def resize_cover(source: Path, output: Path) -> None:
         crop_box = (0, top, src_w, top + new_h)
 
     img = img.crop(crop_box)
-    img = img.resize((COVER_WIDTH, COVER_HEIGHT), Image.LANCZOS)
+    img = img.resize((COVER_WIDTH, COVER_HEIGHT), Image.LANCZOS)  # ty: ignore[unresolved-attribute]
     img.save(output, format="PNG")
 
 
@@ -73,7 +73,7 @@ def pad_to_cover(
     scale = min(target_width / art.width, target_height / art.height)
     new_w = int(art.width * scale)
     new_h = int(art.height * scale)
-    scaled = art.resize((new_w, new_h), Image.LANCZOS)
+    scaled = art.resize((new_w, new_h), Image.LANCZOS)  # ty: ignore[unresolved-attribute]
 
     # Sample average edge color from the original image
     edge_pixels = []
@@ -568,7 +568,7 @@ def composite_text(
     scale = min(pw / text_cropped.width, ph / text_cropped.height)
     tw = max(1, int(text_cropped.width * scale))
     th = max(1, int(text_cropped.height * scale))
-    text_final = text_cropped.resize((tw, th), Image.LANCZOS)
+    text_final = text_cropped.resize((tw, th), Image.LANCZOS)  # ty: ignore[unresolved-attribute]
 
     # Center on placement box center
     cx = placement["x"] + pw // 2 - tw // 2

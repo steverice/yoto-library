@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+from PIL import Image
 from rich.console import Console
 from rich.progress import (
     BarColumn,
@@ -65,7 +68,7 @@ def warning(msg: str) -> None:
 # ── Icon rendering ───────────────────────────────────────────────────────────
 
 
-def _icon_to_rich_text(img: "object") -> Text:
+def _icon_to_rich_text(img: Image.Image) -> Text:
     """Render a 16x16 RGBA image as a rich Text using half-block characters."""
     img = img.convert("RGBA")
     w, h = img.size
@@ -74,8 +77,8 @@ def _icon_to_rich_text(img: "object") -> Text:
         if y > 0:
             result.append("\n")
         for x in range(w):
-            top = img.getpixel((x, y))
-            bot = img.getpixel((x, y + 1)) if y + 1 < h else (0, 0, 0, 0)
+            top: tuple[int, int, int, int] = img.getpixel((x, y))  # ty: ignore[invalid-assignment]
+            bot: tuple[int, int, int, int] = img.getpixel((x, y + 1)) if y + 1 < h else (0, 0, 0, 0)  # ty: ignore[invalid-assignment]
             if top[3] == 0 and bot[3] == 0:
                 result.append(" ")
             elif top[3] == 0:

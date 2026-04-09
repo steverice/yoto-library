@@ -150,10 +150,10 @@ def run_wizard(
 
         # Step 4: pick a random song
         song = random.choice(songs)
-        song_url = song.get("url") if isinstance(song, dict) else None
+        song_url = song.get("url") if isinstance(song, dict) else None  # ty: ignore[invalid-argument-type]
         if not song_url:
             raise ValueError("index_js returned songs without 'url' fields")
-        song_title = song.get("title", "Unknown") if isinstance(song, dict) else "Unknown"
+        song_title = song.get("title", "Unknown") if isinstance(song, dict) else "Unknown"  # ty: ignore[no-matching-overload]
 
         # Step 5: fetch song lyrics page
         _step(f"Fetching sample song: {song_title}…")

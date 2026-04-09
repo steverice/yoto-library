@@ -28,7 +28,7 @@ ICNS_TYPE_MAP = {
 
 def nearest_neighbor_upscale(img: Image.Image, target_size: int) -> Image.Image:
     """Resize img to target_size x target_size using nearest-neighbor to preserve crisp pixel grid."""
-    return img.resize((target_size, target_size), Image.NEAREST)
+    return img.resize((target_size, target_size), Image.NEAREST)  # ty: ignore[unresolved-attribute]
 
 
 def _color_distance(a: tuple[int, ...], b: tuple[int, ...]) -> int:
@@ -61,7 +61,7 @@ def remove_solid_background(
         border_positions.append((w - 1, y))
 
     pixels = img.load()
-    border_colors: list[tuple[int, ...]] = [pixels[x, y] for x, y in border_positions]
+    border_colors: list[tuple[int, ...]] = [pixels[x, y] for x, y in border_positions]  # ty: ignore[not-subscriptable, invalid-assignment]
 
     # Group similar colors: count each color, then merge groups within tolerance
     counts: dict[tuple[int, ...], int] = {}
@@ -69,7 +69,7 @@ def remove_solid_background(
         counts[px] = counts.get(px, 0) + 1
 
     # Find the dominant group: start from most frequent color, absorb neighbors
-    dominant = max(counts, key=counts.get)  # type: ignore[arg-type]
+    dominant = max(counts, key=counts.get)  # ty: ignore[no-matching-overload]  # type: ignore[arg-type]
     group_total = sum(c for color, c in counts.items() if _color_distance(color[:3], dominant[:3]) <= tolerance)
 
     if group_total / len(border_colors) < threshold:
@@ -87,11 +87,11 @@ def remove_solid_background(
 
     while queue:
         x, y = queue.pop()
-        pixels[x, y] = (0, 0, 0, 0)
+        pixels[x, y] = (0, 0, 0, 0)  # ty: ignore[invalid-assignment]
         for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
             if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in visited:
                 visited.add((nx, ny))
-                if _color_distance(pixels[nx, ny][:3], bg_rgb) <= tolerance:
+                if _color_distance(pixels[nx, ny][:3], bg_rgb) <= tolerance:  # ty: ignore[not-subscriptable]
                     queue.append((nx, ny))
 
     return img
@@ -121,8 +121,8 @@ def _dominant_color_downscale(img: Image.Image, grid_size: int) -> Image.Image:
             # Count pixel frequencies
             colors: dict[tuple, int] = {}
             for pixel in cell.get_flattened_data():
-                colors[pixel] = colors.get(pixel, 0) + 1
-            dominant = max(colors, key=colors.get)  # type: ignore[arg-type]
+                colors[pixel] = colors.get(pixel, 0) + 1  # ty: ignore[invalid-assignment, no-matching-overload]
+            dominant = max(colors, key=colors.get)  # ty: ignore[no-matching-overload]  # type: ignore[arg-type]
             out.putpixel((gx, gy), dominant)
 
     return out

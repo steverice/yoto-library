@@ -69,7 +69,7 @@ def _try_scrape_sources(artist: str, title: str) -> tuple[str, str] | tuple[None
         return None, None
     from .lyrics_scrape import fetch_lyrics_scrape
 
-    return fetch_lyrics_scrape(artist, title)
+    return fetch_lyrics_scrape(artist, title)  # ty: ignore[invalid-return-type]
 
 
 def get_lyrics(tags: dict[str, str]) -> tuple[str | None, str]:
@@ -91,7 +91,7 @@ def get_lyrics(tags: dict[str, str]) -> tuple[str | None, str]:
     artist = tags.get("artist", "").strip()
     text, source_name = _try_scrape_sources(artist, title)
     if text is not None:
-        return text, source_name
+        return text, source_name  # ty: ignore[invalid-return-type]
 
     # Fall back to LRCLIB API (requires artist)
     if not artist:

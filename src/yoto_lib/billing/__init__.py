@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import subprocess
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -95,7 +96,7 @@ def fetch_balances() -> dict[str, dict]:
         {"RetroDiffusion": {"error": "timeout"}}
     Only includes providers whose API keys are configured.
     """
-    tasks: dict[str, object] = {}
+    tasks: dict[str, Callable[[], object]] = {}
     if os.environ.get("RETRODIFFUSION_API_KEY"):
         tasks["RetroDiffusion"] = _fetch_retrodiffusion_balance
     if os.environ.get("TOGETHER_API_KEY") and os.environ.get("TOGETHER_ORG_ID"):

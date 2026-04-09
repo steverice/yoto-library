@@ -5,8 +5,12 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
+
+if TYPE_CHECKING:
+    from rich.progress import TaskID
 
 from yoto_cli.main import _print_cost_summary, cli
 from yoto_lib.billing.costs import reset_tracker
@@ -54,7 +58,7 @@ def sync(path, dry_run, no_trim, ignore_album_art, force_cover, print_cover_flag
 
     with make_progress() as progress:
         task = progress.add_task(playlist.title, total=total, status="starting")
-        upload_tasks: dict[str, int] = {}  # filename -> inner task id
+        upload_tasks: dict[str, TaskID] = {}  # filename -> inner task id
 
         def log(msg: str) -> None:
             progress.update(task, advance=1, status=msg)

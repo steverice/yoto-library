@@ -89,7 +89,7 @@ def describe_icons_llm(
         if isinstance(descriptions, list) and len(descriptions) >= 3:
             result = [str(d) for d in descriptions[:3]]
             logger.debug("describe_icons_llm: result=%s", result)
-            return result
+            return result  # ty: ignore[invalid-return-type]
         return []
     except (json.JSONDecodeError, KeyError, ValueError, TypeError):
         return []

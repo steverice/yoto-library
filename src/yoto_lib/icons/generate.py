@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 try:
     from yoto_lib.providers.retrodiffusion_provider import RetroDiffusionProvider
 except ImportError:
-    RetroDiffusionProvider = None  # type: ignore[assignment,misc]
+    RetroDiffusionProvider = None  # type: ignore[assignment,misc]  # ty: ignore[invalid-assignment]
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -207,7 +207,7 @@ def generate_retrodiffusion_icons(
             if on_progress:
                 on_progress(done_count)
 
-    return [ordered[i] for i in range(len(descriptions)) if ordered.get(i) is not None]
+    return [ordered[i] for i in range(len(descriptions)) if ordered.get(i) is not None]  # ty: ignore[invalid-return-type]
 
 
 def generate_track_icon(track_title: str) -> bytes | None:

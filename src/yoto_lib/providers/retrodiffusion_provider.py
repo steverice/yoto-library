@@ -39,7 +39,7 @@ class RetroDiffusionProvider(ImageProvider):
         logger.debug("retrodiffusion: generating %dx%d x%d, prompt=%.80s...", width, height, count, prompt)
         response = httpx.post(
             "https://api.retrodiffusion.ai/v1/inferences",
-            headers={"X-RD-Token": self._api_key},
+            headers={"X-RD-Token": self._api_key},  # ty: ignore[invalid-argument-type]
             json={
                 "prompt": prompt,
                 "width": width,

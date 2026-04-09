@@ -5,8 +5,12 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
+
+if TYPE_CHECKING:
+    from rich.progress import TaskID
 
 from yoto_cli.main import _is_card_id, cli
 from yoto_lib.pull import pull_playlist
@@ -43,7 +47,7 @@ def _pull_one(folder: Path, card_id: str | None = None, dry_run: bool = False) -
 
         with make_progress() as progress:
             task = progress.add_task(folder.name, total=None, status="fetching")
-            inner_tasks: dict[str, int] = {}  # title -> task id
+            inner_tasks: dict[str, TaskID] = {}  # title -> task id
 
             def on_total(n: int) -> None:
                 progress.update(task, total=n, status="downloading")

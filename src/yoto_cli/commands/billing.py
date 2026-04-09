@@ -35,7 +35,7 @@ def _check_all_status() -> dict[str, tuple[bool | None, str | None]]:
         else:
             host = status.url
             if not host and hasattr(cls, "status_page_url"):
-                host = urlparse(cls.status_page_url).hostname
+                host = urlparse(str(cls.status_page_url)).hostname
             results[name] = (status.healthy, host)
 
     return results

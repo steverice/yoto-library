@@ -101,7 +101,7 @@ class ClaudeProvider(StatusPageMixin, Provider):
                 messages=[{"role": "user", "content": prompt}],
                 timeout=timeout,
             )
-            text = response.content[0].text.strip()
+            text = response.content[0].text.strip()  # ty: ignore[unresolved-attribute]
             logger.debug("claude_provider.call_sdk: response_length=%d", len(text))
 
             if extract_json:
