@@ -48,7 +48,7 @@ class TestLyricsCommand:
         wrap_in_mka(wav, mka)
         write_tags(mka, {"title": "Old MacDonald", "artist": "Kids Songs"})
 
-        with patch("yoto_cli.main.get_lyrics", return_value=("E-I-E-I-O", "lrclib")) as mock_get:
+        with patch("yoto_cli.commands.lyrics.get_lyrics", return_value=("E-I-E-I-O", "lrclib")) as mock_get:
             runner = CliRunner()
             result = runner.invoke(cli, ["lyrics", str(tmp_path)])
 
@@ -64,7 +64,7 @@ class TestLyricsCommand:
         wrap_in_mka(wav, mka)
         write_tags(mka, {"title": "Song", "artist": "Artist", "lyrics": "Existing"})
 
-        with patch("yoto_cli.main.get_lyrics") as mock_get:
+        with patch("yoto_cli.commands.lyrics.get_lyrics") as mock_get:
             runner = CliRunner()
             result = runner.invoke(cli, ["lyrics", str(tmp_path)])
 
@@ -80,7 +80,7 @@ class TestLyricsCommand:
         wrap_in_mka(wav, mka)
         write_tags(mka, {"title": "Song", "artist": "Artist", "lyrics": "Old lyrics"})
 
-        with patch("yoto_cli.main.get_lyrics", return_value=("New lyrics", "lrclib")):
+        with patch("yoto_cli.commands.lyrics.get_lyrics", return_value=("New lyrics", "lrclib")):
             runner = CliRunner()
             result = runner.invoke(cli, ["lyrics", "--force", str(tmp_path)])
 
