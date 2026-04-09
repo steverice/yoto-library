@@ -43,7 +43,14 @@ def download(path, no_trim):
     trim = not no_trim
     folder = Path(path)
 
-    webloc_count = len(list(folder.glob("*.webloc")))
+    # Support passing a single .webloc file directly
+    if folder.is_file() and folder.suffix.lower() == ".webloc":
+        webloc_files: list[Path] | None = [folder]
+        folder = folder.parent
+    else:
+        webloc_files = None
+
+    webloc_count = len(webloc_files) if webloc_files is not None else len(list(folder.glob("*.webloc")))
     if sys.stderr.isatty() and webloc_count > 0:
         from yoto_cli.progress import make_progress
         with make_progress() as progress:
@@ -77,9 +84,10 @@ def download(path, no_trim):
                 on_track_done=on_track,
                 on_track_start=on_track_start,
                 on_download_progress=on_download_progress,
+                webloc_files=webloc_files,
             )
     else:
-        created = resolve_weblocs(folder, trim=trim)
+        created = resolve_weblocs(folder, trim=trim, webloc_files=webloc_files)
 
     from yoto_cli.progress import _console, success as _success
     if not created:
