@@ -7,12 +7,12 @@ import os
 
 import httpx
 
-from yoto_lib.providers.base import Provider, ProviderStatus
+from yoto_lib.providers.base import ImageProvider, ProviderStatus
 
 logger = logging.getLogger(__name__)
 
 
-class RetroDiffusionProvider(Provider):
+class RetroDiffusionProvider(ImageProvider):
     """Generates pixel art using Retro Diffusion API."""
 
     @classmethod

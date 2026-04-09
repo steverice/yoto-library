@@ -6,7 +6,7 @@ import logging
 
 from openai import OpenAI
 
-from yoto_lib.providers.base import Provider, ProviderStatus, StatusPageMixin
+from yoto_lib.providers.base import ImageProvider, ProviderStatus, StatusPageMixin
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ def _nearest_size(width: int, height: int) -> tuple[int, int]:
     return min(_SUPPORTED_SIZES, key=_distance)
 
 
-class OpenAIProvider(StatusPageMixin, Provider):
+class OpenAIProvider(StatusPageMixin, ImageProvider):
     status_page_url = "https://status.openai.com/api/v2/status.json"
     """Generates images using the OpenAI images API (gpt-image-1.5)."""
 

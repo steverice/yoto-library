@@ -45,6 +45,15 @@ class Provider(ABC):
         ...
 
 
+class ImageProvider(Provider):
+    """Base class for image generation providers."""
+
+    @abstractmethod
+    def generate(self, prompt: str, width: int, height: int) -> bytes:
+        """Generate an image from a text prompt. Returns PNG bytes."""
+        ...
+
+
 # ── StatusPageMixin ──────────────────────────────────────────────────────────
 
 

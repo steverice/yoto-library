@@ -65,8 +65,7 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from yoto_lib.api import YotoAPI
-    from yoto_lib.providers import ImageProvider
+    from yoto_lib.yoto.api import YotoAPI
     from yoto_lib.playlist import Playlist
 
 
