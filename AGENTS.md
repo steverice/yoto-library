@@ -103,6 +103,13 @@ python -m pytest tests/test_foo.py  # single module
 
 Tests mock external calls (Yoto API, subprocess, Claude CLI). See `conftest.py` for shared fixtures. Tests use pytest's built-in `tmp_path` for temporary filesystem state.
 
+## Pre-commit checks
+
+Run `make check` before every commit. This runs linting and unit tests.
+If formatting fails, run `make format` to auto-fix, then re-run `make check`.
+
+Do not skip or bypass these checks.
+
 ## External tool dependencies
 
 | Tool | Used for | Required |
