@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 class GeminiProvider(Provider):
     """Generates images using Google Gemini."""
 
+    display_name = "Gemini"
     MODEL = "gemini-2.5-flash-image"
 
     def generate(self, prompt: str, reference_image: bytes | None = None) -> bytes:

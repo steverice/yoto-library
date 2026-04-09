@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 class TogetherAIProvider(BetterStackMixin, ImageProvider):
     """Generates and recomposes images using FLUX models on Together AI."""
 
+    display_name = "Together AI"
     status_page_url = "https://status.together.ai"
 
     def __init__(self) -> None:

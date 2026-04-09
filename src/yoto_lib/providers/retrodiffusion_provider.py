@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 class RetroDiffusionProvider(ImageProvider):
     """Generates pixel art using Retro Diffusion API."""
 
+    display_name = "RetroDiffusion"
+
     def __init__(self, style: str = "rd_fast__low_res") -> None:
         self._api_key = os.environ.get("RETRODIFFUSION_API_KEY")
         if not self._api_key:
