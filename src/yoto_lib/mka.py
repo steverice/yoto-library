@@ -12,6 +12,12 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+
+def sanitize_filename(name: str) -> str:
+    """Replace characters illegal in filenames (/ : \\0) with dashes."""
+    return name.replace("/", "-").replace(":", "-").replace("\0", "").strip()
+
+
 # Maps our internal field names to Matroska tag names.
 # Standard Matroska tags are uppercase. Custom Yoto fields use YOTO_ prefix.
 TAG_MAP = {

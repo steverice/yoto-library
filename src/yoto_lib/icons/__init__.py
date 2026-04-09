@@ -14,6 +14,7 @@ import httpx
 from PIL import Image
 
 from yoto_lib import mka
+from yoto_lib.mka import sanitize_filename as _sanitize_title
 from yoto_lib.providers.base import check_status_on_error
 
 logger = logging.getLogger(__name__)
@@ -321,11 +322,6 @@ def build_icon_prompt(track_title: str) -> str:
         f"The subject must fill the entire icon area edge to edge — no empty margins, no padding, no whitespace around the subject. "
         f"Do not include any text, letters, numbers, or lettering."
     )
-
-
-def _sanitize_title(title: str) -> str:
-    """Sanitize a title for use as a filename."""
-    return title.replace("/", "-").replace(":", "-").replace("\0", "").strip()
 
 
 def crop_icon_from_grid(img: Image.Image) -> tuple[Image.Image, Image.Image]:
