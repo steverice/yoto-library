@@ -149,7 +149,7 @@ def run_wizard(
             )
 
         # Step 4: pick a random song
-        song = random.choice(songs)
+        song = random.choice(songs)  # noqa: S311
         song_url = song.get("url") if isinstance(song, dict) else None  # ty: ignore[invalid-argument-type]
         if not song_url:
             raise ValueError("index_js returned songs without 'url' fields")

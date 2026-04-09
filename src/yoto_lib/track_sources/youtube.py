@@ -198,7 +198,7 @@ class YouTubeProvider:
         except FileNotFoundError as exc:
             raise RuntimeError("yt-dlp is required for YouTube downloads. Install with: brew install yt-dlp") from exc
 
-        assert proc.stderr is not None
+        assert proc.stderr is not None  # noqa: S101
         for line in proc.stderr:
             line = line.rstrip("\n")
             stderr_lines.append(line)
