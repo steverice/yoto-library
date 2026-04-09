@@ -623,6 +623,11 @@ def _strip_track_number(stem: str) -> str:
     return stripped if stripped else stem
 
 
+# TODO: The import command contains ~100 lines of orchestration logic
+# (wrap_in_mka, metadata tagging, iTunes enrichment, lyrics fetching, patch
+# generation) that could be extracted to a library function in
+# yoto_lib/import_.py, similar to the select-icon extraction into
+# yoto_lib/icons/select.py.
 @cli.command(name="import")
 @click.argument("source", type=click.Path(exists=True), shell_complete=_complete_unimported_dirs)
 @click.option(
@@ -1042,294 +1047,145 @@ def export(playlist, output):
 def select_icon(tracks):
     """Generate 3 icon options per track, show best Yoto match, and attach the chosen one."""
     logger.debug("command: select-icon tracks=%s", tracks)
-    import io
-    import tempfile
-    from PIL import Image
-    from yoto_lib.icons import generate_retrodiffusion_icons, download_icon, set_macos_file_icon
-    from yoto_lib.mka import get_attachment
-    from yoto_lib.icons.icon_catalog import get_catalog
-    from yoto_lib.icons.icon_llm import match_icon_llm, compare_icons_llm, describe_icons_llm, log_icon_feedback, summarize_lyrics_for_icon
+    from yoto_lib.icons.select import select_icons_for_tracks, IconSelectionRound
 
-    from yoto_cli.progress import make_progress, _console, success as _success, warning as _warning
+    from yoto_cli.progress import make_progress, _console, success as _success, warning as _warning, interactive_icon_select
+    from yoto_cli.iterm_colors import ensure_srgb, restore_colors, show_hint_if_needed
     from rich.rule import Rule
-    from rich.prompt import Prompt
     reset_tracker()
 
-    # Shared resources — loaded once
     api = YotoAPI()
-    catalog = get_catalog(api)
+    track_paths = [Path(t) for t in tracks]
 
-    for i, track in enumerate(tracks):
-        track_path = Path(track)
-        title = track_path.stem
-        album_desc = None
-        desc_path = track_path.resolve().parent / "description.txt"
-        if desc_path.exists():
-            album_desc = desc_path.read_text(encoding="utf-8")
+    # -- Mutable state shared between callbacks --
+    progress_ctx = [None]   # [Progress context manager]
+    progress_ref = [None]   # [Progress instance]
+    task_ref = [None]       # [main task id]
+    inner_tasks: dict[str, int] = {}   # key -> rich task id
+    icon_tasks: dict[int, int] = {}    # icon index -> rich task id
+    iterm_originals_ref = [None]
+    iterm_hint_needed = [False]
 
-        # Lyrics summary for icon prompt enrichment
-        track_tags = read_tags(track_path)
-        lyrics_summary = track_tags.get("lyrics_summary")
-        if not lyrics_summary:
-            raw_lyrics = track_tags.get("lyrics")
-            if raw_lyrics:
-                lyrics_summary = summarize_lyrics_for_icon(raw_lyrics, title)
-                if lyrics_summary:
-                    write_tags(track_path, {"lyrics_summary": lyrics_summary})
+    def _open_progress(title: str) -> None:
+        ctx = make_progress()
+        progress_ref[0] = ctx.__enter__(None, None, None) if False else ctx.__enter__()
+        progress_ctx[0] = ctx
+        task_ref[0] = progress_ref[0].add_task(title, total=6, status="matching Yoto icon")
 
-        if len(tracks) > 1:
-            _console.print(Rule(title=f"{track_path.name} ({i + 1}/{len(tracks)})"))
+    def _close_progress() -> None:
+        if progress_ctx[0] is not None:
+            progress_ctx[0].__exit__(None, None, None)
+            progress_ctx[0] = None
+            progress_ref[0] = None
+            task_ref[0] = None
+            inner_tasks.clear()
+            icon_tasks.clear()
 
-        # Check for existing icon
-        existing_img: "Image.Image | None" = None
-        try:
-            existing_bytes = get_attachment(track_path, "icon")
-            if existing_bytes:
-                existing_img = Image.open(io.BytesIO(existing_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)
-        except Exception:
-            pass
+    def _on_track_start(idx: int, total: int, track_path: Path) -> None:
+        if total > 1:
+            _console.print(Rule(title=f"{track_path.name} ({idx + 1}/{total})"))
+        _open_progress(track_path.stem)
 
-        yoto_media_id, yoto_confidence = None, 0.0
-        yoto_img: "Image.Image | None" = None
-        yoto_title: str | None = None
-        yoto_bytes: bytes | None = None
+    def _on_step(status: str) -> None:
+        p = progress_ref[0]
+        t = task_ref[0]
+        if p is not None and t is not None:
+            p.update(t, advance=1, status=status)
 
-        with make_progress() as progress:
-            task = progress.add_task(title, total=6, status="matching Yoto icon")
-            tmpdir = Path(tempfile.mkdtemp(prefix="yoto-icon-"))
-            skipped = False
-
-            # Run Yoto catalog matching in parallel with icon description + generation
-            from concurrent.futures import Future
-            yoto_executor = ThreadPoolExecutor(max_workers=1)
-
-            def _match_yoto() -> tuple:
-                inner = progress.add_task("Matching catalog", total=None, status="")
-                mid, conf = match_icon_llm(title, catalog)
-                progress.remove_task(inner)
-                return mid, conf
-
-            yoto_future: Future = yoto_executor.submit(_match_yoto)
-
-            # Meanwhile, describe and generate icons
-            progress.update(task, advance=1, status="describing icons")
-
-            inner = progress.add_task("Describing icons", total=None, status="")
-            descriptions = describe_icons_llm(title, album_description=album_desc, lyrics_summary=lyrics_summary)
-            progress.remove_task(inner)
-            if not descriptions:
-                descriptions = [title, title, title]  # fallback to raw title
-
-            progress.update(task, advance=1, status="generating icon 1/3")
-
-            icon_tasks: dict[int, int] = {}
-
-            def on_icon_start(i: int, desc: str) -> None:
-                icon_tasks[i] = progress.add_task(f"Icon {i + 1}: {desc}", total=None, status="")
-
-            def on_icon_done(i: int) -> None:
-                if i in icon_tasks:
-                    progress.remove_task(icon_tasks.pop(i))
-
-            def on_gen_progress(done_n: int) -> None:
-                if done_n < 3:
-                    progress.update(task, advance=1, status=f"generating icon {done_n + 1}/3")
-                else:
-                    progress.update(task, advance=1, status="evaluating icons")
-
-            batch = generate_retrodiffusion_icons(
-                descriptions,
-                on_progress=on_gen_progress,
-                on_icon_start=on_icon_start,
-                on_icon_done=on_icon_done,
-            )
-
-            # Collect Yoto matching result (should be done by now)
-            yoto_media_id, yoto_confidence = yoto_future.result()
-            yoto_executor.shutdown(wait=False)
-
-            if yoto_media_id:
-                yoto_bytes = download_icon(yoto_media_id)
-                if yoto_bytes:
-                    yoto_img = Image.open(io.BytesIO(yoto_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)
-                    for icon in catalog:
-                        if icon.get("mediaId") == yoto_media_id:
-                            yoto_title = icon.get("title", "") or icon.get("name", "")
-                            break
-
-            if not batch:
-                progress.console.print(f"[red]✗[/red] Icon generation failed for {track_path.name}")
-                skipped = True
-            else:
-                raw_bytes_list: list[bytes] = [rb for rb, _ in batch]
-                inner = progress.add_task("Evaluating icons", total=None, status="")
-                winner, scores = compare_icons_llm(
-                    title, raw_bytes_list,
-                    yoto_icon=yoto_bytes if yoto_img is not None else None,
-                    descriptions=descriptions,
-                    album_description=album_desc,
-                )
-                progress.remove_task(inner)
-                if not scores:
-                    progress.console.print("[yellow]⚠ Icon evaluation timed out, scores unavailable[/yellow]")
-        # progress bar closed — interactive prompt starts below
-
-        if skipped:
-            tmpdir.rmdir()
-            continue
-
-        # Fix iTerm2 color space for accurate icon rendering
-        from yoto_cli.iterm_colors import ensure_srgb, restore_colors, show_hint_if_needed
-        iterm_originals = ensure_srgb()
-        if not iterm_originals:
-            _iterm_hint_needed = True
+    def _on_inner(label: str | None, key: str) -> None:
+        p = progress_ref[0]
+        if p is None:
+            return
+        if label is None:
+            tid = inner_tasks.pop(key, None)
+            if tid is not None:
+                p.remove_task(tid)
         else:
-            _iterm_hint_needed = False
+            inner_tasks[key] = p.add_task(label, total=None, status="")
 
-        while True:
-            icons_16: list[Image.Image] = [processed for _, processed in batch]
-            images_to_show: list[Image.Image] = list(icons_16)
-            labels_to_show: list[str] = [
-                f"[{i + 1}] {descriptions[i] if i < len(descriptions) else 'AI'}"
-                for i in range(len(icons_16))
-            ]
-
-            next_idx = len(images_to_show) + 1
-
-            if yoto_img is not None:
-                images_to_show.append(yoto_img)
-                labels_to_show.append(f"[{next_idx}] \"{yoto_title}\"")
-                yoto_choice = next_idx
-                next_idx += 1
+    def _on_generation_progress(done_n: int) -> None:
+        p = progress_ref[0]
+        t = task_ref[0]
+        if p is not None and t is not None:
+            if done_n < 3:
+                p.update(t, advance=1, status=f"generating icon {done_n + 1}/3")
             else:
-                yoto_choice = None
+                p.update(t, advance=1, status="evaluating icons")
 
-            if existing_img is not None:
-                images_to_show.append(existing_img)
-                labels_to_show.append(f"[{next_idx}] current")
-                existing_choice = next_idx
-                next_idx += 1
-            else:
-                existing_choice = None
+    def _on_icon_gen_start(i: int, desc: str) -> None:
+        p = progress_ref[0]
+        if p is not None:
+            icon_tasks[i] = p.add_task(f"Icon {i + 1}: {desc}", total=None, status="")
 
-            max_choice = next_idx - 1
-            prompt_text = f"Pick an icon (1-{max_choice}, or 'r' to regenerate)"
+    def _on_icon_gen_done(i: int) -> None:
+        p = progress_ref[0]
+        if p is not None and i in icon_tasks:
+            p.remove_task(icon_tasks.pop(i))
 
-            # Build score labels (existing icon gets no score)
-            from yoto_cli.progress import interactive_icon_select
-            score_labels = []
-            for j in range(len(images_to_show)):
-                if (j + 1) == existing_choice:
-                    score_labels.append("")
-                else:
-                    score = f"{scores[j]:.1f}" if j < len(scores) else "?"
-                    marker = " ★" if (j + 1) == winner else ""
-                    score_labels.append(f"score: {score}{marker}")
+    def _on_scores_missing() -> None:
+        _warning("Icon evaluation timed out, scores unavailable")
 
-            raw = interactive_icon_select(images_to_show, labels_to_show, score_labels, winner, max_choice)
-            if raw.lower() == "r":
-                with make_progress() as progress:
-                    task = progress.add_task(title, total=5, status="describing icons")
+    def _on_round_ready() -> None:
+        _close_progress()
+        iterm_originals_ref[0] = ensure_srgb()
+        iterm_hint_needed[0] = not iterm_originals_ref[0]
 
-                    inner = progress.add_task("Describing icons", total=None, status="")
-                    descriptions = describe_icons_llm(title, album_description=album_desc, lyrics_summary=lyrics_summary)
-                    progress.remove_task(inner)
-                    if not descriptions:
-                        descriptions = [title, title, title]
-                    progress.update(task, advance=1, status="generating icon 1/3")
-
-                    regen_icon_tasks: dict[int, int] = {}
-
-                    def on_icon_start_r(i: int, desc: str) -> None:
-                        regen_icon_tasks[i] = progress.add_task(f"Icon {i + 1}: {desc}", total=None, status="")
-
-                    def on_icon_done_r(i: int) -> None:
-                        if i in regen_icon_tasks:
-                            progress.remove_task(regen_icon_tasks.pop(i))
-
-                    def on_gen_progress_r(done_n: int) -> None:
-                        if done_n < 3:
-                            progress.update(task, advance=1, status=f"generating icon {done_n + 1}/3")
-                        else:
-                            progress.update(task, advance=1, status="evaluating icons")
-
-                    batch = generate_retrodiffusion_icons(
-                        descriptions,
-                        on_progress=on_gen_progress_r,
-                        on_icon_start=on_icon_start_r,
-                        on_icon_done=on_icon_done_r,
-                    )
-                    if not batch:
-                        progress.console.print(f"[red]✗[/red] Icon generation failed for {track_path.name}")
-                        skipped = True
-                    else:
-                        raw_bytes_list = [rb for rb, _ in batch]
-                        inner = progress.add_task("Evaluating icons", total=None, status="")
-                        winner, scores = compare_icons_llm(
-                            title, raw_bytes_list,
-                            yoto_icon=yoto_bytes if yoto_img is not None else None,
-                            descriptions=descriptions,
-                            album_description=album_desc,
-                        )
-                        progress.remove_task(inner)
-                        if not scores:
-                            progress.console.print("[yellow]⚠ Icon evaluation timed out, scores unavailable[/yellow]")
-                if skipped:
-                    break
-                continue
-
-            try:
-                choice = int(raw)
-                if not 1 <= choice <= max_choice:
-                    raise ValueError
-            except ValueError:
-                _warning("Invalid choice.")
-                continue
-
-            if choice == existing_choice:
-                _console.print(f"[dim]Keeping current icon for {track_path.name}[/dim]")
-                skipped = True
-                break
-            elif choice == yoto_choice:
-                chosen = yoto_img
-            else:
-                chosen = icons_16[choice - 1]
-
-            # Log feedback for tuning
-            log_icon_feedback(
-                track_title=title,
-                llm_winner=winner,
-                llm_scores=scores,
-                user_choice=choice,
-                descriptions=descriptions,
-                album=track_path.resolve().parent.name,
-                chose_yoto=(choice == yoto_choice),
-            )
-            break
-
-        # Restore iTerm2 colors after icon display
-        if iterm_originals:
-            restore_colors(iterm_originals)
-        elif _iterm_hint_needed:
+    def _on_round_cleanup() -> None:
+        if iterm_originals_ref[0]:
+            restore_colors(iterm_originals_ref[0])
+        elif iterm_hint_needed[0]:
             show_hint_if_needed()
 
-        if skipped:
-            tmpdir.rmdir()
-            continue
+    def _choose_icon(round_result: IconSelectionRound) -> str:
+        candidates = round_result.candidates
+        images = [c.image for c in candidates]
+        labels = [f"[{j + 1}] {c.label}" for j, c in enumerate(candidates)]
+        score_labels = []
+        for j, c in enumerate(candidates):
+            if c.is_existing:
+                score_labels.append("")
+            else:
+                score = f"{c.score:.1f}" if c.score is not None else "?"
+                marker = " *" if (j + 1) == round_result.winner else ""
+                score_labels.append(f"score: {score}{marker}")
 
-        buf = io.BytesIO()
-        chosen.save(buf, format="PNG")
-        icon_bytes = buf.getvalue()
+        raw = interactive_icon_select(
+            images, labels, score_labels, round_result.winner, len(candidates),
+        )
+        return raw
 
-        icon_tmp = tmpdir / "chosen_icon.png"
-        icon_tmp.write_bytes(icon_bytes)
-        set_attachment(track_path, icon_tmp, name="icon", mime_type="image/png")
-
-        set_macos_file_icon(track_path, chosen)
+    def _on_applied(track_path: Path) -> None:
         _success(f"Attached icon to {track_path.name}")
 
-        icon_tmp.unlink(missing_ok=True)
-        tmpdir.rmdir()
+    def _on_skipped(track_path: Path) -> None:
+        _close_progress()
+        _console.print(f"[dim]Keeping current icon for {track_path.name}[/dim]")
+
+    def _on_error(msg: str) -> None:
+        p = progress_ref[0]
+        if p is not None:
+            p.console.print(f"[red]x[/red] {msg}")
+        else:
+            _console.print(f"[red]x[/red] {msg}")
+
+    select_icons_for_tracks(
+        track_paths,
+        api,
+        on_step=_on_step,
+        on_inner=_on_inner,
+        on_generation_progress=_on_generation_progress,
+        on_icon_gen_start=_on_icon_gen_start,
+        on_icon_gen_done=_on_icon_gen_done,
+        on_warn=_warning,
+        on_error=_on_error,
+        choose_icon=_choose_icon,
+        on_track_start=_on_track_start,
+        on_round_ready=_on_round_ready,
+        on_round_cleanup=_on_round_cleanup,
+        on_scores_missing=_on_scores_missing,
+        on_applied=_on_applied,
+        on_skipped=_on_skipped,
+    )
 
     _print_cost_summary()
 
@@ -1358,6 +1214,11 @@ def reset_icon(tracks):
 # ── cover ────────────────────────────────────────────────────────────────
 
 
+# TODO: The cover command contains ~80 lines of cover generation
+# orchestration (album art check, prompt building, provider call, title
+# overlay, resize) that could be extracted to a library function in
+# yoto_lib/covers/cover.py alongside the existing helpers, similar to the
+# select-icon extraction into yoto_lib/icons/select.py.
 @cli.command()
 @click.argument("path", default=".", type=click.Path(exists=True), shell_complete=_complete_dirs)
 @click.option("--force", is_flag=True, help="Regenerate even if cover.png exists")
