@@ -1,5 +1,10 @@
 # yoto-library
 
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey?logo=apple)](https://github.com)
+[![Built with Claude Code](https://img.shields.io/badge/Built%20with-Claude%20Code-6b48ff?logo=anthropic)](https://claude.ai/code)
+
 Manage Yoto Player Create-Your-Own (CYO) playlists as folders on disk, with two-way sync to the Yoto API.
 
 Each playlist is a folder. Audio files live in MKA containers that carry metadata and icon attachments. Cover art and track icons are auto-generated via AI when missing. Sync pushes local state to Yoto; pull downloads remote state to a local folder.
@@ -336,45 +341,12 @@ python -m pytest -m integration
 
 ## Architecture
 
-Two-layer design: `yoto_lib` is a standalone Python library; `yoto_cli` is a thin Click wrapper. The library is importable independently -- no CLI framework dependency leaks into library code.
+Two-layer design: `yoto_lib` (standalone library) and `yoto_cli` (thin Click wrapper). See [ARCHITECTURE.md](ARCHITECTURE.md) for details.
 
-```
-src/
-  yoto_lib/
-    playlist.py          # local playlist model (folder <-> Yoto content schema)
-    sync.py              # local -> remote sync engine
-    pull.py              # remote -> local pull engine
-    mka.py               # MKA container: wrap, tags, attachments
-    description.py       # auto-generated playlist descriptions
-    yoto/                # Yoto platform client
-      api.py             # API client (content CRUD, upload pipeline, media)
-      auth.py            # OAuth device code flow, token refresh, Keychain storage
-    billing/             # cost tracking and billing
-      costs.py           # per-call cost tracker
-      costs.json         # cost-per-operation lookup table
-    icons/               # icon pipeline
-      __init__.py        # matching, generation, ICNS building
-      icon_catalog.py    # local cache for Yoto public icon catalog
-      icon_llm.py        # LLM-based icon matching via Claude CLI
-    covers/              # cover art pipeline
-      cover.py           # AI cover art generation, recomposition, text repair
-      itunes.py          # iTunes Search API for album art and metadata
-      printer.py         # cover art printing via CUPS
-    lyrics/              # lyrics pipeline
-      __init__.py        # fetch pipeline (source tags + LRCLIB)
-      lyrics_scrape.py   # config-driven web scraping via Node.js/jsdom
-      lyrics_source_wizard.py  # Claude-powered wizard to generate scrape configs
-    track_sources/       # source providers (.webloc -> audio)
-      youtube.py         # YouTube via yt-dlp
-    providers/           # AI service providers
-      base.py            # Provider ABC, StatusPageMixin, @check_status_on_error
-      openai_provider.py # text-to-image cover generation
-      flux_provider.py   # album art recomposition (FLUX Kontext via Together AI)
-      gemini_provider.py # text layer rendering (Gemini Flash)
-      retrodiffusion_provider.py  # 16x16 pixel art icon generation
-      claude_provider.py # Claude CLI wrapper for LLM tasks
-  yoto_cli/
-    main.py              # Click CLI: all commands
-    progress.py          # shared rich Console, progress bars, cost display
-    iterm_colors.py      # iTerm2 color space fix for pixel art rendering
-```
+## Disclaimer
+
+This project is not affiliated with, endorsed by, or associated with Yoto Limited. "Yoto" is a trademark of Yoto Limited.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
