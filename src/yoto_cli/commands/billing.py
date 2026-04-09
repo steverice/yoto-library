@@ -17,32 +17,14 @@ from yoto_cli.main import cli
 
 logger = logging.getLogger(__name__)
 
-# (provider_class, env_var_for_api_key) — None env var means always available
-def _get_provider_classes() -> list[tuple[type, str | None]]:
-    """Import and return all provider classes with their env var requirements."""
-    from yoto_lib.providers.retrodiffusion_provider import RetroDiffusionProvider
-    from yoto_lib.providers.openai_provider import OpenAIProvider
-    from yoto_lib.providers.together_provider import TogetherAIProvider
-    from yoto_lib.providers.gemini_provider import GeminiProvider
-    from yoto_lib.providers.claude_provider import ClaudeProvider
-
-    return [
-        (RetroDiffusionProvider, "RETRODIFFUSION_API_KEY"),
-        (OpenAIProvider, "OPENAI_API_KEY"),
-        (TogetherAIProvider, "TOGETHER_API_KEY"),
-        (GeminiProvider, "GEMINI_API_KEY"),
-        (ClaudeProvider, None),  # always available (CLI-based)
-    ]
-
-
 def _check_all_status() -> dict[str, tuple[bool | None, str | None]]:
     """Check status of all providers. Returns {name: (healthy, status_page_host)}."""
+    from yoto_lib.providers import get_active_providers
+
     results: dict[str, tuple[bool | None, str | None]] = {}
 
-    for cls, env_var in _get_provider_classes():
+    for cls in get_active_providers():
         name = cls.display_name
-        if env_var and not os.environ.get(env_var):
-            continue
 
         status = cls.check_status()
         if status is None:
@@ -142,16 +124,8 @@ def _print_balances(balances: dict) -> None:
     from rich.table import Table
     from yoto_cli.progress import _console
 
-    # Determine which providers are active (have env vars set)
-    active_providers = []
-    if os.environ.get("RETRODIFFUSION_API_KEY"):
-        active_providers.append("RetroDiffusion")
-    if os.environ.get("OPENAI_API_KEY"):
-        active_providers.append("OpenAI")
-    if os.environ.get("TOGETHER_API_KEY"):
-        active_providers.append("Together AI")
-    if os.environ.get("GEMINI_API_KEY"):
-        active_providers.append("Google Gemini")
+    from yoto_lib.providers import get_active_providers
+    active_providers = [cls.display_name for cls in get_active_providers()]
 
     if not active_providers:
         return
