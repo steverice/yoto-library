@@ -43,3 +43,28 @@ pythonpath = ["src"]
 markers = [
     "integration: tests requiring network access and external tools (yt-dlp)",
 ]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # bugbear
+    "SIM",  # simplify
+    "PT",   # pytest style
+    "RUF",  # ruff-specific
+    "S",    # bandit security
+    "FA",   # future annotations
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]  # allow assert in tests
+
+[tool.ruff.lint.isort]
+known-first-party = ["yoto_lib", "yoto_cli"]
