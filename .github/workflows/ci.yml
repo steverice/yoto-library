@@ -55,11 +55,6 @@ jobs:
   integration-test:
     name: Integration Tests
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/${{ github.repository }}/integration:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
@@ -67,8 +62,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Python dependencies
-        run: pip install -e ".[dev]"
+      - name: Build integration image
+        run: docker build -t yoto-integration .github/docker/integration/
 
       - name: Run integration tests
-        run: make test-integ
+        run: |
+          docker run --rm \
+            -e OPENAI_API_KEY \
+            -e GOOGLE_API_KEY \
+            -e RETRODIFFUSION_API_KEY \
+            -v "${{ github.workspace }}:/app" \
+            -w /app \
+            yoto-integration \
+            bash -c "pip install -e '.[dev]' && make test-integ"
