@@ -29,6 +29,7 @@ PROVIDER_GROUPS: dict[str, list[str]] = {
 # Dashboard URLs for providers without balance APIs
 DASHBOARD_URLS: dict[str, str] = {
     "OpenAI": "platform.openai.com",
+    "Together AI": "api.together.ai",
     "Google Gemini": "aistudio.google.com",
     "Claude": "console.anthropic.com",
 }
@@ -94,9 +95,11 @@ def fetch_balances() -> dict[str, dict]:
         {"RetroDiffusion": {"error": "timeout"}}
     Only includes providers whose API keys are configured.
     """
-    tasks = {}
+    tasks: dict[str, object] = {}
     if os.environ.get("RETRODIFFUSION_API_KEY"):
         tasks["RetroDiffusion"] = _fetch_retrodiffusion_balance
+    if os.environ.get("TOGETHER_API_KEY") and os.environ.get("TOGETHER_ORG_ID"):
+        tasks["Together AI"] = _fetch_together_balance
 
     results = {}
     if not tasks:
@@ -130,6 +133,18 @@ def _fetch_retrodiffusion_balance() -> float:
     )
     response.raise_for_status()
     return response.json()["remaining_balance"]
+
+
+def _fetch_together_balance() -> float:
+    """Query Together AI ongoing balance."""
+    org_id = os.environ["TOGETHER_ORG_ID"]
+    response = httpx.get(
+        f"https://api.together.ai/api/billing/organizations/{org_id}/ongoing-balance",
+        headers={"Authorization": f"Bearer {os.environ['TOGETHER_API_KEY']}"},
+        timeout=10,
+    )
+    response.raise_for_status()
+    return response.json()["totalOngoingBalanceCents"] / 100
 
 
 def fetch_subscription_usage() -> dict | None:
