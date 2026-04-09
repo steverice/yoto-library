@@ -11,8 +11,43 @@ from typing import Any, Callable
 
 from yoto_lib.config import WORKERS
 from yoto_lib.mka import wrap_in_mka, write_tags
+from yoto_lib.providers.claude_provider import ClaudeProvider
 
 logger = logging.getLogger(__name__)
+
+_claude = ClaudeProvider()
+
+
+def clean_title(raw_title: str) -> str:
+    """Use Claude Haiku to extract the real track title from a video title.
+
+    Strips promotional text, channel names, keyword stuffing, episode numbers,
+    and clickbait. Non-English titles are returned with an English translation
+    in parentheses.
+
+    Falls back to the original title on any failure.
+    """
+    prompt = (
+        "Extract the actual song or track title from this video title. "
+        "Strip promotional text, channel names, keyword stuffing, episode/video "
+        "numbers, clickbait, and platform jargon (e.g. 'Official Video', 'Lyric Video', "
+        "'Full Episode', 'HD').\n\n"
+        "If the title is in a non-English language, return it as:\n"
+        "  Original Title (English Translation)\n"
+        "If the title contains both the original language and an English translation "
+        "already, use those rather than translating yourself.\n\n"
+        "Return ONLY the cleaned title. No quotes, no explanation.\n\n"
+        f"Video title: {raw_title}"
+    )
+    try:
+        result = _claude.call(prompt, extract_json=False)
+        if result and result.strip():
+            cleaned = result.strip()
+            logger.debug("clean_title: %r -> %r", raw_title, cleaned)
+            return cleaned
+    except Exception as exc:
+        logger.debug("clean_title failed: %s", exc)
+    return raw_title
 
 
 def parse_webloc(path: Path) -> str | None:
@@ -89,8 +124,12 @@ def _resolve_one_webloc(
         logger.warning("Download failed for %s: %s", webloc.name, exc)
         return None
 
+    # Clean up the title (strip keyword stuffing, translate if needed)
+    raw_title = metadata.get("title", webloc.stem)
+    title = clean_title(raw_title)
+    metadata["title"] = title
+
     # Wrap in MKA
-    title = metadata.get("title", webloc.stem)
     mka_path = _unique_path(playlist_dir, title, ".mka")
     try:
         wrap_in_mka(audio_path, mka_path)

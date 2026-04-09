@@ -11,7 +11,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from yoto_lib.track_sources import parse_webloc, resolve_weblocs
+from yoto_lib.track_sources import parse_webloc, resolve_weblocs, clean_title
 from yoto_lib.track_sources.youtube import YouTubeProvider, _parse_silence_ranges, _trim_silence
 
 
@@ -232,6 +232,7 @@ class TestResolveWeblocs:
             patch("yoto_lib.track_sources._get_providers", return_value=[mock_provider]),
             patch("yoto_lib.track_sources.wrap_in_mka") as mock_wrap,
             patch("yoto_lib.track_sources.write_tags") as mock_tags,
+            patch("yoto_lib.track_sources.clean_title", side_effect=lambda t: t),
         ):
             def fake_wrap(src, dst):
                 dst.write_bytes(b"fake mka")
@@ -303,6 +304,7 @@ class TestResolveWeblocs:
             patch("yoto_lib.track_sources._get_providers", return_value=[mock_provider]),
             patch("yoto_lib.track_sources.wrap_in_mka") as mock_wrap,
             patch("yoto_lib.track_sources.write_tags"),
+            patch("yoto_lib.track_sources.clean_title", side_effect=lambda t: t),
         ):
             def fake_wrap(src, dst):
                 dst.write_bytes(b"fake mka")
@@ -312,6 +314,43 @@ class TestResolveWeblocs:
 
         assert len(results) == 1
         assert results[0].name == "My Song 2.mka"
+
+
+class TestCleanTitle:
+    def test_clean_title_uses_claude_response(self):
+        """clean_title returns the cleaned title from Claude."""
+        with patch("yoto_lib.track_sources._claude") as mock_claude:
+            mock_claude.call.return_value = "Twinkle Twinkle Little Star"
+            result = clean_title("Twinkle Twinkle Little Star | Kids Songs | Super Simple Songs")
+
+        assert result == "Twinkle Twinkle Little Star"
+        mock_claude.call.assert_called_once()
+
+    def test_clean_title_falls_back_on_failure(self):
+        """clean_title returns the original title when Claude fails."""
+        raw = "Some Video Title | Channel Name"
+        with patch("yoto_lib.track_sources._claude") as mock_claude:
+            mock_claude.call.return_value = None
+            result = clean_title(raw)
+
+        assert result == raw
+
+    def test_clean_title_falls_back_on_exception(self):
+        """clean_title returns the original title when Claude raises."""
+        raw = "Some Video Title"
+        with patch("yoto_lib.track_sources._claude") as mock_claude:
+            mock_claude.call.side_effect = RuntimeError("network error")
+            result = clean_title(raw)
+
+        assert result == raw
+
+    def test_clean_title_strips_whitespace(self):
+        """clean_title strips leading/trailing whitespace from Claude's response."""
+        with patch("yoto_lib.track_sources._claude") as mock_claude:
+            mock_claude.call.return_value = "  Baby Shark  \n"
+            result = clean_title("Baby Shark doo doo | Kids Songs")
+
+        assert result == "Baby Shark"
 
 
 @pytest.mark.integration
