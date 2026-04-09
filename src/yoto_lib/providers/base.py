@@ -46,6 +46,15 @@ class Provider(ABC):
         """
         return None
 
+    @property
+    def is_subscription(self) -> bool:
+        """Whether this provider uses subscription billing (free with plan).
+
+        Returns False by default (pay-per-call). Subclasses override
+        when billing depends on configuration (e.g. Claude CLI vs SDK).
+        """
+        return False
+
 
 class ImageProvider(Provider):
     """Base class for image generation providers."""

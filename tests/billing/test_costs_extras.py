@@ -7,25 +7,22 @@ from unittest.mock import patch
 
 import pytest
 
-from yoto_lib.billing.costs import CostTracker, get_tracker, reset_tracker, is_subscription
+from yoto_lib.billing.costs import CostTracker, get_tracker, reset_tracker
+from yoto_lib.providers.claude_provider import ClaudeProvider
 
 
 class TestIsSubscription:
-    def test_claude_haiku_without_api_key_is_subscription(self):
+    def test_claude_without_api_key_is_subscription(self):
         with patch.dict(os.environ, {}, clear=True):
-            assert is_subscription("claude_haiku") is True
+            assert ClaudeProvider().is_subscription is True
 
-    def test_claude_haiku_with_api_key_is_not_subscription(self):
+    def test_claude_with_api_key_is_not_subscription(self):
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-test"}):
-            assert is_subscription("claude_haiku") is False
+            assert ClaudeProvider().is_subscription is False
 
-    def test_claude_sonnet_without_api_key_is_subscription(self):
-        with patch.dict(os.environ, {}, clear=True):
-            assert is_subscription("claude_sonnet") is True
-
-    def test_non_claude_provider_is_not_subscription(self):
-        assert is_subscription("retrodiffusion") is False
-        assert is_subscription("openai_generate_low") is False
+    def test_image_provider_is_not_subscription(self):
+        from yoto_lib.providers.openai_provider import OpenAIProvider
+        assert OpenAIProvider().is_subscription is False
 
 
 class TestGetAndResetTracker:

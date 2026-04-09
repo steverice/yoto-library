@@ -50,7 +50,6 @@ def _check_all_status() -> dict[str, tuple[bool | None, str | None]]:
 def providers(reset_group):
     """Show provider status, balances, and lifetime costs."""
     logger.debug("command: providers reset=%s", reset_group)
-    from yoto_lib.billing.costs import is_subscription
 
     # Handle --reset
     if reset_group is not None:
@@ -74,7 +73,8 @@ def providers(reset_group):
         status_future = pool.submit(_check_all_status)
         balance_future = pool.submit(fetch_balances)
         usage_future = None
-        if is_subscription("claude_haiku"):
+        from yoto_lib.providers.claude_provider import ClaudeProvider
+        if ClaudeProvider().is_subscription:
             usage_future = pool.submit(fetch_subscription_usage)
 
     statuses = status_future.result()
@@ -190,7 +190,9 @@ def _print_lifetime_spend() -> None:
     """Print the Lifetime spend section."""
     from rich.table import Table
     from yoto_cli.progress import _console
-    from yoto_lib.billing.costs import COSTS, is_subscription
+    from yoto_lib.billing.costs import COSTS
+    from yoto_lib.providers.claude_provider import ClaudeProvider
+    claude_is_sub = ClaudeProvider().is_subscription
 
     totals = read_totals()
     if not totals:
@@ -211,7 +213,7 @@ def _print_lifetime_spend() -> None:
         label = COSTS[key]["label"]
         calls = entry["calls"]
 
-        if is_subscription(key):
+        if key.startswith("claude_") and claude_is_sub:
             table.add_row(label, "\u2014", f"{calls} calls, subscription")
         else:
             cost = entry["cost"]

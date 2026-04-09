@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import threading
 from collections import Counter
 from pathlib import Path
@@ -18,12 +17,6 @@ def _load_costs() -> dict[str, dict]:
 
 COSTS = _load_costs()
 
-
-def is_subscription(provider: str) -> bool:
-    """Check if a provider is using subscription billing based on env."""
-    if provider.startswith("claude_"):
-        return "ANTHROPIC_API_KEY" not in os.environ
-    return False
 
 
 class CostTracker:
