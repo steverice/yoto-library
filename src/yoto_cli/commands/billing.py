@@ -3,19 +3,22 @@
 from __future__ import annotations
 
 import logging
-import os
 from urllib.parse import urlparse
 
 import click
 
+from yoto_cli.main import cli
 from yoto_lib.billing import (
-    fetch_balances, fetch_subscription_usage, read_totals, reset_totals,
-    PROVIDER_GROUPS, DASHBOARD_URLS,
+    DASHBOARD_URLS,
+    PROVIDER_GROUPS,
+    fetch_balances,
+    fetch_subscription_usage,
+    read_totals,
+    reset_totals,
 )
 
-from yoto_cli.main import cli
-
 logger = logging.getLogger(__name__)
+
 
 def _check_all_status() -> dict[str, tuple[bool | None, str | None]]:
     """Check status of all providers. Returns {name: (healthy, status_page_host)}."""
@@ -74,6 +77,7 @@ def providers(reset_group):
         balance_future = pool.submit(fetch_balances)
         usage_future = None
         from yoto_lib.providers.claude_provider import ClaudeProvider
+
         if ClaudeProvider().is_subscription:
             usage_future = pool.submit(fetch_subscription_usage)
 
@@ -101,6 +105,7 @@ def providers(reset_group):
 def _print_status(statuses: dict[str, tuple[bool | None, str | None]]) -> None:
     """Print the Status section."""
     from rich.table import Table
+
     from yoto_cli.progress import _console
 
     table = Table(title="Status", title_style="bold", title_justify="left", show_header=False, box=None, padding=(0, 1))
@@ -122,15 +127,18 @@ def _print_status(statuses: dict[str, tuple[bool | None, str | None]]) -> None:
 def _print_balances(balances: dict) -> None:
     """Print the Balances section."""
     from rich.table import Table
-    from yoto_cli.progress import _console
 
+    from yoto_cli.progress import _console
     from yoto_lib.providers import get_active_providers
+
     active_providers = [cls.display_name for cls in get_active_providers()]
 
     if not active_providers:
         return
 
-    table = Table(title="Balances", title_style="bold", title_justify="left", show_header=False, box=None, padding=(0, 1))
+    table = Table(
+        title="Balances", title_style="bold", title_justify="left", show_header=False, box=None, padding=(0, 1)
+    )
     table.add_column(style="cyan", min_width=26)
     table.add_column()
 
@@ -150,15 +158,23 @@ def _print_balances(balances: dict) -> None:
 def _print_subscription_usage(usage: dict) -> None:
     """Print the Subscription section."""
     from datetime import datetime, timezone
+
     from rich.table import Table
+
     from yoto_cli.progress import _console
 
-    table = Table(title="Subscription", title_style="bold", title_justify="left", show_header=False, box=None, padding=(0, 1))
+    table = Table(
+        title="Subscription", title_style="bold", title_justify="left", show_header=False, box=None, padding=(0, 1)
+    )
     table.add_column(style="cyan", min_width=26)
     table.add_column(justify="right")
     table.add_column(style="dim")
 
-    for key, label in [("session", "Claude (session)"), ("weekly", "Claude (weekly)"), ("weekly_sonnet", "Claude (weekly Sonnet)")]:
+    for key, label in [
+        ("session", "Claude (session)"),
+        ("weekly", "Claude (weekly)"),
+        ("weekly_sonnet", "Claude (weekly Sonnet)"),
+    ]:
         if key not in usage:
             continue
         info = usage[key]
@@ -189,9 +205,11 @@ def _print_subscription_usage(usage: dict) -> None:
 def _print_lifetime_spend() -> None:
     """Print the Lifetime spend section."""
     from rich.table import Table
+
     from yoto_cli.progress import _console
     from yoto_lib.billing.costs import COSTS
     from yoto_lib.providers.claude_provider import ClaudeProvider
+
     claude_is_sub = ClaudeProvider().is_subscription
 
     totals = read_totals()
@@ -200,7 +218,9 @@ def _print_lifetime_spend() -> None:
         _console.print("  No data yet. Run some commands first.")
         return
 
-    table = Table(title="Lifetime spend", title_style="bold", title_justify="left", show_header=False, box=None, padding=(0, 1))
+    table = Table(
+        title="Lifetime spend", title_style="bold", title_justify="left", show_header=False, box=None, padding=(0, 1)
+    )
     table.add_column(style="cyan", min_width=26)
     table.add_column(justify="right")
     table.add_column(style="dim")

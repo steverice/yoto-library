@@ -2,30 +2,33 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import httpx
-import pytest
 
 
 class TestReadLyricsFromTags:
     def test_returns_lyrics_when_present(self):
         from yoto_lib.lyrics import read_lyrics_from_tags
+
         tags = {"title": "Old MacDonald", "artist": "Kids", "lyrics": "Old MacDonald had a farm"}
         assert read_lyrics_from_tags(tags) == "Old MacDonald had a farm"
 
     def test_returns_none_when_absent(self):
         from yoto_lib.lyrics import read_lyrics_from_tags
+
         tags = {"title": "Old MacDonald", "artist": "Kids"}
         assert read_lyrics_from_tags(tags) is None
 
     def test_returns_none_for_empty_lyrics(self):
         from yoto_lib.lyrics import read_lyrics_from_tags
+
         tags = {"title": "Old MacDonald", "lyrics": ""}
         assert read_lyrics_from_tags(tags) is None
 
     def test_returns_none_for_whitespace_only(self):
         from yoto_lib.lyrics import read_lyrics_from_tags
+
         tags = {"title": "Old MacDonald", "lyrics": "   \n  "}
         assert read_lyrics_from_tags(tags) is None
 
@@ -33,6 +36,7 @@ class TestReadLyricsFromTags:
 class TestFetchLyricsLrclib:
     def test_returns_plain_lyrics_on_match(self):
         from yoto_lib.lyrics import fetch_lyrics_lrclib
+
         mock_response = MagicMock()
         mock_response.json.return_value = [
             {
@@ -51,6 +55,7 @@ class TestFetchLyricsLrclib:
 
     def test_returns_none_on_empty_results(self):
         from yoto_lib.lyrics import fetch_lyrics_lrclib
+
         mock_response = MagicMock()
         mock_response.json.return_value = []
         mock_response.raise_for_status = MagicMock()
@@ -62,6 +67,7 @@ class TestFetchLyricsLrclib:
 
     def test_returns_none_on_network_error(self):
         from yoto_lib.lyrics import fetch_lyrics_lrclib
+
         with patch("yoto_lib.lyrics.httpx.get", side_effect=httpx.HTTPError("network")):
             result = fetch_lyrics_lrclib("Artist", "Title")
 
@@ -69,6 +75,7 @@ class TestFetchLyricsLrclib:
 
     def test_prefers_plain_over_synced(self):
         from yoto_lib.lyrics import fetch_lyrics_lrclib
+
         mock_response = MagicMock()
         mock_response.json.return_value = [
             {
@@ -87,7 +94,8 @@ class TestFetchLyricsLrclib:
         assert "Synced only lyrics here" in result
 
     def test_sends_user_agent(self):
-        from yoto_lib.lyrics import fetch_lyrics_lrclib, _USER_AGENT
+        from yoto_lib.lyrics import _USER_AGENT, fetch_lyrics_lrclib
+
         mock_response = MagicMock()
         mock_response.json.return_value = []
         mock_response.raise_for_status = MagicMock()
@@ -103,6 +111,7 @@ class TestGetLyrics:
     @patch("yoto_lib.lyrics._try_scrape_sources", return_value=(None, None))
     def test_returns_lyrics_from_tags(self, _):
         from yoto_lib.lyrics import get_lyrics
+
         tags = {"title": "Song", "artist": "Artist", "lyrics": "La la la"}
 
         with patch("yoto_lib.lyrics.fetch_lyrics_lrclib") as mock_fetch:
@@ -115,6 +124,7 @@ class TestGetLyrics:
     @patch("yoto_lib.lyrics._try_scrape_sources", return_value=(None, None))
     def test_falls_back_to_lrclib(self, _):
         from yoto_lib.lyrics import get_lyrics
+
         tags = {"title": "Song", "artist": "Artist"}
 
         with patch("yoto_lib.lyrics.fetch_lyrics_lrclib", return_value="API lyrics") as mock_fetch:
@@ -127,6 +137,7 @@ class TestGetLyrics:
     @patch("yoto_lib.lyrics._try_scrape_sources", return_value=(None, None))
     def test_returns_none_when_both_fail(self, _):
         from yoto_lib.lyrics import get_lyrics
+
         tags = {"title": "Song", "artist": "Artist"}
 
         with patch("yoto_lib.lyrics.fetch_lyrics_lrclib", return_value=None):
@@ -138,6 +149,7 @@ class TestGetLyrics:
     @patch("yoto_lib.lyrics._try_scrape_sources", return_value=(None, None))
     def test_skips_lrclib_when_no_artist(self, _):
         from yoto_lib.lyrics import get_lyrics
+
         tags = {"title": "Song"}
 
         with patch("yoto_lib.lyrics.fetch_lyrics_lrclib") as mock_fetch:
@@ -150,6 +162,7 @@ class TestGetLyrics:
     @patch("yoto_lib.lyrics._try_scrape_sources", return_value=(None, None))
     def test_skips_lrclib_when_no_title(self, _):
         from yoto_lib.lyrics import get_lyrics
+
         tags = {"artist": "Artist"}
 
         with patch("yoto_lib.lyrics.fetch_lyrics_lrclib") as mock_fetch:
@@ -163,6 +176,7 @@ class TestGetLyrics:
     @patch("yoto_lib.lyrics._try_scrape_sources", return_value=("scraped lyrics", "Test Source"))
     def test_get_lyrics_uses_scrape_before_lrclib(self, mock_scrape, mock_lrclib):
         from yoto_lib.lyrics import get_lyrics
+
         tags = {"title": "Song", "artist": "Artist"}
 
         text, source = get_lyrics(tags)
@@ -175,6 +189,7 @@ class TestGetLyrics:
     @patch("yoto_lib.lyrics._try_scrape_sources", return_value=(None, None))
     def test_get_lyrics_scrape_falls_through_to_lrclib(self, mock_scrape, mock_lrclib):
         from yoto_lib.lyrics import get_lyrics
+
         tags = {"title": "Song", "artist": "Artist"}
 
         text, source = get_lyrics(tags)

@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # _analyze_index_page
@@ -172,12 +169,14 @@ def test_run_wizard_fetch_error():
     """httpx.get raises HTTPError → raises ValueError."""
     from yoto_lib.lyrics.lyrics_source_wizard import run_wizard
 
-    with patch(
-        "yoto_lib.lyrics.lyrics_source_wizard.httpx.get",
-        side_effect=httpx.HTTPError("connection failed"),
+    with (
+        patch(
+            "yoto_lib.lyrics.lyrics_source_wizard.httpx.get",
+            side_effect=httpx.HTTPError("connection failed"),
+        ),
+        pytest.raises(ValueError, match="Failed to fetch"),
     ):
-        with pytest.raises(ValueError, match="Failed to fetch"):
-            run_wizard("https://example.com/songs")
+        run_wizard("https://example.com/songs")
 
 
 def test_run_wizard_index_js_no_results():
@@ -219,7 +218,7 @@ def test_run_wizard_lyrics_js_no_content():
 
     run_js_results = [
         [{"title": song_title, "url": song_url}],  # index validation succeeds
-        None,                                        # lyrics validation returns nothing
+        None,  # lyrics validation returns nothing
     ]
 
     index_analysis = {"name": "Test Archive", "index_js": "return []"}

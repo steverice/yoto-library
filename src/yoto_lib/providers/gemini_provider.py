@@ -1,4 +1,5 @@
 """Google Gemini image provider."""
+
 from __future__ import annotations
 
 import logging
@@ -58,6 +59,7 @@ class GeminiProvider(Provider):
             if part.inline_data is not None:
                 logger.debug("gemini: generated %d bytes", len(part.inline_data.data))
                 from yoto_lib.billing.costs import get_tracker
+
                 get_tracker().record("gemini_flash_image")
                 return part.inline_data.data
             if hasattr(part, "text") and part.text:

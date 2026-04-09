@@ -11,16 +11,15 @@ from pathlib import Path
 
 import click
 
+from yoto_cli.main import _complete_unimported_dirs, _complete_weblocs, _print_cost_summary, cli
 from yoto_lib.billing.costs import reset_tracker
 from yoto_lib.config import WORKERS
 from yoto_lib.covers.itunes import enrich_from_itunes
 from yoto_lib.description import generate_description
 from yoto_lib.lyrics import get_lyrics
-from yoto_lib.mka import wrap_in_mka, read_source_tags, write_tags, generate_source_patch, extract_album_art, read_tags
-from yoto_lib.playlist import write_jsonl, scan_audio_files, load_playlist
+from yoto_lib.mka import extract_album_art, generate_source_patch, read_source_tags, read_tags, wrap_in_mka, write_tags
+from yoto_lib.playlist import load_playlist, scan_audio_files, write_jsonl
 from yoto_lib.track_sources import resolve_weblocs
-
-from yoto_cli.main import cli, _print_cost_summary, _complete_weblocs, _complete_unimported_dirs
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +52,7 @@ def download(path, no_trim):
     webloc_count = len(webloc_files) if webloc_files is not None else len(list(folder.glob("*.webloc")))
     if sys.stderr.isatty() and webloc_count > 0:
         from yoto_cli.progress import make_progress
+
         with make_progress() as progress:
             task = progress.add_task(folder.name, total=webloc_count, status="")
             inner_tasks: dict[str, int] = {}
@@ -80,7 +80,8 @@ def download(path, no_trim):
                     progress.remove_task(inner_task)
 
             created = resolve_weblocs(
-                folder, trim=trim,
+                folder,
+                trim=trim,
                 on_track_done=on_track,
                 on_track_start=on_track_start,
                 on_download_progress=on_download_progress,
@@ -89,7 +90,9 @@ def download(path, no_trim):
     else:
         created = resolve_weblocs(folder, trim=trim, webloc_files=webloc_files)
 
-    from yoto_cli.progress import _console, success as _success
+    from yoto_cli.progress import _console
+    from yoto_cli.progress import success as _success
+
     if not created:
         _console.print("[dim]No .webloc files resolved.[/dim]")
         return
@@ -107,7 +110,8 @@ def download(path, no_trim):
 @cli.command(name="import")
 @click.argument("source", type=click.Path(exists=True), shell_complete=_complete_unimported_dirs)
 @click.option(
-    "--output", "-o",
+    "--output",
+    "-o",
     default=None,
     type=click.Path(),
     help="Output folder (defaults to source folder)",
@@ -121,7 +125,9 @@ def import_cmd(source, output):
     output_path.mkdir(parents=True, exist_ok=True)
     reset_tracker()
 
-    from yoto_cli.progress import _console, success as _success, error as _error
+    from yoto_cli.progress import _console
+    from yoto_cli.progress import success as _success
+
     audio_files = scan_audio_files(source_path)
     if not audio_files:
         _console.print("[dim]No audio files found.[/dim]")
@@ -133,7 +139,9 @@ def import_cmd(source, output):
     results_by_index: dict[int, str | None] = {}
 
     from contextlib import nullcontext
+
     from yoto_cli.progress import make_progress
+
     progress_ctx = make_progress() if sys.stderr.isatty() else nullcontext()
     with progress_ctx as progress:
         task = progress.add_task(source_path.name, total=len(audio_files), status="") if progress else None
@@ -171,14 +179,10 @@ def import_cmd(source, output):
                 if lyrics_text:
                     write_tags(mka_dest, {"lyrics": lyrics_text})
                     if progress:
-                        progress.console.print(
-                            f"  [dim]Lyrics: found in {lyrics_source}[/dim]"
-                        )
+                        progress.console.print(f"  [dim]Lyrics: found in {lyrics_source}[/dim]")
                 else:
                     if progress:
-                        progress.console.print(
-                            f"  [dim]Lyrics: not found[/dim]"
-                        )
+                        progress.console.print("  [dim]Lyrics: not found[/dim]")
                 if progress and inner_task is not None:
                     progress.update(inner_task, advance=1, status="patching")
                 # Generate bsdiff patch for byte-perfect export
@@ -201,10 +205,7 @@ def import_cmd(source, output):
                 return None
 
         with ThreadPoolExecutor(max_workers=WORKERS) as executor:
-            future_to_idx = {
-                executor.submit(_import_one, idx, audio): idx
-                for idx, audio in enumerate(audio_files)
-            }
+            future_to_idx = {executor.submit(_import_one, idx, audio): idx for idx, audio in enumerate(audio_files)}
             for future in as_completed(future_to_idx):
                 idx = future_to_idx[future]
                 try:
@@ -213,16 +214,14 @@ def import_cmd(source, output):
                     _console.print(f"  [red]x[/red] Unexpected error: {exc}")
                     results_by_index[idx] = None
 
-    filenames = [
-        name for i in range(len(audio_files))
-        if (name := results_by_index.get(i)) is not None
-    ]
+    filenames = [name for i in range(len(audio_files)) if (name := results_by_index.get(i)) is not None]
 
     write_jsonl(output_path / "playlist.jsonl", filenames)
     _success(f"Imported {len(filenames)} tracks into {output_path}")
 
     # Generate description from track metadata
     from rich.prompt import Prompt
+
     playlist = load_playlist(output_path)
 
     # Enrich tracks that are missing album art (e.g. re-import of existing MKAs)

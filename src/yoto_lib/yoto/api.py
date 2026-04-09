@@ -77,9 +77,7 @@ class YotoAPI:
             except (ValueError, json.JSONDecodeError):
                 body = response.text
             logger.error("POST /content failed: %s %s", response.status_code, body)
-            raise YotoAPIError(
-                f"{response.status_code} from POST /content: {body}"
-            )
+            raise YotoAPIError(f"{response.status_code} from POST /content: {body}")
         data = response.json()
         card = data.get("card", data)
         logger.debug("POST /content -> card_id=%s", card.get("cardId"))
@@ -105,7 +103,9 @@ class YotoAPI:
         response.raise_for_status()
         data = response.json()
         upload = data.get("upload", data)
-        logger.debug("GET uploadUrl -> upload_id=%s needs_upload=%s", upload.get("uploadId"), upload.get("uploadUrl") is not None)
+        logger.debug(
+            "GET uploadUrl -> upload_id=%s needs_upload=%s", upload.get("uploadId"), upload.get("uploadUrl") is not None
+        )
         return upload
 
     def upload_audio_file(self, upload_url: str, file_path: Path) -> None:
@@ -121,9 +121,7 @@ class YotoAPI:
         response.raise_for_status()
         logger.debug("PUT upload %s -> %s", file_path.name, response.status_code)
 
-    def poll_transcode(
-        self, upload_id: str, max_attempts: int = 30, interval: float = 0.5
-    ) -> dict:
+    def poll_transcode(self, upload_id: str, max_attempts: int = 30, interval: float = 0.5) -> dict:
         logger.debug("poll_transcode: %s (max %d attempts)", upload_id, max_attempts)
         for attempt in range(max_attempts):
             response = self._client.get(
@@ -138,9 +136,7 @@ class YotoAPI:
                 return data
             time.sleep(interval)
         logger.error("poll_transcode: %s timed out after %d attempts", upload_id, max_attempts)
-        raise YotoAPIError(
-            f"Transcoding timed out after {max_attempts} attempts for upload {upload_id}"
-        )
+        raise YotoAPIError(f"Transcoding timed out after {max_attempts} attempts for upload {upload_id}")
 
     def upload_and_transcode(self, file_path: Path) -> dict:
         """Upload and transcode an audio file.

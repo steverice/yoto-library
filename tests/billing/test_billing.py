@@ -1,8 +1,7 @@
 """Tests for billing persistence and queries."""
 
 import json
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
@@ -21,6 +20,7 @@ def billing_file(tmp_path, monkeypatch):
 class TestPersistence:
     def test_persist_session_creates_file(self, billing_file):
         from yoto_lib.billing import persist_session
+
         t = CostTracker()
         t.record("retrodiffusion", count=3)
         persist_session(t)
@@ -31,6 +31,7 @@ class TestPersistence:
 
     def test_persist_session_accumulates(self, billing_file):
         from yoto_lib.billing import persist_session
+
         t1 = CostTracker()
         t1.record("retrodiffusion", count=2)
         persist_session(t1)
@@ -45,6 +46,7 @@ class TestPersistence:
 
     def test_persist_session_subscription_zero_cost(self, billing_file):
         from yoto_lib.billing import persist_session
+
         t = CostTracker()
         t.record("claude_haiku", subscription=True)
         persist_session(t)
@@ -54,10 +56,12 @@ class TestPersistence:
 
     def test_read_totals_empty(self, billing_file):
         from yoto_lib.billing import read_totals
+
         assert read_totals() == {}
 
     def test_read_totals_returns_data(self, billing_file):
         from yoto_lib.billing import persist_session, read_totals
+
         t = CostTracker()
         t.record("retrodiffusion", count=5)
         persist_session(t)
@@ -66,6 +70,7 @@ class TestPersistence:
 
     def test_reset_totals_all(self, billing_file):
         from yoto_lib.billing import persist_session, read_totals, reset_totals
+
         t = CostTracker()
         t.record("retrodiffusion", count=3)
         t.record("openai_generate_low")
@@ -75,6 +80,7 @@ class TestPersistence:
 
     def test_reset_totals_provider_group(self, billing_file):
         from yoto_lib.billing import persist_session, read_totals, reset_totals
+
         t = CostTracker()
         t.record("retrodiffusion", count=3)
         t.record("openai_generate_low")
@@ -90,6 +96,7 @@ class TestPersistence:
 class TestFetchBalances:
     def test_retrodiffusion_balance(self):
         from yoto_lib.billing import fetch_balances
+
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "remaining_balance": 12.45,
@@ -98,22 +105,28 @@ class TestFetchBalances:
         }
         mock_response.raise_for_status = MagicMock()
 
-        with patch.dict("os.environ", {"RETRODIFFUSION_API_KEY": "test-key"}), \
-             patch("yoto_lib.billing.httpx.post", return_value=mock_response):
+        with (
+            patch.dict("os.environ", {"RETRODIFFUSION_API_KEY": "test-key"}),
+            patch("yoto_lib.billing.httpx.post", return_value=mock_response),
+        ):
             balances = fetch_balances()
 
         assert balances["RetroDiffusion"]["balance"] == 12.45
 
     def test_retrodiffusion_not_configured(self):
         from yoto_lib.billing import fetch_balances
+
         with patch.dict("os.environ", {}, clear=True):
             balances = fetch_balances()
         assert "RetroDiffusion" not in balances
 
     def test_retrodiffusion_api_error(self):
         from yoto_lib.billing import fetch_balances
-        with patch.dict("os.environ", {"RETRODIFFUSION_API_KEY": "test-key"}), \
-             patch("yoto_lib.billing.httpx.post", side_effect=Exception("timeout")):
+
+        with (
+            patch.dict("os.environ", {"RETRODIFFUSION_API_KEY": "test-key"}),
+            patch("yoto_lib.billing.httpx.post", side_effect=Exception("timeout")),
+        ):
             balances = fetch_balances()
         assert balances["RetroDiffusion"]["error"] == "timeout"
 
@@ -121,10 +134,9 @@ class TestFetchBalances:
 class TestSubscriptionUsage:
     def test_claude_subscription_usage(self):
         from yoto_lib.billing import fetch_subscription_usage
+
         mock_keychain = MagicMock()
-        mock_keychain.stdout = json.dumps({
-            "claudeAiOauth": {"accessToken": "test-token"}
-        })
+        mock_keychain.stdout = json.dumps({"claudeAiOauth": {"accessToken": "test-token"}})
         mock_keychain.returncode = 0
         mock_response = MagicMock()
         mock_response.json.return_value = {
@@ -134,8 +146,10 @@ class TestSubscriptionUsage:
         }
         mock_response.raise_for_status = MagicMock()
 
-        with patch("yoto_lib.billing.subprocess.run", return_value=mock_keychain), \
-             patch("yoto_lib.billing.httpx.get", return_value=mock_response):
+        with (
+            patch("yoto_lib.billing.subprocess.run", return_value=mock_keychain),
+            patch("yoto_lib.billing.httpx.get", return_value=mock_response),
+        ):
             usage = fetch_subscription_usage()
 
         assert usage["session"]["utilization"] == 32.0
@@ -144,6 +158,7 @@ class TestSubscriptionUsage:
 
     def test_claude_no_keychain(self):
         from yoto_lib.billing import fetch_subscription_usage
+
         mock_keychain = MagicMock()
         mock_keychain.returncode = 44
         mock_keychain.stdout = ""
@@ -156,8 +171,8 @@ class TestSubscriptionUsage:
 
 class TestBillingCommand:
     def test_billing_shows_lifetime_spend(self, billing_file):
-        from yoto_lib.billing import persist_session
         from yoto_cli.main import cli
+        from yoto_lib.billing import persist_session
 
         # Simulate a session
         t = CostTracker()
@@ -173,8 +188,8 @@ class TestBillingCommand:
         assert "OpenAI" in result.output
 
     def test_billing_reset_all(self, billing_file):
-        from yoto_lib.billing import persist_session, read_totals
         from yoto_cli.main import cli
+        from yoto_lib.billing import persist_session, read_totals
 
         t = CostTracker()
         t.record("retrodiffusion", count=3)
@@ -187,8 +202,8 @@ class TestBillingCommand:
         assert read_totals() == {}
 
     def test_billing_reset_provider(self, billing_file):
-        from yoto_lib.billing import persist_session, read_totals
         from yoto_cli.main import cli
+        from yoto_lib.billing import persist_session, read_totals
 
         t = CostTracker()
         t.record("retrodiffusion", count=3)

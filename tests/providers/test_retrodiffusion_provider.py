@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch, MagicMock
 import base64
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 
 def _fake_response(num_images: int):
     """Build a fake Retro Diffusion API response with num_images base64 PNGs."""
     import io
+
     from PIL import Image
 
     images = []

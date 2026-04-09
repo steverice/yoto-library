@@ -6,7 +6,6 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-
 from typing import Any
 
 import httpx
@@ -46,12 +45,14 @@ class TokenSet:
         return time.time() >= self.expires_at - REFRESH_MARGIN_SECONDS
 
     def to_json(self) -> str:
-        return json.dumps({
-            "access_token": self.access_token,
-            "refresh_token": self.refresh_token,
-            "token_type": self.token_type,
-            "expires_at": self.expires_at,
-        })
+        return json.dumps(
+            {
+                "access_token": self.access_token,
+                "refresh_token": self.refresh_token,
+                "token_type": self.token_type,
+                "expires_at": self.expires_at,
+            }
+        )
 
     @classmethod
     def from_json(cls, data: str) -> TokenSet:
@@ -92,9 +93,7 @@ def request_device_code() -> dict[str, Any]:
     return response.json()
 
 
-def poll_for_token(
-    device_code: str, interval: int = 5, max_attempts: int = 60
-) -> TokenSet:
+def poll_for_token(device_code: str, interval: int = 5, max_attempts: int = 60) -> TokenSet:
     logger.debug("polling for device code authorization")
     for attempt in range(max_attempts):
         response = httpx.post(
@@ -141,8 +140,9 @@ def refresh_tokens(tokens: TokenSet) -> TokenSet:
 
 def get_valid_token(interactive: bool = True) -> TokenSet:
     tokens = load_tokens()
-    logger.debug("get_valid_token: cached=%s needs_refresh=%s",
-                  tokens is not None, tokens.needs_refresh() if tokens else "n/a")
+    logger.debug(
+        "get_valid_token: cached=%s needs_refresh=%s", tokens is not None, tokens.needs_refresh() if tokens else "n/a"
+    )
 
     if tokens is not None and not tokens.needs_refresh():
         return tokens
@@ -157,9 +157,7 @@ def get_valid_token(interactive: bool = True) -> TokenSet:
             pass  # refresh failed, fall through to re-auth
 
     if not interactive:
-        raise AuthError(
-            "Not authenticated. Run 'yoto auth' to log in."
-        )
+        raise AuthError("Not authenticated. Run 'yoto auth' to log in.")
 
     return run_device_code_flow()
 

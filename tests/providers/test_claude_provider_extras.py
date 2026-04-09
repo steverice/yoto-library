@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from yoto_lib.providers.claude_provider import ClaudeProvider, _extract_json
 
 
@@ -71,6 +69,7 @@ class TestClaudeProviderCall:
     def test_returns_none_on_timeout(self):
         """Returns None when CLI times out."""
         import subprocess
+
         provider = ClaudeProvider()
         with patch(
             "yoto_lib.providers.claude_provider.subprocess.run",

@@ -6,8 +6,8 @@ import json
 import logging
 import re
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +52,17 @@ def _trim_silence(audio_path: Path) -> Path:
     """
     result = subprocess.run(
         [
-            "ffmpeg", "-i", str(audio_path),
-            "-af", "silencedetect=noise=-30dB:d=0.5",
-            "-f", "null", "-",
+            "ffmpeg",
+            "-i",
+            str(audio_path),
+            "-af",
+            "silencedetect=noise=-30dB:d=0.5",
+            "-f",
+            "null",
+            "-",
         ],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     ranges = _parse_silence_ranges(result.stderr)
     logger.debug("_trim_silence: %d silence gaps in %s", len(ranges), audio_path.name)
@@ -65,8 +71,8 @@ def _trim_silence(audio_path: Path) -> Path:
         logger.debug("_trim_silence: no trimming needed (<2 gaps)")
         return audio_path
 
-    start = ranges[0][1]   # end of first silence gap
-    end = ranges[-1][0]    # start of last silence gap
+    start = ranges[0][1]  # end of first silence gap
+    end = ranges[-1][0]  # start of last silence gap
 
     if end <= start:
         return audio_path
@@ -74,11 +80,20 @@ def _trim_silence(audio_path: Path) -> Path:
     trimmed_path = audio_path.with_stem(audio_path.stem + "_trimmed")
     trim_result = subprocess.run(
         [
-            "ffmpeg", "-y", "-i", str(audio_path),
-            "-ss", str(start), "-to", str(end),
-            "-c", "copy", str(trimmed_path),
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(audio_path),
+            "-ss",
+            str(start),
+            "-to",
+            str(end),
+            "-c",
+            "copy",
+            str(trimmed_path),
         ],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if trim_result.returncode != 0:
         logger.debug("_trim_silence: ffmpeg trim failed (exit %d)", trim_result.returncode)
@@ -108,7 +123,7 @@ def _parse_and_call_progress(
 
         downloaded = int(float(downloaded_raw)) if downloaded_raw not in ("NA", "N/A", "None") else 0
         total: int | None = int(float(total_raw)) if total_raw not in ("NA", "N/A", "None") else None
-        pct_raw = pct_raw.rstrip('%')
+        pct_raw = pct_raw.rstrip("%")
         pct = float(pct_raw) if pct_raw not in ("NA", "N/A", "None") else 0.0
         speed = speed_raw if speed_raw not in ("NA", "N/A", "None") else ""
         on_progress(pct, downloaded, total, speed)
@@ -142,13 +157,11 @@ class YouTubeProvider:
         try:
             meta_result = subprocess.run(
                 ["yt-dlp", "--dump-json", "--no-download", url],
-                capture_output=True, text=True,
+                capture_output=True,
+                text=True,
             )
         except FileNotFoundError:
-            raise RuntimeError(
-                "yt-dlp is required for YouTube downloads. "
-                "Install with: brew install yt-dlp"
-            )
+            raise RuntimeError("yt-dlp is required for YouTube downloads. Install with: brew install yt-dlp")
 
         if meta_result.returncode != 0:
             raise RuntimeError(f"yt-dlp metadata fetch failed: {meta_result.stderr}")
@@ -161,11 +174,15 @@ class YouTubeProvider:
         # Download best audio using Popen for real-time progress
         output_template = str(output_dir / f"{safe_title}.%(ext)s")
         dl_cmd = [
-            "yt-dlp", "-x", "--audio-quality", "0",
+            "yt-dlp",
+            "-x",
+            "--audio-quality",
+            "0",
             "--newline",
             "--progress-template",
             "download:%(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.speed)s %(progress.percentage)s",
-            "-o", output_template,
+            "-o",
+            output_template,
             url,
         ]
         logger.debug("youtube: %s", " ".join(dl_cmd))
@@ -179,17 +196,14 @@ class YouTubeProvider:
                 text=True,
             )
         except FileNotFoundError:
-            raise RuntimeError(
-                "yt-dlp is required for YouTube downloads. "
-                "Install with: brew install yt-dlp"
-            )
+            raise RuntimeError("yt-dlp is required for YouTube downloads. Install with: brew install yt-dlp")
 
         assert proc.stderr is not None
         for line in proc.stderr:
             line = line.rstrip("\n")
             stderr_lines.append(line)
             if line.startswith("download:") and on_progress:
-                _parse_and_call_progress(line[len("download:"):], on_progress)
+                _parse_and_call_progress(line[len("download:") :], on_progress)
 
         proc.wait()
         exit_code = proc.returncode
@@ -199,7 +213,8 @@ class YouTubeProvider:
 
         # Find the downloaded file (yt-dlp chooses the extension)
         downloaded = [
-            p for p in output_dir.iterdir()
+            p
+            for p in output_dir.iterdir()
             if p.stem == safe_title and p.suffix.lower() not in (".webloc", ".mka", ".jsonl")
         ]
         if not downloaded:

@@ -5,15 +5,11 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
-import pytest
-
 from yoto_lib.icons.icon_llm import (
-    match_icon_llm,
     compare_icons_llm,
     describe_icons_llm,
+    match_icon_llm,
     summarize_lyrics_for_icon,
-    CONFIDENCE_HIGH,
-    CONFIDENCE_LOW,
 )
 
 
@@ -73,7 +69,9 @@ class TestMatchIconLlm:
 def _make_red_png() -> bytes:
     """Create a minimal 16x16 red PNG."""
     import io
+
     from PIL import Image
+
     buf = io.BytesIO()
     Image.new("RGB", (16, 16), "red").save(buf, format="PNG")
     return buf.getvalue()
@@ -81,7 +79,9 @@ def _make_red_png() -> bytes:
 
 class TestSummarizeLyricsForIcon:
     def test_returns_summary_on_success(self):
-        with patch("yoto_lib.icons.icon_llm._claude.call", return_value="A bear climbing a tall oak tree to reach a beehive"):
+        with patch(
+            "yoto_lib.icons.icon_llm._claude.call", return_value="A bear climbing a tall oak tree to reach a beehive"
+        ):
             result = summarize_lyrics_for_icon(
                 "Old MacDonald had a farm, E-I-E-I-O, and on his farm he had a cow",
                 "Old MacDonald",
@@ -145,7 +145,9 @@ class TestCompareIconsLlm:
 
         with patch("yoto_lib.icons.icon_llm._claude.call", return_value=response_json):
             winner, scores = compare_icons_llm(
-                "Dinosaur Story", ai_icons, yoto_icon=yoto_icon,
+                "Dinosaur Story",
+                ai_icons,
+                yoto_icon=yoto_icon,
             )
 
         assert winner == 4

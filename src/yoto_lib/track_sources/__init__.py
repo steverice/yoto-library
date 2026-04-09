@@ -5,9 +5,10 @@ from __future__ import annotations
 import logging
 import plistlib
 import subprocess
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from yoto_lib.config import WORKERS
 from yoto_lib.mka import wrap_in_mka, write_tags
@@ -62,6 +63,7 @@ def parse_webloc(path: Path) -> str | None:
 def _get_providers() -> list[Any]:
     """Return all registered source providers."""
     from yoto_lib.track_sources.youtube import YouTubeProvider
+
     return [YouTubeProvider()]
 
 
@@ -116,7 +118,9 @@ def _resolve_one_webloc(
     # Download
     try:
         audio_path, metadata = provider.download(
-            url, playlist_dir, trim=trim,
+            url,
+            playlist_dir,
+            trim=trim,
             on_progress=_on_dl_progress if on_download_progress else None,
         )
         logger.debug("resolve_weblocs: downloaded %s -> %s", webloc.name, audio_path.name)
@@ -190,8 +194,12 @@ def resolve_weblocs(
         for idx, webloc in enumerate(weblocs):
             future = executor.submit(
                 _resolve_one_webloc,
-                webloc, playlist_dir, trim, providers,
-                on_track_start, on_download_progress,
+                webloc,
+                playlist_dir,
+                trim,
+                providers,
+                on_track_start,
+                on_download_progress,
             )
             future_to_index[future] = idx
 

@@ -23,9 +23,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ProviderStatus:
     """Result of a provider health check."""
+
     healthy: bool
-    message: str | None = None   # e.g. "Claude: Minor Service Outage"
-    url: str | None = None       # e.g. "status.claude.com"
+    message: str | None = None  # e.g. "Claude: Minor Service Outage"
+    url: str | None = None  # e.g. "status.claude.com"
 
 
 # ── Provider ABC ─────────────────────────────────────────────────────────────
@@ -78,6 +79,7 @@ class StatusPageMixin:
 
     Subclasses set ``status_page_url`` to the ``/api/v2/status.json`` endpoint.
     """
+
     status_page_url: str
 
     @classmethod
@@ -128,6 +130,7 @@ class BetterStackMixin:
     (e.g. ``https://status.together.ai``). The JSON endpoint at
     ``/index.json`` is queried for aggregate state.
     """
+
     status_page_url: str
 
     @classmethod
@@ -186,6 +189,7 @@ def check_status_on_error(*provider_classes: type[Provider]) -> Callable[[_F], _
         @check_status_on_error(ClaudeProvider, RetroDiffusionProvider)
         def select_icons(tracks, ...): ...
     """
+
     def decorator(func: _F) -> _F:
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -197,7 +201,9 @@ def check_status_on_error(*provider_classes: type[Provider]) -> Callable[[_F], _
             except Exception:
                 _warn_unhealthy(provider_classes)
                 raise
+
         return wrapper  # type: ignore[return-value]
+
     return decorator
 
 

@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 class IconCandidate:
     """One icon option presented to the user."""
 
-    __slots__ = ("image", "label", "score", "is_yoto", "is_existing", "yoto_media_id")
+    __slots__ = ("image", "is_existing", "is_yoto", "label", "score", "yoto_media_id")
 
     def __init__(
         self,
@@ -53,7 +53,7 @@ class IconCandidate:
 class IconSelectionRound:
     """The result of one generation round, ready for user selection."""
 
-    __slots__ = ("candidates", "winner", "scores", "descriptions", "batch", "yoto_bytes")
+    __slots__ = ("batch", "candidates", "descriptions", "scores", "winner", "yoto_bytes")
 
     def __init__(
         self,
@@ -127,9 +127,7 @@ def _get_existing_icon(track_path: Path) -> Image.Image | None:
     try:
         existing_bytes = get_attachment(track_path, "icon")
         if existing_bytes:
-            return Image.open(io.BytesIO(existing_bytes)).convert("RGBA").resize(
-                (16, 16), Image.NEAREST
-            )
+            return Image.open(io.BytesIO(existing_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)
     except Exception:
         pass
     return None
@@ -152,11 +150,11 @@ def _generate_round(
     Returns an IconSelectionRound ready for user presentation, or None if
     generation failed entirely.
     """
-    from yoto_lib.icons import generate_retrodiffusion_icons, download_icon
+    from yoto_lib.icons import download_icon, generate_retrodiffusion_icons
     from yoto_lib.icons.icon_llm import (
+        compare_icons_llm,
         describe_icons_llm,
         match_icon_llm,
-        compare_icons_llm,
     )
 
     _step = on_step or (lambda s: None)
@@ -176,9 +174,7 @@ def _generate_round(
     # Describe icons
     _step("describing icons")
     _inner("Describing icons", "describe")
-    descriptions = describe_icons_llm(
-        title, album_description=album_desc, lyrics_summary=lyrics_summary
-    )
+    descriptions = describe_icons_llm(title, album_description=album_desc, lyrics_summary=lyrics_summary)
     _inner(None, "describe")
     if not descriptions:
         descriptions = [title, title, title]
@@ -203,9 +199,7 @@ def _generate_round(
     if yoto_media_id:
         yoto_bytes = download_icon(yoto_media_id)
         if yoto_bytes:
-            yoto_img = Image.open(io.BytesIO(yoto_bytes)).convert("RGBA").resize(
-                (16, 16), Image.NEAREST
-            )
+            yoto_img = Image.open(io.BytesIO(yoto_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)
             for icon in catalog:
                 if icon.get("mediaId") == yoto_media_id:
                     yoto_title = icon.get("title", "") or icon.get("name", "")
@@ -237,20 +231,24 @@ def _generate_round(
 
     if yoto_img is not None:
         yoto_score = scores[len(icons_16)] if len(icons_16) < len(scores) else None
-        candidates.append(IconCandidate(
-            image=yoto_img,
-            label=f'"{yoto_title}"',
-            score=yoto_score,
-            is_yoto=True,
-            yoto_media_id=yoto_media_id,
-        ))
+        candidates.append(
+            IconCandidate(
+                image=yoto_img,
+                label=f'"{yoto_title}"',
+                score=yoto_score,
+                is_yoto=True,
+                yoto_media_id=yoto_media_id,
+            )
+        )
 
     if existing_img is not None:
-        candidates.append(IconCandidate(
-            image=existing_img,
-            label="current",
-            is_existing=True,
-        ))
+        candidates.append(
+            IconCandidate(
+                image=existing_img,
+                label="current",
+                is_existing=True,
+            )
+        )
 
     return IconSelectionRound(
         candidates=candidates,

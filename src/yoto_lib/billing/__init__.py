@@ -190,7 +190,9 @@ def _get_claude_oauth_token() -> str | None:
     try:
         result = subprocess.run(
             ["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if result.returncode != 0:
             return None

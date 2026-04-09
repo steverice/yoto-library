@@ -5,10 +5,11 @@ from __future__ import annotations
 import logging
 import re
 import subprocess
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import httpx
 
@@ -16,20 +17,18 @@ from yoto_lib.config import WORKERS
 
 logger = logging.getLogger(__name__)
 
-from yoto_lib.yoto.api import YotoAPI
 from yoto_lib.covers.cover import generate_cover_if_missing
 from yoto_lib.description import generate_description
 from yoto_lib.icons import resolve_icons
-from yoto_lib.track_sources import resolve_weblocs
 from yoto_lib.playlist import (
     AUDIO_EXTENSIONS,
-    Playlist,
     _title_from_filename,
     build_content_schema,
     diff_playlists,
     load_playlist,
 )
-
+from yoto_lib.track_sources import resolve_weblocs
+from yoto_lib.yoto.api import YotoAPI
 
 # ── SyncResult ────────────────────────────────────────────────────────────────
 
@@ -68,8 +67,10 @@ def _parse_remote_state(remote_content: dict[str, Any]) -> dict[str, Any]:
     track_info: dict[str, dict] = {}  # title -> {format, channels}
 
     # Chapters may be a list (from API) or dict (from our uploads)
-    items = chapters.items() if isinstance(chapters, dict) else (
-        (ch.get("key", str(i)), ch) for i, ch in enumerate(chapters)
+    items = (
+        chapters.items()
+        if isinstance(chapters, dict)
+        else ((ch.get("key", str(i)), ch) for i, ch in enumerate(chapters))
     )
 
     for key, chapter in items:
@@ -87,7 +88,7 @@ def _parse_remote_state(remote_content: dict[str, Any]) -> dict[str, Any]:
 
     cover_url = remote_content.get("metadata", {}).get("cover", {}).get("imageL")
     has_cover = bool(cover_url)
-    description = remote_content.get("description", None)
+    description = remote_content.get("description")
 
     return {
         "tracks": tracks,
@@ -107,6 +108,7 @@ def _infer_track_info(file_path: Path) -> dict[str, str]:
     """
     try:
         from yoto_lib.mka import probe_audio
+
         info = probe_audio(file_path)
         audio_streams = [s for s in info["streams"] if s.get("codec_type") == "audio"]
         if audio_streams:
@@ -165,7 +167,12 @@ def sync_playlist(
     # 1. Load local playlist
     playlist = load_playlist(folder)
     result.card_id = playlist.card_id
-    logger.debug("sync: loaded playlist '%s' (%d tracks, card_id=%s)", playlist.title, len(playlist.track_files), playlist.card_id)
+    logger.debug(
+        "sync: loaded playlist '%s' (%d tracks, card_id=%s)",
+        playlist.title,
+        len(playlist.track_files),
+        playlist.card_id,
+    )
 
     # 2. Create API client
     api = YotoAPI()
@@ -181,7 +188,9 @@ def sync_playlist(
             remote_state = _parse_remote_state(remote_content)
             remote_track_hashes = remote_state.get("track_hashes", {})
             remote_track_info = remote_state.get("track_info", {})
-            logger.debug("sync: fetched remote state for %s (%d tracks)", playlist.card_id, len(remote_state.get("tracks", [])))
+            logger.debug(
+                "sync: fetched remote state for %s (%d tracks)", playlist.card_id, len(remote_state.get("tracks", []))
+            )
         except (OSError, httpx.HTTPError) as exc:
             logger.error("sync: failed to fetch remote state: %s", exc)
             result.errors.append(f"Failed to fetch remote state: {exc}")
@@ -192,8 +201,13 @@ def sync_playlist(
     diff = diff_playlists(playlist, remote_state)
     if force_cover and playlist.has_cover:
         diff.cover_changed = True
-    logger.debug("sync: diff — new=%d removed=%d order_changed=%s cover_changed=%s",
-                  len(diff.new_tracks), len(diff.removed_tracks), diff.order_changed, diff.cover_changed)
+    logger.debug(
+        "sync: diff — new=%d removed=%d order_changed=%s cover_changed=%s",
+        len(diff.new_tracks),
+        len(diff.removed_tracks),
+        diff.order_changed,
+        diff.cover_changed,
+    )
 
     _log = log or (lambda msg: None)
 
@@ -247,8 +261,11 @@ def sync_playlist(
                 tracks_to_upload.append(filename)
 
     result.tracks_uploaded = len(tracks_to_upload)
-    logger.debug("sync: uploading %d tracks (%d reused from remote)",
-                  len(tracks_to_upload), len(playlist.track_files) - len(tracks_to_upload))
+    logger.debug(
+        "sync: uploading %d tracks (%d reused from remote)",
+        len(tracks_to_upload),
+        len(playlist.track_files) - len(tracks_to_upload),
+    )
 
     # 9. Upload new tracks in parallel (and existing tracks with missing hashes)
     def _upload_one(filename: str) -> tuple[str, dict[str, Any] | None, str | None]:
@@ -269,10 +286,7 @@ def sync_playlist(
 
     if tracks_to_upload:
         with ThreadPoolExecutor(max_workers=min(WORKERS, len(tracks_to_upload))) as executor:
-            future_to_filename = {
-                executor.submit(_upload_one, fn): fn
-                for fn in tracks_to_upload
-            }
+            future_to_filename = {executor.submit(_upload_one, fn): fn for fn in tracks_to_upload}
             for future in as_completed(future_to_filename):
                 filename, transcode_result, error = future.result()
                 if error:
@@ -302,8 +316,10 @@ def sync_playlist(
             result.cover_uploaded = True
             # Store hash so we can detect future local changes
             from yoto_lib.playlist import _cover_hash
+
             playlist.cover_hash_path.write_text(
-                _cover_hash(playlist.cover_path), encoding="utf-8",
+                _cover_hash(playlist.cover_path),
+                encoding="utf-8",
             )
         except (OSError, httpx.HTTPError) as exc:
             result.errors.append(f"Cover upload failed: {exc}")
@@ -319,9 +335,7 @@ def sync_playlist(
     schema = build_content_schema(playlist, track_hashes, icon_ids, cover_url, track_info)
     try:
         response = api.create_or_update_content(schema)
-        new_card_id: str | None = response.get("cardId") or response.get(
-            "content", {}
-        ).get("cardId")
+        new_card_id: str | None = response.get("cardId") or response.get("content", {}).get("cardId")
         if new_card_id:
             result.card_id = new_card_id
             logger.debug("sync: saved card_id=%s", new_card_id)
@@ -368,22 +382,36 @@ def sync_path(
 
     if _has_audio_files(path):
         logger.debug("sync_path: %s is a playlist folder", path)
-        results.append(sync_playlist(
-            path, dry_run=dry_run, trim=trim,
-            on_track_done=on_track_done, log=log,
-            on_upload_start=on_upload_start, on_upload_done=on_upload_done,
-            ignore_album_art=ignore_album_art, force_cover=force_cover,
-        ))
+        results.append(
+            sync_playlist(
+                path,
+                dry_run=dry_run,
+                trim=trim,
+                on_track_done=on_track_done,
+                log=log,
+                on_upload_start=on_upload_start,
+                on_upload_done=on_upload_done,
+                ignore_album_art=ignore_album_art,
+                force_cover=force_cover,
+            )
+        )
     else:
         subdirs = sorted(p for p in path.iterdir() if p.is_dir())
         playlist_dirs = [s for s in subdirs if _has_audio_files(s)]
         logger.debug("sync_path: %s contains %d playlist subdirs", path, len(playlist_dirs))
         for subdir in playlist_dirs:
-            results.append(sync_playlist(
-                subdir, dry_run=dry_run, trim=trim,
-                on_track_done=on_track_done, log=log,
-                on_upload_start=on_upload_start, on_upload_done=on_upload_done,
-                ignore_album_art=ignore_album_art, force_cover=force_cover,
-            ))
+            results.append(
+                sync_playlist(
+                    subdir,
+                    dry_run=dry_run,
+                    trim=trim,
+                    on_track_done=on_track_done,
+                    log=log,
+                    on_upload_start=on_upload_start,
+                    on_upload_done=on_upload_done,
+                    ignore_album_art=ignore_album_art,
+                    force_cover=force_cover,
+                )
+            )
 
     return results

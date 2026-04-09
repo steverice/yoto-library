@@ -1,7 +1,4 @@
-import hashlib
-import httpx
 import pytest
-from unittest.mock import MagicMock
 
 from yoto_lib.yoto.api import YotoAPI
 
@@ -140,15 +137,23 @@ class TestYotoAPIAudioUpload:
         assert result["transcodedSha256"] == "t_sha_ok"
 
     def test_upload_and_transcode_full_pipeline(self, api, mocker, sample_wav):
-        mocker.patch.object(api, "get_upload_url", return_value={
-            "uploadId": "up123",
-            "uploadUrl": "https://s3.example.com/upload",
-        })
+        mocker.patch.object(
+            api,
+            "get_upload_url",
+            return_value={
+                "uploadId": "up123",
+                "uploadUrl": "https://s3.example.com/upload",
+            },
+        )
         mocker.patch.object(api, "upload_audio_file")
-        mocker.patch.object(api, "poll_transcode", return_value={
-            "transcodedSha256": "t_sha_ok",
-            "transcodedInfo": {"duration": 120.5},
-        })
+        mocker.patch.object(
+            api,
+            "poll_transcode",
+            return_value={
+                "transcodedSha256": "t_sha_ok",
+                "transcodedInfo": {"duration": 120.5},
+            },
+        )
 
         result = api.upload_and_transcode(sample_wav)
         assert result["transcodedSha256"] == "t_sha_ok"
@@ -160,9 +165,7 @@ class TestYotoAPIMediaUpload:
         icon_path.write_bytes(b"GIF89a\x10\x00\x10\x00" + b"\x00" * 50)
 
         mock_response = mocker.Mock()
-        mock_response.json.return_value = {
-            "displayIcon": {"mediaId": "icon_sha", "mediaUrl": "https://..."}
-        }
+        mock_response.json.return_value = {"displayIcon": {"mediaId": "icon_sha", "mediaUrl": "https://..."}}
         mock_response.raise_for_status = mocker.Mock()
         mocker.patch.object(api._client, "post", return_value=mock_response)
 
@@ -174,9 +177,7 @@ class TestYotoAPIMediaUpload:
         cover_path.write_bytes(b"\x89PNG" + b"\x00" * 50)
 
         mock_response = mocker.Mock()
-        mock_response.json.return_value = {
-            "coverImage": {"mediaId": "cover_sha", "mediaUrl": "https://..."}
-        }
+        mock_response.json.return_value = {"coverImage": {"mediaId": "cover_sha", "mediaUrl": "https://..."}}
         mock_response.raise_for_status = mocker.Mock()
         mocker.patch.object(api._client, "post", return_value=mock_response)
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import time
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,14 +12,14 @@ from yoto_lib.icons.icon_catalog import (
     CATALOG_FILENAME,
     CATALOG_TTL_SECONDS,
     _filter_catalog,
-    load_catalog,
-    save_catalog,
-    refresh_catalog,
     is_catalog_stale,
+    load_catalog,
+    refresh_catalog,
+    save_catalog,
 )
 
 
-@pytest.fixture()
+@pytest.fixture
 def cache_dir(tmp_path):
     return tmp_path / "icons"
 
@@ -124,7 +123,8 @@ class TestRefreshCatalog:
         fake_png = b"\x89PNG_fake_data"
 
         with patch(
-            "yoto_lib.icons.download.download_icon", return_value=fake_png,
+            "yoto_lib.icons.download.download_icon",
+            return_value=fake_png,
         ) as mock_dl:
             refresh_catalog(api, cache_dir)
             mock_dl.assert_called_once_with("abc", cache_dir)

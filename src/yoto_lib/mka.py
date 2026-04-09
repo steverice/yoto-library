@@ -57,9 +57,7 @@ _REVERSE_TAG_MAP["TRACK"] = "track"
 def _run(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(cmd, capture_output=True, text=True)
     if check and result.returncode != 0:
-        raise subprocess.CalledProcessError(
-            result.returncode, cmd, result.stdout, result.stderr
-        )
+        raise subprocess.CalledProcessError(result.returncode, cmd, result.stdout, result.stderr)
     return result
 
 
@@ -118,25 +116,64 @@ def extract_audio(mka_path: Path, output_dir: Path) -> Path:
             # Unknown codec — transcode to MP3 as safe fallback
             logger.warning("extract_audio: unknown codec %s in %s, transcoding to MP3", codec, mka_path.name)
             output = output_dir / (mka_path.stem + ".mp3")
-            _run(["ffmpeg", "-y", "-i", str(mka_path), "-map", "0:a",
-                  "-c:a", "libmp3lame", "-b:a", "192k",
-                  "-map_metadata", "-1", "-fflags", "+bitexact", str(output)])
+            _run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(mka_path),
+                    "-map",
+                    "0:a",
+                    "-c:a",
+                    "libmp3lame",
+                    "-b:a",
+                    "192k",
+                    "-map_metadata",
+                    "-1",
+                    "-fflags",
+                    "+bitexact",
+                    str(output),
+                ]
+            )
             return output
 
     output = output_dir / (mka_path.stem + ext)
-    _run(["ffmpeg", "-y", "-i", str(mka_path), "-map", "0:a", "-c", "copy",
-          "-map_metadata", "-1", "-fflags", "+bitexact", "-f", fmt, str(output)])
+    _run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(mka_path),
+            "-map",
+            "0:a",
+            "-c",
+            "copy",
+            "-map_metadata",
+            "-1",
+            "-fflags",
+            "+bitexact",
+            "-f",
+            fmt,
+            str(output),
+        ]
+    )
     return output
 
 
 def probe_audio(path: Path) -> dict[str, Any]:
     """Get audio file info via ffprobe."""
-    result = _run([
-        "ffprobe", "-v", "quiet",
-        "-print_format", "json",
-        "-show_format", "-show_streams",
-        str(path),
-    ])
+    result = _run(
+        [
+            "ffprobe",
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
+            "-show_format",
+            "-show_streams",
+            str(path),
+        ]
+    )
     data = json.loads(result.stdout)
     fmt = data.get("format", {})
     # ffprobe may return comma-separated format names (e.g. "matroska,webm");
@@ -182,9 +219,7 @@ def extract_album_art(mka_path: Path) -> bytes | None:
 
     try:
         result = _run(
-            ["ffmpeg", "-y", "-i", str(mka_path),
-             "-map", f"0:v:{art_stream}", "-frames:v", "1",
-             str(out_path)],
+            ["ffmpeg", "-y", "-i", str(mka_path), "-map", f"0:v:{art_stream}", "-frames:v", "1", str(out_path)],
             check=False,
         )
         if result.returncode != 0 or not out_path.exists() or out_path.stat().st_size == 0:
@@ -221,12 +256,17 @@ def write_tags(mka_path: Path, tags: dict[str, str]) -> None:
 
 def read_tags(mka_path: Path) -> dict[str, str]:
     """Read Matroska tags from an MKA file using ffprobe."""
-    result = _run([
-        "ffprobe", "-v", "quiet",
-        "-print_format", "json",
-        "-show_format",
-        str(mka_path),
-    ])
+    result = _run(
+        [
+            "ffprobe",
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
+            "-show_format",
+            str(mka_path),
+        ]
+    )
     fmt_data = json.loads(result.stdout)
     raw_tags = fmt_data.get("format", {}).get("tags", {})
 
@@ -281,12 +321,17 @@ def read_source_tags(path: Path) -> dict[str, str]:
     Works with mp3, m4a, flac, wav, ogg, mka, etc. Returns a dict
     using internal field names (title, artist, genre, etc.).
     """
-    result = _run([
-        "ffprobe", "-v", "quiet",
-        "-print_format", "json",
-        "-show_format",
-        str(path),
-    ])
+    result = _run(
+        [
+            "ffprobe",
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
+            "-show_format",
+            str(path),
+        ]
+    )
     fmt_data = json.loads(result.stdout)
     raw_tags = fmt_data.get("format", {}).get("tags", {})
 
@@ -309,12 +354,18 @@ def set_attachment(
     remove_attachment(mka_path, name)
 
     # Name and mime-type flags must precede --add-attachment
-    _run([
-        "mkvpropedit", str(mka_path),
-        "--attachment-name", name,
-        "--attachment-mime-type", mime_type,
-        "--add-attachment", str(file_path),
-    ])
+    _run(
+        [
+            "mkvpropedit",
+            str(mka_path),
+            "--attachment-name",
+            name,
+            "--attachment-mime-type",
+            mime_type,
+            "--add-attachment",
+            str(file_path),
+        ]
+    )
 
 
 def get_attachment(mka_path: Path, name: str) -> bytes | None:
@@ -338,10 +389,14 @@ def get_attachment(mka_path: Path, name: str) -> bytes | None:
         out_path = f.name
 
     try:
-        _run([
-            "mkvextract", str(mka_path),
-            "attachments", f"{att_id}:{out_path}",
-        ])
+        _run(
+            [
+                "mkvextract",
+                str(mka_path),
+                "attachments",
+                f"{att_id}:{out_path}",
+            ]
+        )
         return Path(out_path).read_bytes()
     finally:
         Path(out_path).unlink(missing_ok=True)
@@ -355,10 +410,15 @@ def remove_attachment(mka_path: Path, name: str) -> None:
     attachments = data.get("attachments", [])
     for att in attachments:
         if att.get("file_name") == name:
-            _run([
-                "mkvpropedit", str(mka_path),
-                "--delete-attachment", f"name:{name}",
-            ], check=False)
+            _run(
+                [
+                    "mkvpropedit",
+                    str(mka_path),
+                    "--delete-attachment",
+                    f"name:{name}",
+                ],
+                check=False,
+            )
             return
 
 
@@ -393,7 +453,9 @@ def generate_source_patch(original_path: Path, mka_path: Path) -> bool:
             original_size = original_path.stat().st_size
             logger.debug(
                 "generate_source_patch: %s -> %d bytes patch (%.1f%% of original)",
-                mka_path.name, patch_size, 100 * patch_size / original_size if original_size else 0,
+                mka_path.name,
+                patch_size,
+                100 * patch_size / original_size if original_size else 0,
             )
 
             # Store as attachment

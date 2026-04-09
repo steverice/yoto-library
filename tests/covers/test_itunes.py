@@ -1,14 +1,15 @@
 import os
-import subprocess
 import struct
+import subprocess
 from pathlib import Path
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import MagicMock, patch
+
 import httpx
 import pytest
 from click.testing import CliRunner
 
-from yoto_lib.covers.itunes import search_itunes_album, match_album, _artwork_url, embed_album_art, enrich_from_itunes
-from yoto_lib.mka import wrap_in_mka, extract_album_art
+from yoto_lib.covers.itunes import _artwork_url, embed_album_art, enrich_from_itunes, match_album, search_itunes_album
+from yoto_lib.mka import extract_album_art, wrap_in_mka
 
 
 class TestSearchItunesAlbum:
@@ -122,11 +123,19 @@ class TestEmbedAlbumArt:
         data_size = 2
         header = struct.pack(
             "<4sI4s4sIHHIIHH4sI",
-            b"RIFF", 36 + data_size, b"WAVE", b"fmt ", 16, 1,
-            num_channels, sample_rate,
+            b"RIFF",
+            36 + data_size,
+            b"WAVE",
+            b"fmt ",
+            16,
+            1,
+            num_channels,
+            sample_rate,
             sample_rate * num_channels * bits_per_sample // 8,
-            num_channels * bits_per_sample // 8, bits_per_sample,
-            b"data", data_size,
+            num_channels * bits_per_sample // 8,
+            bits_per_sample,
+            b"data",
+            data_size,
         )
         wav_path.write_bytes(header + b"\x00\x00")
         return wav_path
@@ -134,11 +143,25 @@ class TestEmbedAlbumArt:
     def _make_test_jpeg(self) -> bytes:
         """Create a minimal 200x200 JPEG via ffmpeg."""
         import subprocess
+
         result = subprocess.run(
-            ["ffmpeg", "-y", "-f", "lavfi", "-i",
-             "color=c=red:s=200x200:d=1", "-frames:v", "1",
-             "-f", "image2pipe", "-vcodec", "mjpeg", "-"],
-            capture_output=True, check=True,
+            [
+                "ffmpeg",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=red:s=200x200:d=1",
+                "-frames:v",
+                "1",
+                "-f",
+                "image2pipe",
+                "-vcodec",
+                "mjpeg",
+                "-",
+            ],
+            capture_output=True,
+            check=True,
         )
         return result.stdout
 
@@ -184,8 +207,8 @@ class TestEnrichFromItunes:
 
         with patch("yoto_lib.covers.itunes.extract_album_art", return_value=None):
             enrich_from_itunes(mka, {"artist": "A"}, cache)  # no album
-            enrich_from_itunes(mka, {"album": "B"}, cache)   # no artist
-            enrich_from_itunes(mka, {}, cache)                # neither
+            enrich_from_itunes(mka, {"album": "B"}, cache)  # no artist
+            enrich_from_itunes(mka, {}, cache)  # neither
 
         assert cache == {}
 
@@ -321,9 +344,19 @@ class TestImportIntegration:
         data_size = 2
         header = struct.pack(
             "<4sI4s4sIHHIIHH4sI",
-            b"RIFF", 36 + data_size, b"WAVE", b"fmt ", 16, 1,
-            1, sample_rate, sample_rate * 2, 2, 16,
-            b"data", data_size,
+            b"RIFF",
+            36 + data_size,
+            b"WAVE",
+            b"fmt ",
+            16,
+            1,
+            1,
+            sample_rate,
+            sample_rate * 2,
+            2,
+            16,
+            b"data",
+            data_size,
         )
         wav.write_bytes(header + b"\x00\x00")
 
@@ -355,9 +388,19 @@ class TestImportIntegration:
         data_size = 2
         header = struct.pack(
             "<4sI4s4sIHHIIHH4sI",
-            b"RIFF", 36 + data_size, b"WAVE", b"fmt ", 16, 1,
-            1, sample_rate, sample_rate * 2, 2, 16,
-            b"data", data_size,
+            b"RIFF",
+            36 + data_size,
+            b"WAVE",
+            b"fmt ",
+            16,
+            1,
+            1,
+            sample_rate,
+            sample_rate * 2,
+            2,
+            16,
+            b"data",
+            data_size,
         )
         wav.write_bytes(header + b"\x00\x00")
 
@@ -375,10 +418,7 @@ class TestImportIntegration:
         assert result.exit_code == 0, result.output
         mock_lyrics.assert_called_once()
         # write_tags should have been called with lyrics
-        lyrics_calls = [
-            call for call in mock_write_tags.call_args_list
-            if "lyrics" in call[0][1]
-        ]
+        lyrics_calls = [call for call in mock_write_tags.call_args_list if "lyrics" in call[0][1]]
         assert len(lyrics_calls) >= 1
         assert lyrics_calls[0][0][1]["lyrics"] == "La la la"
 

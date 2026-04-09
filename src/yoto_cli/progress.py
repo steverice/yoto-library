@@ -1,5 +1,4 @@
 from rich.console import Console
-from rich.panel import Panel
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
@@ -23,6 +22,7 @@ class CostColumn(ProgressColumn):
 
     def render(self, task):
         from yoto_lib.billing.costs import get_tracker
+
         total = get_tracker().total
         if total == 0:
             return Text("")
@@ -79,24 +79,36 @@ def _icon_to_rich_text(img: "object") -> Text:
             if top[3] == 0 and bot[3] == 0:
                 result.append(" ")
             elif top[3] == 0:
-                result.append("▄", style=Style(
-                    color=f"rgb({bot[0]},{bot[1]},{bot[2]})",
-                    bgcolor=f"rgb({bot[0]},{bot[1]},{bot[2]})",
-                ))
+                result.append(
+                    "▄",
+                    style=Style(
+                        color=f"rgb({bot[0]},{bot[1]},{bot[2]})",
+                        bgcolor=f"rgb({bot[0]},{bot[1]},{bot[2]})",
+                    ),
+                )
             elif bot[3] == 0:
-                result.append("▀", style=Style(
-                    color=f"rgb({top[0]},{top[1]},{top[2]})",
-                ))
+                result.append(
+                    "▀",
+                    style=Style(
+                        color=f"rgb({top[0]},{top[1]},{top[2]})",
+                    ),
+                )
             elif top[:3] == bot[:3]:
                 # Same color — use full block to avoid fg/bg seam entirely
-                result.append("█", style=Style(
-                    color=f"rgb({top[0]},{top[1]},{top[2]})",
-                ))
+                result.append(
+                    "█",
+                    style=Style(
+                        color=f"rgb({top[0]},{top[1]},{top[2]})",
+                    ),
+                )
             else:
-                result.append("▀", style=Style(
-                    color=f"rgb({top[0]},{top[1]},{top[2]})",
-                    bgcolor=f"rgb({bot[0]},{bot[1]},{bot[2]})",
-                ))
+                result.append(
+                    "▀",
+                    style=Style(
+                        color=f"rgb({top[0]},{top[1]},{top[2]})",
+                        bgcolor=f"rgb({bot[0]},{bot[1]},{bot[2]})",
+                    ),
+                )
     return result
 
 
@@ -149,8 +161,9 @@ def render_icon_panels(
 def _read_key() -> str:
     """Read a single keypress from stdin. Returns 'left', 'right', 'enter', 'r', or the raw char."""
     import sys
-    import tty
     import termios
+    import tty
+
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
     try:

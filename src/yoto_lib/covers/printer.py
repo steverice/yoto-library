@@ -9,8 +9,8 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from PIL import Image, ImageCms
 
@@ -25,6 +25,7 @@ DEFAULT_PRINTER = "Canon_SELPHY_CP1300"
 
 class PrintError(Exception):
     """Error during the print pipeline."""
+
     pass
 
 
@@ -45,8 +46,7 @@ def validate_cover(cover_path: Path) -> Image.Image:
     ratio = w / h
     if abs(ratio - PRINT_RATIO) / PRINT_RATIO > ASPECT_TOLERANCE:
         raise PrintError(
-            f"cover.png has unexpected dimensions ({w}x{h}). "
-            f"Expected portrait aspect ratio close to 638x1011."
+            f"cover.png has unexpected dimensions ({w}x{h}). Expected portrait aspect ratio close to 638x1011."
         )
     return img
 
@@ -81,13 +81,11 @@ def _check_printer(printer: str) -> None:
     """Raise PrintError if the printer is not configured."""
     result = subprocess.run(
         ["lpstat", "-p", printer],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if result.returncode != 0:
-        raise PrintError(
-            f"Printer '{printer}' not found. "
-            f"Configure it in System Settings > Printers & Scanners."
-        )
+        raise PrintError(f"Printer '{printer}' not found. Configure it in System Settings > Printers & Scanners.")
 
 
 def _icc_convert(img: Image.Image, icc_profile: str) -> Image.Image:
@@ -112,12 +110,16 @@ def _send_to_printer(file_path: Path, printer: str) -> None:
     result = subprocess.run(
         [
             "lpr",
-            "-P", printer,
-            "-o", "PageSize=54x86mm.Fullbleed",
-            "-o", "fit-to-page",
+            "-P",
+            printer,
+            "-o",
+            "PageSize=54x86mm.Fullbleed",
+            "-o",
+            "fit-to-page",
             str(file_path),
         ],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if result.returncode != 0:
         raise PrintError(f"Print failed: {result.stderr.strip()}")
@@ -131,7 +133,8 @@ def _get_job_status(printer: str) -> str | None:
     """
     result = subprocess.run(
         ["lpstat", "-l", "-o", printer],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if result.returncode != 0:
         return None

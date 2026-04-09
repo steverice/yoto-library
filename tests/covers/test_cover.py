@@ -21,7 +21,6 @@ from yoto_lib.covers.cover import (
     try_shared_album_art,
 )
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -150,11 +149,12 @@ class TestGenerateCoverIfMissing:
         mock_provider = MagicMock()
         mock_provider.generate.return_value = fake_png_bytes
 
-        with patch("yoto_lib.covers.cover.get_provider", return_value=mock_provider), \
-             patch("yoto_lib.covers.cover.build_cover_prompt", return_value="test prompt") as mock_prompt, \
-             patch("yoto_lib.covers.cover.add_title_to_illustration", return_value=fake_png_bytes), \
-             patch("yoto_lib.covers.cover.mka.read_tags") as mock_read_tags:
-
+        with (
+            patch("yoto_lib.covers.cover.get_provider", return_value=mock_provider),
+            patch("yoto_lib.covers.cover.build_cover_prompt", return_value="test prompt") as mock_prompt,
+            patch("yoto_lib.covers.cover.add_title_to_illustration", return_value=fake_png_bytes),
+            patch("yoto_lib.covers.cover.mka.read_tags") as mock_read_tags,
+        ):
             mock_read_tags.side_effect = [
                 {"title": "Chapter One", "artist": "Jane Doe"},
                 {"title": "Chapter Two", "artist": "Jane Doe"},
@@ -167,17 +167,13 @@ class TestGenerateCoverIfMissing:
 
         # cover.png must have correct dimensions
         result = Image.open(cover_path)
-        assert result.size == (COVER_WIDTH, COVER_HEIGHT), (
-            f"Expected {COVER_WIDTH}x{COVER_HEIGHT}, got {result.size}"
-        )
+        assert result.size == (COVER_WIDTH, COVER_HEIGHT), f"Expected {COVER_WIDTH}x{COVER_HEIGHT}, got {result.size}"
 
         # prompt builder was called
         mock_prompt.assert_called_once()
 
         # provider.generate was called with the prompt at the tall portrait size
-        mock_provider.generate.assert_called_once_with(
-            "test prompt", 1024, 1536, quality="low"
-        )
+        mock_provider.generate.assert_called_once_with("test prompt", 1024, 1536, quality="low")
 
 
 # ── TestTrySharedAlbumArt ────────────────────────────────────────────────────
@@ -262,8 +258,10 @@ class TestTrySharedAlbumArt:
         playlist = MagicMock()
         playlist.has_cover = False
 
-        with patch("yoto_lib.covers.cover.try_shared_album_art", return_value=True) as mock_shared, \
-             patch("yoto_lib.covers.cover.get_provider") as mock_provider:
+        with (
+            patch("yoto_lib.covers.cover.try_shared_album_art", return_value=True) as mock_shared,
+            patch("yoto_lib.covers.cover.get_provider") as mock_provider,
+        ):
             generate_cover_if_missing(playlist)
 
         mock_shared.assert_called_once_with(playlist, log=None)
@@ -289,7 +287,7 @@ class TestPadToCover:
         # The center pixel should be red (from the original art)
         center_pixel = img.getpixel((COVER_WIDTH // 2, COVER_HEIGHT // 2))
         assert center_pixel[0] > 200  # red channel high
-        assert center_pixel[1] < 50   # green channel low
+        assert center_pixel[1] < 50  # green channel low
 
     def test_padding_uses_edge_color(self):
         """The padding area should match the edge color of the source image."""

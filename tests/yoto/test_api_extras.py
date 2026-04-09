@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
-from yoto_lib.yoto.api import _guess_audio_content_type, YotoAPI, YotoAPIError
+from yoto_lib.yoto.api import YotoAPI, YotoAPIError, _guess_audio_content_type
 
 
 class TestGuessAudioContentType:
@@ -90,14 +89,22 @@ class TestUploadAndTranscodeSkipsDuplicate:
         mocker.patch("yoto_lib.yoto.api.get_valid_token", return_value=mock_token)
         api = YotoAPI()
 
-        mocker.patch.object(api, "get_upload_url", return_value={
-            "uploadId": "up123",
-            "uploadUrl": None,  # duplicate
-        })
+        mocker.patch.object(
+            api,
+            "get_upload_url",
+            return_value={
+                "uploadId": "up123",
+                "uploadUrl": None,  # duplicate
+            },
+        )
         mock_upload = mocker.patch.object(api, "upload_audio_file")
-        mocker.patch.object(api, "poll_transcode", return_value={
-            "transcodedSha256": "abc",
-        })
+        mocker.patch.object(
+            api,
+            "poll_transcode",
+            return_value={
+                "transcodedSha256": "abc",
+            },
+        )
 
         sample = mocker.Mock()
         sample.read_bytes.return_value = b"\x00" * 10
@@ -117,9 +124,7 @@ class TestGetContentUnwrapsCard:
         api = YotoAPI()
 
         mock_response = mocker.Mock()
-        mock_response.json.return_value = {
-            "card": {"cardId": "abc12", "title": "Test"}
-        }
+        mock_response.json.return_value = {"card": {"cardId": "abc12", "title": "Test"}}
         mock_response.raise_for_status = mocker.Mock()
         mocker.patch.object(api._client, "get", return_value=mock_response)
 

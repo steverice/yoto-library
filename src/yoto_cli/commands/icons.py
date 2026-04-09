@@ -7,36 +7,40 @@ from pathlib import Path
 
 import click
 
+from yoto_cli.main import _complete_mka_with_icon, _complete_mka_without_icon, _print_cost_summary, cli
 from yoto_lib.billing.costs import reset_tracker
 from yoto_lib.mka import remove_attachment
 from yoto_lib.yoto.api import YotoAPI
-
-from yoto_cli.main import cli, _print_cost_summary, _complete_mka_without_icon, _complete_mka_with_icon
 
 logger = logging.getLogger(__name__)
 
 
 @cli.command(name="select-icon")
-@click.argument("tracks", nargs=-1, required=True, type=click.Path(exists=True), shell_complete=_complete_mka_without_icon)
+@click.argument(
+    "tracks", nargs=-1, required=True, type=click.Path(exists=True), shell_complete=_complete_mka_without_icon
+)
 def select_icon(tracks):
     """Generate 3 icon options per track, show best Yoto match, and attach the chosen one."""
     logger.debug("command: select-icon tracks=%s", tracks)
-    from yoto_lib.icons.select import select_icons_for_tracks, IconSelectionRound
-
-    from yoto_cli.progress import make_progress, _console, success as _success, warning as _warning, interactive_icon_select
-    from yoto_cli.iterm_colors import ensure_srgb, restore_colors, show_hint_if_needed
     from rich.rule import Rule
+
+    from yoto_cli.iterm_colors import ensure_srgb, restore_colors, show_hint_if_needed
+    from yoto_cli.progress import _console, interactive_icon_select, make_progress
+    from yoto_cli.progress import success as _success
+    from yoto_cli.progress import warning as _warning
+    from yoto_lib.icons.select import IconSelectionRound, select_icons_for_tracks
+
     reset_tracker()
 
     api = YotoAPI()
     track_paths = [Path(t) for t in tracks]
 
     # -- Mutable state shared between callbacks --
-    progress_ctx = [None]   # [Progress context manager]
-    progress_ref = [None]   # [Progress instance]
-    task_ref = [None]       # [main task id]
-    inner_tasks: dict[str, int] = {}   # key -> rich task id
-    icon_tasks: dict[int, int] = {}    # icon index -> rich task id
+    progress_ctx = [None]  # [Progress context manager]
+    progress_ref = [None]  # [Progress instance]
+    task_ref = [None]  # [main task id]
+    inner_tasks: dict[str, int] = {}  # key -> rich task id
+    icon_tasks: dict[int, int] = {}  # icon index -> rich task id
     iterm_originals_ref = [None]
     iterm_hint_needed = [False]
 
@@ -124,7 +128,11 @@ def select_icon(tracks):
                 score_labels.append(f"score: {score}{marker}")
 
         raw = interactive_icon_select(
-            images, labels, score_labels, round_result.winner, len(candidates),
+            images,
+            labels,
+            score_labels,
+            round_result.winner,
+            len(candidates),
         )
         return raw
 
@@ -169,9 +177,10 @@ def select_icon(tracks):
 def reset_icon(tracks):
     """Remove the icon from one or more MKA tracks so sync regenerates them."""
     logger.debug("command: reset-icon tracks=%s", tracks)
+    from yoto_cli.progress import error as _error
+    from yoto_cli.progress import success as _success
     from yoto_lib.icons import clear_macos_file_icon
 
-    from yoto_cli.progress import success as _success, error as _error
     for track in tracks:
         path = Path(track)
         try:

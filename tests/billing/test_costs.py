@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from yoto_lib.billing.costs import COSTS, CostTracker, _COSTS_FILE
+from yoto_lib.billing.costs import _COSTS_FILE, COSTS, CostTracker
 
 
 def test_costs_json_valid():
@@ -146,8 +146,9 @@ def test_readme_matches_costs_json():
         if costs_key is None:
             # Claude row — just verify it says "subscription" or "Included"
             if "Claude" in task or "Descriptions" in task:
-                assert "subscription" in pricing.lower() or "included" in pricing.lower(), \
+                assert "subscription" in pricing.lower() or "included" in pricing.lower(), (
                     f"Claude row should mention subscription: {pricing}"
+                )
             continue
 
         # Extract dollar amount from README (e.g. "~$0.003/image" → 0.003)
@@ -156,9 +157,11 @@ def test_readme_matches_costs_json():
         readme_cost = float(match.group(1))
 
         json_cost = COSTS[costs_key]["cost"]
-        assert readme_cost == pytest.approx(json_cost), \
+        assert readme_cost == pytest.approx(json_cost), (
             f"README says ${readme_cost} for {task}, but costs.json says ${json_cost} for {costs_key}"
+        )
         matched += 1
 
-    assert matched == len(_README_TO_COSTS), \
+    assert matched == len(_README_TO_COSTS), (
         f"Expected to match {len(_README_TO_COSTS)} rows, but only matched {matched}"
+    )

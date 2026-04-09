@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from yoto_lib.description import generate_description, _collect_metadata, _build_prompt
+from yoto_lib.description import _build_prompt, _collect_metadata, generate_description
 
 
 class TestGenerateDescription:
@@ -71,16 +68,32 @@ class TestCollectMetadata:
 
 class TestBuildPrompt:
     def test_includes_playlist_title(self):
-        metadata = {"track_titles": [], "artist": [], "genre": [],
-                    "album_artist": [], "composer": [], "read_by": [],
-                    "category": [], "min_age": [], "max_age": []}
+        metadata = {
+            "track_titles": [],
+            "artist": [],
+            "genre": [],
+            "album_artist": [],
+            "composer": [],
+            "read_by": [],
+            "category": [],
+            "min_age": [],
+            "max_age": [],
+        }
         prompt = _build_prompt("My Playlist", metadata)
         assert "Playlist: My Playlist" in prompt
 
     def test_includes_tracks_and_artist(self):
-        metadata = {"track_titles": ["Song A", "Song B"], "artist": ["Bob"],
-                    "genre": ["Rock"], "album_artist": [], "composer": [],
-                    "read_by": [], "category": [], "min_age": [], "max_age": []}
+        metadata = {
+            "track_titles": ["Song A", "Song B"],
+            "artist": ["Bob"],
+            "genre": ["Rock"],
+            "album_artist": [],
+            "composer": [],
+            "read_by": [],
+            "category": [],
+            "min_age": [],
+            "max_age": [],
+        }
         prompt = _build_prompt("Test", metadata)
         assert "- Song A" in prompt
         assert "- Song B" in prompt
@@ -88,9 +101,17 @@ class TestBuildPrompt:
         assert "Genre: Rock" in prompt
 
     def test_omits_empty_fields(self):
-        metadata = {"track_titles": ["Song"], "artist": [], "genre": [],
-                    "album_artist": [], "composer": [], "read_by": [],
-                    "category": [], "min_age": [], "max_age": []}
+        metadata = {
+            "track_titles": ["Song"],
+            "artist": [],
+            "genre": [],
+            "album_artist": [],
+            "composer": [],
+            "read_by": [],
+            "category": [],
+            "min_age": [],
+            "max_age": [],
+        }
         prompt = _build_prompt("Test", metadata)
         assert "Artist:" not in prompt
         assert "Genre:" not in prompt
@@ -107,8 +128,10 @@ class TestGenerateDescriptionIntegration:
         playlist.description = None
         playlist.track_files = ["song1.mka", "song2.mka"]
 
-        with patch("yoto_lib.description.mka.read_tags") as mock_tags, \
-             patch("yoto_lib.description.subprocess.run") as mock_run:
+        with (
+            patch("yoto_lib.description.mka.read_tags") as mock_tags,
+            patch("yoto_lib.description.subprocess.run") as mock_run,
+        ):
             mock_tags.side_effect = [
                 {"title": "Beautiful Day", "artist": "Daniel Tiger"},
                 {"title": "Use Your Words", "artist": "Daniel Tiger"},
@@ -135,8 +158,10 @@ class TestGenerateDescriptionIntegration:
         playlist.description = None
         playlist.track_files = ["song.mka"]
 
-        with patch("yoto_lib.description.mka.read_tags") as mock_tags, \
-             patch("yoto_lib.description.subprocess.run") as mock_run:
+        with (
+            patch("yoto_lib.description.mka.read_tags") as mock_tags,
+            patch("yoto_lib.description.subprocess.run") as mock_run,
+        ):
             mock_tags.return_value = {"title": "Song"}
             mock_run.side_effect = FileNotFoundError("claude not found")
 
@@ -152,12 +177,13 @@ class TestSyncIntegration:
         """generate_description is called before generate_cover_if_missing in sync."""
         call_order = []
 
-        with patch("yoto_lib.sync.generate_description") as mock_desc, \
-             patch("yoto_lib.sync.generate_cover_if_missing") as mock_cover, \
-             patch("yoto_lib.sync.resolve_icons", return_value={}), \
-             patch("yoto_lib.sync.load_playlist") as mock_load, \
-             patch("yoto_lib.sync.YotoAPI") as mock_api:
-
+        with (
+            patch("yoto_lib.sync.generate_description") as mock_desc,
+            patch("yoto_lib.sync.generate_cover_if_missing") as mock_cover,
+            patch("yoto_lib.sync.resolve_icons", return_value={}),
+            patch("yoto_lib.sync.load_playlist") as mock_load,
+            patch("yoto_lib.sync.YotoAPI") as mock_api,
+        ):
             mock_desc.side_effect = lambda p, log=None: call_order.append("description")
             mock_cover.side_effect = lambda p, log=None, ignore_album_art=False: call_order.append("cover")
 
@@ -169,6 +195,7 @@ class TestSyncIntegration:
             mock_load.return_value = playlist
 
             from yoto_lib.sync import sync_playlist
+
             sync_playlist(tmp_path, dry_run=True)
 
         assert call_order == ["description", "cover"]

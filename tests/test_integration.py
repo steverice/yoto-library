@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 from click.testing import CliRunner
 
 from yoto_cli.main import cli
@@ -32,9 +29,7 @@ class TestEndToEnd:
 
         # Update playlist.jsonl to reference the new files (simulates yoto import)
         jsonl_path = playlist_dir / "playlist.jsonl"
-        jsonl_path.write_text(
-            '"song-one.mka"\n"song-two.mka"\n', encoding="utf-8"
-        )
+        jsonl_path.write_text('"song-one.mka"\n"song-two.mka"\n', encoding="utf-8")
 
         # 3. Mock the API and helpers
         mock_api = MagicMock()

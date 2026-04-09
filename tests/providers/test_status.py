@@ -9,12 +9,12 @@ import httpx
 import pytest
 
 from yoto_lib.providers.base import (
+    _TTL,
     Provider,
     ProviderStatus,
     StatusPageMixin,
     _cache,
     _lock,
-    _TTL,
     check_status_on_error,
 )
 
@@ -56,9 +56,7 @@ class TestFetchStatusPage:
     def test_degraded_status_returns_unhealthy(self):
         resp = _mock_response("minor", "Minor Service Outage")
         with patch("httpx.get", return_value=resp):
-            result = StatusPageMixin._fetch_statuspage(
-                "https://status.claude.com/api/v2/status.json"
-            )
+            result = StatusPageMixin._fetch_statuspage("https://status.claude.com/api/v2/status.json")
         assert result.healthy is False
         assert result.message == "Claude: Minor Service Outage"
         assert result.url == "status.claude.com"
@@ -129,18 +127,15 @@ class TestCheckStatusOnError:
         def do_work():
             raise RuntimeError("network failure")
 
-        with caplog.at_level(logging.WARNING):
-            with pytest.raises(RuntimeError):
-                do_work()
+        with caplog.at_level(logging.WARNING), pytest.raises(RuntimeError):
+            do_work()
 
         assert any("Minor Service Outage" in r.message for r in caplog.records)
 
         FakeProvider._status = ProviderStatus(healthy=True)
 
     def test_decorator_warns_on_none_when_unhealthy(self, caplog):
-        FakeProvider._status = ProviderStatus(
-            healthy=False, message="Claude: Partial Outage", url="status.claude.com"
-        )
+        FakeProvider._status = ProviderStatus(healthy=False, message="Claude: Partial Outage", url="status.claude.com")
 
         @check_status_on_error(FakeProvider)
         def do_work():
@@ -174,9 +169,8 @@ class TestCheckStatusOnError:
         def do_work():
             raise ValueError("unexpected error")
 
-        with caplog.at_level(logging.WARNING):
-            with pytest.raises(ValueError):
-                do_work()
+        with caplog.at_level(logging.WARNING), pytest.raises(ValueError):
+            do_work()
 
         assert caplog.records == []
 
@@ -189,9 +183,7 @@ class TestCheckStatusOnError:
         class SickProvider(Provider):
             @classmethod
             def check_status(cls) -> ProviderStatus:
-                return ProviderStatus(
-                    healthy=False, message="SickProvider: Outage", url="status.sick.com"
-                )
+                return ProviderStatus(healthy=False, message="SickProvider: Outage", url="status.sick.com")
 
         @check_status_on_error(HealthyProvider, SickProvider)
         def do_work():

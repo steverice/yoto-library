@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
-
-from yoto_lib.sync import _parse_remote_state, _infer_track_info
+from yoto_lib.sync import _infer_track_info, _parse_remote_state
 
 
 class TestInferTrackInfo:
@@ -66,11 +64,13 @@ class TestParseRemoteStateTrackInfo:
                     {
                         "key": "ch1",
                         "title": "Song",
-                        "tracks": [{
-                            "trackUrl": "yoto:#abc",
-                            "format": "opus",
-                            "channels": "stereo",
-                        }],
+                        "tracks": [
+                            {
+                                "trackUrl": "yoto:#abc",
+                                "format": "opus",
+                                "channels": "stereo",
+                            }
+                        ],
                     }
                 ]
             }

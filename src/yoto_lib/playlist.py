@@ -8,12 +8,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-AUDIO_EXTENSIONS: set[str] = {
-    ".mka", ".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac", ".wma"
-}
+AUDIO_EXTENSIONS: set[str] = {".mka", ".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac", ".wma"}
 
 
 # ── JSONL helpers ─────────────────────────────────────────────────────────────
@@ -42,10 +39,7 @@ def write_jsonl(path: Path, filenames: list[str]) -> None:
 
 def scan_audio_files(folder: Path) -> list[Path]:
     """Return sorted list of Path objects for audio files in folder."""
-    return sorted(
-        p for p in folder.iterdir()
-        if p.is_file() and p.suffix.lower() in AUDIO_EXTENSIONS
-    )
+    return sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in AUDIO_EXTENSIONS)
 
 
 # ── Playlist dataclass ────────────────────────────────────────────────────────

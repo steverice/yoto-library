@@ -199,7 +199,7 @@ class TestDeviceCodeFlow:
         mock_sleep.assert_any_call(10)
 
     def test_poll_raises_on_expired_token(self, mocker):
-        from yoto_lib.yoto.auth import poll_for_token, AuthError
+        from yoto_lib.yoto.auth import AuthError, poll_for_token
 
         expired_response = mocker.Mock()
         expired_response.status_code = 403
@@ -275,7 +275,7 @@ class TestGetValidToken:
         assert token.access_token == "at_new"
 
     def test_raises_when_no_token_and_not_interactive(self, mocker):
-        from yoto_lib.yoto.auth import get_valid_token, AuthError
+        from yoto_lib.yoto.auth import AuthError, get_valid_token
 
         mocker.patch("yoto_lib.yoto.auth.load_tokens", return_value=None)
 

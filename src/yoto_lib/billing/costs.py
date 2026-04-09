@@ -18,7 +18,6 @@ def _load_costs() -> dict[str, dict]:
 COSTS = _load_costs()
 
 
-
 class CostTracker:
     """Thread-safe accumulator for API call costs."""
 

@@ -7,11 +7,11 @@ import plistlib
 import shutil
 import struct
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from yoto_lib.track_sources import parse_webloc, resolve_weblocs, clean_title
+from yoto_lib.track_sources import clean_title, parse_webloc, resolve_weblocs
 from yoto_lib.track_sources.youtube import YouTubeProvider, _parse_silence_ranges, _trim_silence
 
 
@@ -69,10 +69,19 @@ def _make_wav(path: Path, duration_seconds: float = 1.0) -> None:
     data_size = num_samples * 2  # 16-bit mono
     header = struct.pack(
         "<4sI4s4sIHHIIHH4sI",
-        b"RIFF", 36 + data_size, b"WAVE",
-        b"fmt ", 16, 1, 1, sample_rate,
-        sample_rate * 2, 2, 16,
-        b"data", data_size,
+        b"RIFF",
+        36 + data_size,
+        b"WAVE",
+        b"fmt ",
+        16,
+        1,
+        1,
+        sample_rate,
+        sample_rate * 2,
+        2,
+        16,
+        b"data",
+        data_size,
     )
     path.write_bytes(header + b"\x00\x00" * num_samples)
 
@@ -110,12 +119,14 @@ class TestYouTubeDownload:
         """download raises RuntimeError when yt-dlp is not found."""
         provider = YouTubeProvider()
 
-        with patch(
-            "yoto_lib.track_sources.youtube.subprocess.run",
-            side_effect=FileNotFoundError("No such file: 'yt-dlp'"),
+        with (
+            patch(
+                "yoto_lib.track_sources.youtube.subprocess.run",
+                side_effect=FileNotFoundError("No such file: 'yt-dlp'"),
+            ),
+            pytest.raises(RuntimeError, match="yt-dlp is required"),
         ):
-            with pytest.raises(RuntimeError, match="yt-dlp is required"):
-                provider.download("https://youtu.be/abc", tmp_path, trim=False)
+            provider.download("https://youtu.be/abc", tmp_path, trim=False)
 
 
 class TestSilenceDetection:
@@ -161,6 +172,7 @@ class TestTrimSilence:
         )
 
         call_count = [0]
+
         def fake_run(cmd, **kwargs):
             result = MagicMock()
             result.returncode = 0
@@ -234,8 +246,10 @@ class TestResolveWeblocs:
             patch("yoto_lib.track_sources.write_tags") as mock_tags,
             patch("yoto_lib.track_sources.clean_title", side_effect=lambda t: t),
         ):
+
             def fake_wrap(src, dst):
                 dst.write_bytes(b"fake mka")
+
             mock_wrap.side_effect = fake_wrap
 
             results = resolve_weblocs(playlist_dir)
@@ -306,8 +320,10 @@ class TestResolveWeblocs:
             patch("yoto_lib.track_sources.write_tags"),
             patch("yoto_lib.track_sources.clean_title", side_effect=lambda t: t),
         ):
+
             def fake_wrap(src, dst):
                 dst.write_bytes(b"fake mka")
+
             mock_wrap.side_effect = fake_wrap
 
             results = resolve_weblocs(playlist_dir)
@@ -393,9 +409,7 @@ class TestYouTubeIntegration:
         playlist_dir.mkdir()
 
         webloc = playlist_dir / "test.webloc"
-        webloc.write_bytes(plistlib.dumps({
-            "URL": "https://www.youtube.com/watch?v=GxtknJ9KFKY"
-        }))
+        webloc.write_bytes(plistlib.dumps({"URL": "https://www.youtube.com/watch?v=GxtknJ9KFKY"}))
 
         created = resolve_weblocs(playlist_dir, trim=True)
 

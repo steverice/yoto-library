@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,9 +10,9 @@ from yoto_lib.providers.base import (
     Provider,
     ProviderStatus,
     StatusPageMixin,
-    check_status_on_error,
     _cache,
     _warn_unhealthy,
+    check_status_on_error,
 )
 
 
@@ -103,6 +102,7 @@ class TestCheckStatusOnError:
 
     def test_normal_return_no_check(self):
         """When function returns normally, no status check needed."""
+
         @check_status_on_error(FakeProvider)
         def good_func():
             return "ok"
@@ -115,6 +115,7 @@ class TestCheckStatusOnError:
 
     def test_none_return_triggers_check(self):
         """When function returns None, providers are checked."""
+
         @check_status_on_error(FakeProvider)
         def none_func():
             return None
@@ -126,6 +127,7 @@ class TestCheckStatusOnError:
 
     def test_exception_triggers_check_and_reraises(self):
         """When function raises, providers are checked and exception re-raised."""
+
         @check_status_on_error(FakeProvider)
         def error_func():
             raise ValueError("broken")
@@ -145,6 +147,7 @@ class TestCheckStatusOnError:
         )
         with patch.object(FakeProvider, "check_status", return_value=status):
             import logging
+
             with caplog.at_level(logging.WARNING):
                 _warn_unhealthy((FakeProvider,))
 
