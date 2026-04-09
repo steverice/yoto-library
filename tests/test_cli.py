@@ -364,11 +364,12 @@ class TestPullCommand:
 
         fake_result = PullResult(card_id="X", tracks_downloaded=1)
 
-        with (
-            patch("yoto_cli.main.YotoAPI", return_value=mock_api),
-            patch("yoto_cli.main.pull_playlist", return_value=fake_result) as mock_pull,
-        ):
-            result = runner.invoke(cli, ["pull", "--all"])
+        with runner.isolated_filesystem():
+            with (
+                patch("yoto_cli.main.YotoAPI", return_value=mock_api),
+                patch("yoto_cli.main.pull_playlist", return_value=fake_result) as mock_pull,
+            ):
+                result = runner.invoke(cli, ["pull", "--all"])
 
         assert result.exit_code == 0
         assert mock_pull.call_count == 2
