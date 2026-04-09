@@ -3,16 +3,14 @@
 from __future__ import annotations
 
 import logging
-import os
 import plistlib
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Callable
 
+from yoto_lib.config import WORKERS
 from yoto_lib.mka import wrap_in_mka, write_tags
-
-WORKERS = int(os.environ.get("YOTO_WORKERS", "4"))
 
 logger = logging.getLogger(__name__)
 

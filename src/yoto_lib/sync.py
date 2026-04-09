@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -13,7 +12,7 @@ from typing import Any, Callable
 
 import httpx
 
-WORKERS = int(os.environ.get("YOTO_WORKERS", "4"))
+from yoto_lib.config import WORKERS
 
 logger = logging.getLogger(__name__)
 

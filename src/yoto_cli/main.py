@@ -11,8 +11,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-WORKERS = int(os.environ.get("YOTO_WORKERS", "4"))
-
 import click
 from click.shell_completion import CompletionItem
 from dotenv import find_dotenv, load_dotenv
@@ -21,6 +19,7 @@ load_dotenv(find_dotenv(usecwd=True))
 
 logger = logging.getLogger(__name__)
 
+from yoto_lib.config import WORKERS
 from yoto_lib.yoto.auth import AuthError, run_device_code_flow
 from yoto_lib.yoto.api import YotoAPI
 from yoto_lib.description import generate_description
