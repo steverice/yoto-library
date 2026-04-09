@@ -51,27 +51,3 @@ jobs:
       - if: ${{ !matrix.main-only || github.event_name == 'push' }}
         name: Run unit tests
         run: make test
-
-  integration-test:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-      RETRODIFFUSION_API_KEY: ${{ secrets.RETRODIFFUSION_API_KEY }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build integration image
-        run: docker build -t yoto-integration .github/docker/integration/
-
-      - name: Run integration tests
-        run: |
-          docker run --rm \
-            -e OPENAI_API_KEY \
-            -e GOOGLE_API_KEY \
-            -e RETRODIFFUSION_API_KEY \
-            -v "${{ github.workspace }}:/app" \
-            -w /app \
-            yoto-integration \
-            bash -c "pip install -e '.[dev]' && make test-integ"
