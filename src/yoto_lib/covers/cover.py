@@ -314,7 +314,7 @@ def try_shared_album_art(
             )
             return False
 
-    assert first_art_bytes is not None  # noqa: S101
+    assert first_art_bytes is not None
     logger.info(
         "try_shared_album_art: all %d tracks share identical album art, reusing as cover",
         len(playlist.track_files),
