@@ -7,7 +7,9 @@ import logging
 import threading
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any, TypeVar
 from urllib.parse import urlparse
 
 import httpx
@@ -99,7 +101,10 @@ class StatusPageMixin:
 # ── @check_status_on_error ───────────────────────────────────────────────────
 
 
-def check_status_on_error(*provider_classes: type[Provider]):
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+
+def check_status_on_error(*provider_classes: type[Provider]) -> Callable[[_F], _F]:
     """Decorator for logic functions that use external providers.
 
     On error (exception or None return), checks each provider's health
@@ -113,9 +118,9 @@ def check_status_on_error(*provider_classes: type[Provider]):
         @check_status_on_error(ClaudeProvider, RetroDiffusionProvider)
         def select_icons(tracks, ...): ...
     """
-    def decorator(func):
+    def decorator(func: _F) -> _F:
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 result = func(*args, **kwargs)
                 if result is None:
@@ -124,7 +129,7 @@ def check_status_on_error(*provider_classes: type[Provider]):
             except Exception:
                 _warn_unhealthy(provider_classes)
                 raise
-        return wrapper
+        return wrapper  # type: ignore[return-value]
     return decorator
 
 
