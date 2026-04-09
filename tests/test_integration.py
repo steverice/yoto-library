@@ -83,7 +83,7 @@ class TestEndToEnd:
         # 2. Mock click.edit to return reversed order
         reversed_content = '"c.mka"\n"b.mka"\n"a.mka"\n'
 
-        with patch("yoto_cli.main.click.edit", return_value=reversed_content):
+        with patch("yoto_cli.commands.misc.click.edit", return_value=reversed_content):
             # 3. Run reorder
             result = runner.invoke(cli, ["reorder", str(jsonl_path)])
 

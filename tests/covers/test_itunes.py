@@ -330,8 +330,8 @@ class TestImportIntegration:
         output = tmp_path / "output"
 
         with (
-            patch("yoto_cli.main.enrich_from_itunes") as mock_enrich,
-            patch("yoto_cli.main.generate_description"),
+            patch("yoto_cli.commands.import_cmd.enrich_from_itunes") as mock_enrich,
+            patch("yoto_cli.commands.import_cmd.generate_description"),
         ):
             runner = CliRunner()
             result = runner.invoke(cli, ["import", str(wav.parent), "-o", str(output)])
@@ -364,10 +364,10 @@ class TestImportIntegration:
         output = tmp_path / "output"
 
         with (
-            patch("yoto_cli.main.enrich_from_itunes"),
-            patch("yoto_cli.main.generate_description"),
-            patch("yoto_cli.main.get_lyrics", return_value=("La la la", "lrclib")) as mock_lyrics,
-            patch("yoto_cli.main.write_tags") as mock_write_tags,
+            patch("yoto_cli.commands.import_cmd.enrich_from_itunes"),
+            patch("yoto_cli.commands.import_cmd.generate_description"),
+            patch("yoto_cli.commands.import_cmd.get_lyrics", return_value=("La la la", "lrclib")) as mock_lyrics,
+            patch("yoto_cli.commands.import_cmd.write_tags") as mock_write_tags,
         ):
             runner = CliRunner()
             result = runner.invoke(cli, ["import", str(wav.parent), "-o", str(output)])

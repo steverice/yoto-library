@@ -1,4 +1,4 @@
-"""Tests for yoto_cli.main — CLI layer."""
+"""Tests for yoto_cli — CLI layer."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def runner():
 class TestAuthCommand:
     def test_auth_command_runs(self, runner):
         """auth calls run_device_code_flow and exits 0 on success."""
-        with patch("yoto_cli.main.run_device_code_flow") as mock_flow:
+        with patch("yoto_cli.commands.misc.run_device_code_flow") as mock_flow:
             result = runner.invoke(cli, ["auth"])
         mock_flow.assert_called_once()
         assert result.exit_code == 0
@@ -39,7 +39,7 @@ class TestAuthCommand:
     def test_auth_converts_auth_error_to_click_exception(self, runner):
         """auth catches AuthError and re-raises as ClickException (exit 1)."""
         with patch(
-            "yoto_cli.main.run_device_code_flow",
+            "yoto_cli.commands.misc.run_device_code_flow",
             side_effect=AuthError("Device code expired"),
         ):
             result = runner.invoke(cli, ["auth"])
@@ -68,7 +68,7 @@ class TestListCommand:
         mock_api = MagicMock()
         mock_api.get_my_content.return_value = fake_cards
 
-        with patch("yoto_cli.main.YotoAPI", return_value=mock_api):
+        with patch("yoto_cli.commands.misc.YotoAPI", return_value=mock_api):
             result = runner.invoke(cli, ["list"])
 
         assert result.exit_code == 0
@@ -82,7 +82,7 @@ class TestListCommand:
         mock_api = MagicMock()
         mock_api.get_my_content.return_value = []
 
-        with patch("yoto_cli.main.YotoAPI", return_value=mock_api):
+        with patch("yoto_cli.commands.misc.YotoAPI", return_value=mock_api):
             result = runner.invoke(cli, ["list"])
 
         assert result.exit_code == 0
@@ -102,7 +102,7 @@ class TestSyncCommand:
 
         fake_results = [SyncResult(card_id="SYNCED-001", tracks_uploaded=3)]
 
-        with patch("yoto_cli.main.sync_path", return_value=fake_results) as mock_sync:
+        with patch("yoto_cli.commands.sync.sync_path", return_value=fake_results) as mock_sync:
             result = runner.invoke(cli, ["sync", str(folder)])
 
         assert result.exit_code == 0
@@ -122,7 +122,7 @@ class TestSyncCommand:
 
         fake_results = [SyncResult(card_id=None, tracks_uploaded=2, dry_run=True)]
 
-        with patch("yoto_cli.main.sync_path", return_value=fake_results) as mock_sync:
+        with patch("yoto_cli.commands.sync.sync_path", return_value=fake_results) as mock_sync:
             result = runner.invoke(cli, ["sync", "--dry-run", str(folder)])
 
         assert result.exit_code == 0
@@ -140,7 +140,7 @@ class TestSyncNoTrim:
 
         fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1)]
 
-        with patch("yoto_cli.main.sync_path", return_value=fake_results) as mock_sync:
+        with patch("yoto_cli.commands.sync.sync_path", return_value=fake_results) as mock_sync:
             result = runner.invoke(cli, ["sync", "--no-trim", str(folder)])
 
         assert result.exit_code == 0
@@ -161,7 +161,7 @@ class TestReorderCommand:
         # Simulate the user swapping b and c
         edited_content = '"track_a.mka"\n"track_c.mka"\n"track_b.mka"\n'
 
-        with patch("yoto_cli.main.click.edit", return_value=edited_content) as mock_edit:
+        with patch("yoto_cli.commands.misc.click.edit", return_value=edited_content) as mock_edit:
             result = runner.invoke(cli, ["reorder", str(playlist_path)])
 
         assert result.exit_code == 0, result.output
@@ -176,7 +176,7 @@ class TestReorderCommand:
         playlist_path = tmp_path / "playlist.jsonl"
         playlist_path.write_text('"track_a.mka"\n', encoding="utf-8")
 
-        with patch("yoto_cli.main.click.edit", return_value=None):
+        with patch("yoto_cli.commands.misc.click.edit", return_value=None):
             result = runner.invoke(cli, ["reorder", str(playlist_path)])
 
         assert result.exit_code == 0
@@ -228,7 +228,7 @@ class TestDownloadCommand:
         folder.mkdir()
         (folder / "song.webloc").write_bytes(b"fake")
 
-        with patch("yoto_cli.main.resolve_weblocs", return_value=[]) as mock_resolve:
+        with patch("yoto_cli.commands.import_cmd.resolve_weblocs", return_value=[]) as mock_resolve:
             result = runner.invoke(cli, ["download", str(folder)])
 
         assert result.exit_code == 0
@@ -239,7 +239,7 @@ class TestDownloadCommand:
         folder = tmp_path / "playlist"
         folder.mkdir()
 
-        with patch("yoto_cli.main.resolve_weblocs", return_value=[]) as mock_resolve:
+        with patch("yoto_cli.commands.import_cmd.resolve_weblocs", return_value=[]) as mock_resolve:
             result = runner.invoke(cli, ["download", "--no-trim", str(folder)])
 
         assert result.exit_code == 0
@@ -251,7 +251,7 @@ class TestDownloadCommand:
         folder.mkdir()
 
         fake_mka = folder / "Cool Song.mka"
-        with patch("yoto_cli.main.resolve_weblocs", return_value=[fake_mka]):
+        with patch("yoto_cli.commands.import_cmd.resolve_weblocs", return_value=[fake_mka]):
             result = runner.invoke(cli, ["download", str(folder)])
 
         assert result.exit_code == 0
@@ -319,7 +319,7 @@ class TestPullCommand:
 
         fake_result = PullResult(card_id="CARD99", tracks_downloaded=2)
 
-        with patch("yoto_cli.main.pull_playlist", return_value=fake_result) as mock_pull:
+        with patch("yoto_cli.commands.pull.pull_playlist", return_value=fake_result) as mock_pull:
             result = runner.invoke(cli, ["pull", str(folder)])
 
         assert result.exit_code == 0
@@ -331,7 +331,7 @@ class TestPullCommand:
         """pull with a card ID string passes card_id to pull_playlist."""
         fake_result = PullResult(card_id="abc12", tracks_downloaded=1)
 
-        with patch("yoto_cli.main.pull_playlist", return_value=fake_result) as mock_pull:
+        with patch("yoto_cli.commands.pull.pull_playlist", return_value=fake_result) as mock_pull:
             result = runner.invoke(cli, ["pull", "abc12"])
 
         assert result.exit_code == 0
@@ -346,7 +346,7 @@ class TestPullCommand:
 
         fake_result = PullResult(card_id="CARD99", dry_run=True)
 
-        with patch("yoto_cli.main.pull_playlist", return_value=fake_result) as mock_pull:
+        with patch("yoto_cli.commands.pull.pull_playlist", return_value=fake_result) as mock_pull:
             result = runner.invoke(cli, ["pull", "--dry-run", str(folder)])
 
         assert result.exit_code == 0
@@ -366,8 +366,8 @@ class TestPullCommand:
 
         with runner.isolated_filesystem():
             with (
-                patch("yoto_cli.main.YotoAPI", return_value=mock_api),
-                patch("yoto_cli.main.pull_playlist", return_value=fake_result) as mock_pull,
+                patch("yoto_cli.commands.pull.YotoAPI", return_value=mock_api),
+                patch("yoto_cli.commands.pull.pull_playlist", return_value=fake_result) as mock_pull,
             ):
                 result = runner.invoke(cli, ["pull", "--all"])
 
@@ -396,10 +396,10 @@ class TestStatusCommand:
         )
 
         with (
-            patch("yoto_cli.main.load_playlist", return_value=mock_playlist),
-            patch("yoto_cli.main.scan_audio_files", return_value=["track.mp3"]),
-            patch("yoto_cli.main.YotoAPI") as mock_api_cls,
-            patch("yoto_cli.main.diff_playlists", return_value=empty_diff),
+            patch("yoto_cli.commands.sync.load_playlist", return_value=mock_playlist),
+            patch("yoto_cli.commands.sync.scan_audio_files", return_value=["track.mp3"]),
+            patch("yoto_cli.commands.sync.YotoAPI") as mock_api_cls,
+            patch("yoto_cli.commands.sync.diff_playlists", return_value=empty_diff),
             patch("yoto_lib.sync._parse_remote_state", return_value={}),
         ):
             mock_api_cls.return_value.get_content.return_value = {}
@@ -425,9 +425,9 @@ class TestStatusCommand:
         )
 
         with (
-            patch("yoto_cli.main.load_playlist", return_value=mock_playlist),
-            patch("yoto_cli.main.scan_audio_files", return_value=["new_song.mp3"]),
-            patch("yoto_cli.main.diff_playlists", return_value=diff),
+            patch("yoto_cli.commands.sync.load_playlist", return_value=mock_playlist),
+            patch("yoto_cli.commands.sync.scan_audio_files", return_value=["new_song.mp3"]),
+            patch("yoto_cli.commands.sync.diff_playlists", return_value=diff),
         ):
             result = runner.invoke(cli, ["status", str(folder)])
 
@@ -439,7 +439,7 @@ class TestStatusCommand:
         folder = tmp_path / "empty"
         folder.mkdir()
 
-        with patch("yoto_cli.main.scan_audio_files", return_value=[]):
+        with patch("yoto_cli.commands.sync.scan_audio_files", return_value=[]):
             result = runner.invoke(cli, ["status", str(folder)])
 
         assert result.exit_code != 0
@@ -519,13 +519,13 @@ class TestImportCommand:
         (folder / "02 Song Two.mp3").write_bytes(b"\x00" * 64)
 
         with (
-            patch("yoto_cli.main.wrap_in_mka") as mock_wrap,
-            patch("yoto_cli.main.read_source_tags", return_value={"title": "Song", "artist": "Bob"}),
-            patch("yoto_cli.main.write_tags"),
-            patch("yoto_cli.main.enrich_from_itunes"),
-            patch("yoto_cli.main.generate_source_patch"),
-            patch("yoto_cli.main.generate_description"),
-            patch("yoto_cli.main.load_playlist") as mock_load,
+            patch("yoto_cli.commands.import_cmd.wrap_in_mka") as mock_wrap,
+            patch("yoto_cli.commands.import_cmd.read_source_tags", return_value={"title": "Song", "artist": "Bob"}),
+            patch("yoto_cli.commands.import_cmd.write_tags"),
+            patch("yoto_cli.commands.import_cmd.enrich_from_itunes"),
+            patch("yoto_cli.commands.import_cmd.generate_source_patch"),
+            patch("yoto_cli.commands.import_cmd.generate_description"),
+            patch("yoto_cli.commands.import_cmd.load_playlist") as mock_load,
         ):
             mock_load.return_value = MagicMock()
             result = runner.invoke(cli, ["import", str(folder)])
@@ -549,7 +549,7 @@ class TestCoverCommand:
         (folder / "playlist.jsonl").write_text('"track.mka"\n', encoding="utf-8")
         (folder / "track.mka").write_bytes(b"\x00" * 64)
 
-        with patch("yoto_cli.main.load_playlist") as mock_load:
+        with patch("yoto_cli.commands.cover.load_playlist") as mock_load:
             mock_playlist = MagicMock()
             mock_playlist.cover_path = folder / "cover.png"
             mock_playlist.track_files = ["track.mka"]
@@ -570,7 +570,7 @@ class TestResetIconCommand:
         mka.write_bytes(b"fake")
 
         with (
-            patch("yoto_cli.main.remove_attachment") as mock_remove,
+            patch("yoto_cli.commands.icons.remove_attachment") as mock_remove,
             patch("yoto_lib.icons.clear_macos_file_icon") as mock_clear,
         ):
             result = runner.invoke(cli, ["reset-icon", str(mka)])
@@ -585,7 +585,7 @@ class TestResetIconCommand:
         mka = tmp_path / "track.mka"
         mka.write_bytes(b"fake")
 
-        with patch("yoto_cli.main.remove_attachment", side_effect=OSError("mkvpropedit failed")):
+        with patch("yoto_cli.commands.icons.remove_attachment", side_effect=OSError("mkvpropedit failed")):
             result = runner.invoke(cli, ["reset-icon", str(mka)])
 
         assert result.exit_code == 0
@@ -607,7 +607,7 @@ class TestPrintCommand:
         img = Image.new("RGB", (638, 1011), "blue")
         img.save(folder / "cover.png")
 
-        with patch("yoto_cli.main.print_cover") as mock_print, \
+        with patch("yoto_cli.commands.cover.print_cover") as mock_print, \
              patch.dict(os.environ, {}, clear=False) as env:
             env.pop("YOTO_ICC_PROFILE", None)
             result = runner.invoke(cli, ["print", str(folder)], input="y\n")
@@ -627,7 +627,7 @@ class TestPrintCommand:
         img = Image.new("RGB", (638, 1011), "blue")
         img.save(folder / "cover.png")
 
-        with patch("yoto_cli.main.print_cover") as mock_print:
+        with patch("yoto_cli.commands.cover.print_cover") as mock_print:
             result = runner.invoke(cli, ["print", "--yes", str(folder)])
 
         assert result.exit_code == 0
@@ -641,8 +641,8 @@ class TestPrintCommand:
         (folder / "track.mka").write_bytes(b"\x00" * 16)
         (folder / "description.txt").write_text("A test playlist")
 
-        with patch("yoto_cli.main.generate_cover_if_missing") as mock_gen, \
-             patch("yoto_cli.main.print_cover") as mock_print:
+        with patch("yoto_cli.commands.cover.generate_cover_if_missing") as mock_gen, \
+             patch("yoto_cli.commands.cover.print_cover") as mock_print:
             # Answer "y" to generate, then "y" to print
             result = runner.invoke(cli, ["print", str(folder)], input="y\ny\n")
 
@@ -655,7 +655,7 @@ class TestPrintCommand:
         (folder / "playlist.jsonl").write_text('"track.mka"\n')
         (folder / "track.mka").write_bytes(b"\x00" * 16)
 
-        with patch("yoto_cli.main.generate_cover_if_missing") as mock_gen:
+        with patch("yoto_cli.commands.cover.generate_cover_if_missing") as mock_gen:
             result = runner.invoke(cli, ["print", str(folder)], input="n\n")
 
         mock_gen.assert_not_called()
@@ -673,7 +673,7 @@ class TestPrintCommand:
         fake_profile = tmp_path / "test.icc"
         fake_profile.write_bytes(b"fake")
 
-        with patch("yoto_cli.main.print_cover") as mock_print:
+        with patch("yoto_cli.commands.cover.print_cover") as mock_print:
             result = runner.invoke(cli, ["print", "--yes", "--profile", str(fake_profile), str(folder)])
 
         assert result.exit_code == 0
@@ -690,7 +690,7 @@ class TestPrintCommand:
         img = Image.new("RGB", (638, 1011), "blue")
         img.save(folder / "cover.png")
 
-        with patch("yoto_cli.main.print_cover") as mock_print:
+        with patch("yoto_cli.commands.cover.print_cover") as mock_print:
             # Answer "y" to continue without color management, "y" to print
             result = runner.invoke(cli, ["print", "--profile", "/nonexistent.icc", str(folder)], input="y\ny\n")
 
@@ -708,7 +708,7 @@ class TestPrintCommand:
         img = Image.new("RGB", (638, 1011), "blue")
         img.save(folder / "cover.png")
 
-        with patch("yoto_cli.main.print_cover", side_effect=PrintError("Printer offline")):
+        with patch("yoto_cli.commands.cover.print_cover", side_effect=PrintError("Printer offline")):
             result = runner.invoke(cli, ["print", "--yes", str(folder)])
 
         assert result.exit_code != 0
@@ -730,8 +730,8 @@ class TestSyncPrint:
 
         fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1, cover_uploaded=True, folder=folder)]
 
-        with patch("yoto_cli.main.sync_path", return_value=fake_results) as mock_sync, \
-             patch("yoto_cli.main.print_cover") as mock_print:
+        with patch("yoto_cli.commands.sync.sync_path", return_value=fake_results) as mock_sync, \
+             patch("yoto_cli.commands.sync.print_cover") as mock_print:
             result = runner.invoke(cli, ["sync", "--print", str(folder)])
 
         assert result.exit_code == 0
@@ -746,8 +746,8 @@ class TestSyncPrint:
 
         fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1, cover_uploaded=True, folder=folder)]
 
-        with patch("yoto_cli.main.sync_path", return_value=fake_results) as mock_sync, \
-             patch("yoto_cli.main.print_cover") as mock_print:
+        with patch("yoto_cli.commands.sync.sync_path", return_value=fake_results) as mock_sync, \
+             patch("yoto_cli.commands.sync.print_cover") as mock_print:
             result = runner.invoke(cli, ["sync", "--no-print", str(folder)])
 
         assert result.exit_code == 0
@@ -764,8 +764,8 @@ class TestSyncPrint:
 
         fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1, cover_uploaded=True, folder=folder)]
 
-        with patch("yoto_cli.main.sync_path", return_value=fake_results) as mock_sync, \
-             patch("yoto_cli.main.print_cover") as mock_print:
+        with patch("yoto_cli.commands.sync.sync_path", return_value=fake_results) as mock_sync, \
+             patch("yoto_cli.commands.sync.print_cover") as mock_print:
             result = runner.invoke(cli, ["sync", str(folder)], input="y\n")
 
         mock_print.assert_called_once()
@@ -778,8 +778,8 @@ class TestSyncPrint:
 
         fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1, cover_uploaded=False, folder=folder)]
 
-        with patch("yoto_cli.main.sync_path", return_value=fake_results) as mock_sync, \
-             patch("yoto_cli.main.print_cover") as mock_print:
+        with patch("yoto_cli.commands.sync.sync_path", return_value=fake_results) as mock_sync, \
+             patch("yoto_cli.commands.sync.print_cover") as mock_print:
             result = runner.invoke(cli, ["sync", str(folder)])
 
         assert result.exit_code == 0
@@ -793,8 +793,8 @@ class TestSyncPrint:
 
         fake_results = [SyncResult(card_id=None, tracks_uploaded=2, dry_run=True, cover_uploaded=True, folder=folder)]
 
-        with patch("yoto_cli.main.sync_path", return_value=fake_results) as mock_sync, \
-             patch("yoto_cli.main.print_cover") as mock_print:
+        with patch("yoto_cli.commands.sync.sync_path", return_value=fake_results) as mock_sync, \
+             patch("yoto_cli.commands.sync.print_cover") as mock_print:
             result = runner.invoke(cli, ["sync", "--dry-run", "--print", str(folder)])
 
         assert result.exit_code == 0
@@ -811,8 +811,8 @@ class TestSyncPrint:
 
         fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1, cover_uploaded=True, folder=folder)]
 
-        with patch("yoto_cli.main.sync_path", return_value=fake_results), \
-             patch("yoto_cli.main.print_cover", side_effect=PrintError("Printer offline")):
+        with patch("yoto_cli.commands.sync.sync_path", return_value=fake_results), \
+             patch("yoto_cli.commands.sync.print_cover", side_effect=PrintError("Printer offline")):
             result = runner.invoke(cli, ["sync", "--print", str(folder)])
 
         assert result.exit_code == 0
