@@ -14,9 +14,6 @@ from typing import Any
 import httpx
 
 from yoto_lib.config import WORKERS
-
-logger = logging.getLogger(__name__)
-
 from yoto_lib.covers.cover import generate_cover_if_missing
 from yoto_lib.description import generate_description
 from yoto_lib.icons import resolve_icons
@@ -29,6 +26,8 @@ from yoto_lib.playlist import (
 )
 from yoto_lib.track_sources import resolve_weblocs
 from yoto_lib.yoto.api import YotoAPI
+
+logger = logging.getLogger(__name__)
 
 # ── SyncResult ────────────────────────────────────────────────────────────────
 

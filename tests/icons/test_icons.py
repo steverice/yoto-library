@@ -122,7 +122,8 @@ class TestBuildIconPrompt:
         prompt = build_icon_prompt("Song")
         assert "bold" in prompt.lower()
         assert "flat" in prompt.lower()
-        assert "no" in prompt.lower() and "text" in prompt.lower()
+        assert "no" in prompt.lower()
+        assert "text" in prompt.lower()
 
 
 # ── TestGenerateTrackIcon ────────────────────────────────────────────────────
@@ -385,6 +386,6 @@ class TestResolveIconsLexicalShortcut:
         ):
             from yoto_lib.icons import resolve_icons
 
-            result = resolve_icons(playlist, api)
+            _result = resolve_icons(playlist, api)
 
         mock_llm.assert_called_once()

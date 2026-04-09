@@ -59,7 +59,7 @@ class TestLyricsCommand:
         wrap_in_mka(wav, mka)
         write_tags(mka, {"title": "Old MacDonald", "artist": "Kids Songs"})
 
-        with patch("yoto_cli.commands.lyrics.get_lyrics", return_value=("E-I-E-I-O", "lrclib")) as mock_get:
+        with patch("yoto_cli.commands.lyrics.get_lyrics", return_value=("E-I-E-I-O", "lrclib")):
             runner = CliRunner()
             result = runner.invoke(cli, ["lyrics", str(tmp_path)])
 
@@ -127,7 +127,7 @@ class TestSelectIconLyricsSummary:
             patch("yoto_lib.icons.generate_retrodiffusion_icons", return_value=None),
         ):
             runner = CliRunner()
-            result = runner.invoke(cli, ["select-icon", str(mka)])
+            runner.invoke(cli, ["select-icon", str(mka)])
 
         # Summary should have been generated
         mock_summarize.assert_called_once()
@@ -162,7 +162,7 @@ class TestSelectIconLyricsSummary:
             patch("yoto_lib.icons.generate_retrodiffusion_icons", return_value=None),
         ):
             runner = CliRunner()
-            result = runner.invoke(cli, ["select-icon", str(mka)])
+            runner.invoke(cli, ["select-icon", str(mka)])
 
         # Should NOT have regenerated summary
         mock_summarize.assert_not_called()

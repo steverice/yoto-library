@@ -80,7 +80,7 @@ def remove_solid_background(
     # Seed flood-fill from every border pixel within tolerance of dominant
     visited: set[tuple[int, int]] = set()
     queue: list[tuple[int, int]] = []
-    for pos, color in zip(border_positions, border_colors):
+    for pos, color in zip(border_positions, border_colors, strict=False):
         if _color_distance(color[:3], bg_rgb) <= tolerance:
             queue.append(pos)
             visited.add(pos)

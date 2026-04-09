@@ -16,9 +16,9 @@ load_dotenv(find_dotenv(usecwd=True))
 
 logger = logging.getLogger(__name__)
 
-from yoto_lib.billing import persist_session
-from yoto_lib.billing.costs import get_tracker
-from yoto_lib.mka import read_tags
+from yoto_lib.billing import persist_session  # noqa: E402
+from yoto_lib.billing.costs import get_tracker  # noqa: E402
+from yoto_lib.mka import read_tags  # noqa: E402
 
 
 def _print_cost_summary():

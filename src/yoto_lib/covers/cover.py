@@ -246,7 +246,7 @@ def add_title_to_illustration(image_bytes: bytes, title: str, width: int, height
     Returns PNG bytes at the same dimensions as input.
 
     Note: edit before resize — the API only accepts supported sizes
-    (1024×1024, 1024×1536, 1536×1024), not the final 638×1011 cover.
+    (1024x1024, 1024x1536, 1536x1024), not the final 638x1011 cover.
     """
     from yoto_lib.providers.openai_provider import OpenAIProvider
 
@@ -362,7 +362,7 @@ def generate_cover_if_missing(
 
     provider = get_provider()
     logger.debug("generate_cover: using provider %s", type(provider).__name__)
-    # Request 1024×1536 (2:3, ~0.667) — maps exactly to that OpenAI size,
+    # Request 1024x1536 (2:3, ~0.667) — maps exactly to that OpenAI size,
     # only ~28px cropped per side to reach our 638:1011 (~0.631) target.
     image_bytes = provider.generate(prompt, 1024, 1536, quality="low")
     logger.debug("generate_cover: generated %d bytes", len(image_bytes))

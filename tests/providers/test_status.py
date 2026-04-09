@@ -88,10 +88,12 @@ class TestFetchStatusPage:
         # First call → now=0.0  (cache miss, stores ts=0.0)
         # Second call → now=TTL+1  (0.0 stored, TTL+1 - 0.0 >= TTL → miss, re-fetches)
         monotonic_values = [0.0, _TTL + 1.0]
-        with patch("yoto_lib.providers.base.time.monotonic", side_effect=monotonic_values):
-            with patch("httpx.get", return_value=resp) as mock_get:
-                StatusPageMixin._fetch_statuspage(_STATUS_URL)
-                StatusPageMixin._fetch_statuspage(_STATUS_URL)
+        with (
+            patch("yoto_lib.providers.base.time.monotonic", side_effect=monotonic_values),
+            patch("httpx.get", return_value=resp) as mock_get,
+        ):
+            StatusPageMixin._fetch_statuspage(_STATUS_URL)
+            StatusPageMixin._fetch_statuspage(_STATUS_URL)
         assert mock_get.call_count == 2
 
 
@@ -169,7 +171,7 @@ class TestCheckStatusOnError:
         def do_work():
             raise ValueError("unexpected error")
 
-        with caplog.at_level(logging.WARNING), pytest.raises(ValueError):
+        with caplog.at_level(logging.WARNING), pytest.raises(ValueError, match="unexpected error"):
             do_work()
 
         assert caplog.records == []

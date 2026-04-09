@@ -119,7 +119,7 @@ class TestMatchIconLlmEdgeCases:
             {"title": "Star"},  # no mediaId
             {"mediaId": "", "title": "Moon"},  # empty mediaId
         ]
-        with patch("yoto_lib.icons.icon_llm._claude.call") as mock_call:
+        with patch("yoto_lib.icons.icon_llm._claude.call"):
             match_icon_llm("Anything", icons)
             # With all icons filtered, the function should return early
             # or send an empty icon list

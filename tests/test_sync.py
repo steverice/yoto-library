@@ -156,7 +156,7 @@ class TestSyncWithWeblocs:
             patch("yoto_lib.sync.resolve_icons", return_value={}),
             patch("yoto_lib.sync.resolve_weblocs", side_effect=fake_resolve) as mock_resolve,
         ):
-            result = sync_playlist(folder)
+            sync_playlist(folder)
 
         mock_resolve.assert_called_once_with(folder, trim=True)
         assert resolve_called[0]
@@ -436,7 +436,7 @@ class TestSyncErrorPaths:
             patch("yoto_lib.sync.build_content_schema") as mock_schema,
         ):
             mock_schema.return_value = {}
-            result = sync_playlist(folder)
+            sync_playlist(folder)
 
         mock_api.upload_cover.assert_not_called()
         # Verify the existing cover URL was passed to build_content_schema

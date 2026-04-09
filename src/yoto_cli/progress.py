@@ -122,7 +122,7 @@ def render_icon_panels(
     """Return a rich Table displaying icons side by side with labels and scores.
 
     Args:
-        images: PIL Image objects (16×16 RGBA)
+        images: PIL Image objects (16x16 RGBA)
         labels: Text labels for each column header
         scores: Score strings for each icon (empty string = no score)
         winner: 1-based index of the winning icon (gets ★ marker)
@@ -147,7 +147,7 @@ def render_icon_panels(
         )
 
     cells = []
-    for i, (img, score) in enumerate(zip(images, scores)):
+    for i, (img, score) in enumerate(zip(images, scores, strict=False)):
         body = _icon_to_rich_text(img)
         if score:
             is_sel = i == selected

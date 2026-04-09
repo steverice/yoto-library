@@ -182,7 +182,7 @@ class TestSyncIntegration:
             patch("yoto_lib.sync.generate_cover_if_missing") as mock_cover,
             patch("yoto_lib.sync.resolve_icons", return_value={}),
             patch("yoto_lib.sync.load_playlist") as mock_load,
-            patch("yoto_lib.sync.YotoAPI") as mock_api,
+            patch("yoto_lib.sync.YotoAPI"),
         ):
             mock_desc.side_effect = lambda p, log=None: call_order.append("description")
             mock_cover.side_effect = lambda p, log=None, ignore_album_art=False: call_order.append("cover")

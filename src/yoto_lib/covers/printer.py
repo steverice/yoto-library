@@ -102,7 +102,7 @@ def _icc_convert(img: Image.Image, icc_profile: str) -> Image.Image:
             srgb = ImageCms.createProfile("sRGB")
             return ImageCms.profileToProfile(img, srgb, profile)
     except (OSError, ImageCms.PyCMSError) as exc:
-        raise PrintError(f"Color conversion failed: {exc}")
+        raise PrintError(f"Color conversion failed: {exc}") from exc
 
 
 def _send_to_printer(file_path: Path, printer: str) -> None:

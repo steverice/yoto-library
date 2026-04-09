@@ -45,10 +45,7 @@ def download_icon(icon_ref: str, cache_dir: Path = ICON_CACHE_DIR) -> bytes | No
         logger.debug("download_icon: cache hit for %s", icon_hash)
         return cached.read_bytes()
 
-    if icon_ref.startswith("http"):
-        url = icon_ref
-    else:
-        url = f"{ICON_BASE_URL}/{icon_hash}"
+    url = icon_ref if icon_ref.startswith("http") else f"{ICON_BASE_URL}/{icon_hash}"
 
     try:
         logger.debug("download_icon: fetching %s", icon_hash)

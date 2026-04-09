@@ -64,7 +64,7 @@ class TestPullPlaylist:
         mock_api.get_content.return_value = remote
         mocker.patch("yoto_lib.pull.YotoAPI", return_value=mock_api)
 
-        result = pull_playlist(tmp_path, card_id="xyz99")
+        pull_playlist(tmp_path, card_id="xyz99")
 
         assert (tmp_path / ".yoto-card-id").read_text() == "xyz99"
 
@@ -305,7 +305,7 @@ class TestPullCallback:
         mocker.patch("yoto_lib.pull._download_file", return_value=b"\x00" * 50)
         mocker.patch("yoto_lib.pull.wrap_in_mka")
 
-        result = pull_playlist(tmp_path)
+        pull_playlist(tmp_path)
 
         import json
 

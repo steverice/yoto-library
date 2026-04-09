@@ -134,12 +134,14 @@ class TestCropIconFromGrid:
         assert icon_16.size == (16, 16)
         # Center tile should be mostly red
         r, g, b = icon_16.getpixel((8, 8))
-        assert r > 200 and g < 50 and b < 50
+        assert r > 200
+        assert g < 50
+        assert b < 50
 
     def test_icon_is_rgb(self):
         """Output icon should always be in RGB mode."""
         img = Image.new("RGBA", (1024, 1024), color=(0, 0, 255, 128))
-        tile, icon_16 = crop_icon_from_grid(img)
+        _tile, icon_16 = crop_icon_from_grid(img)
         assert icon_16.mode == "RGB"
 
 

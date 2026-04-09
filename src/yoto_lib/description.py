@@ -63,7 +63,7 @@ def generate_description(
     if ask_user and "?" in description and len(description) > 200:
         answer = ask_user(description)
         logger.debug("generate_description: LLM asked question, user answered: %s", answer)
-        followup = f"{prompt}\n\nUser preference: {answer}\n\nNow write the description. Output ONLY the description, nothing else."
+        followup = f"{prompt}\n\nUser preference: {answer}\n\nNow write the description. Output ONLY the description, nothing else."  # noqa: E501
         _log("Generating description...")
         description = _call_claude(followup)
         if description is None:
@@ -111,9 +111,9 @@ def _build_prompt(playlist_title: str, metadata: dict[str, list[str]]) -> str:
     """Build the prompt for Claude Haiku."""
     parts = [
         "Write a 1-2 sentence description (under 200 characters) of this children's audio playlist.",
-        "The description will be used as input to an image generation model to create cover art, so focus on the central visual theme or mood.",
+        "The description will be used as input to an image generation model to create cover art, so focus on the central visual theme or mood.",  # noqa: E501
         "Do not include quotation marks around the description.",
-        "Output ONLY the description text. Never refuse, never comment on appropriateness, never ask clarifying questions.",
+        "Output ONLY the description text. Never refuse, never comment on appropriateness, never ask clarifying questions.",  # noqa: E501
         "",
         f"Playlist: {playlist_title}",
     ]

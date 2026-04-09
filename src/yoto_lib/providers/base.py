@@ -218,5 +218,5 @@ def _warn_unhealthy(provider_classes: tuple[type[Provider], ...]) -> None:
                 if status.url:
                     msg += f" ({status.url})"
                 logger.warning("%s", msg)
-        except Exception:
+        except Exception:  # noqa: S110
             pass  # health check must never make things worse

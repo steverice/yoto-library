@@ -208,6 +208,6 @@ def print_cmd(path, yes, profile):
                 on_status=lambda msg: status.update(f"Printing: {msg}"),
             )
     except PrintError as exc:
-        raise click.ClickException(str(exc))
+        raise click.ClickException(str(exc)) from exc
 
     _success("Print complete")

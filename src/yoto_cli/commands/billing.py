@@ -190,10 +190,7 @@ def _print_subscription_usage(usage: dict) -> None:
                 delta = reset_dt - now
                 if delta.total_seconds() > 0:
                     hours = int(delta.total_seconds() // 3600)
-                    if hours >= 24:
-                        reset_str = f"resets {reset_dt.strftime('%b %d')}"
-                    else:
-                        reset_str = f"resets in {hours}h"
+                    reset_str = f"resets {reset_dt.strftime('%b %d')}" if hours >= 24 else f"resets in {hours}h"
             except ValueError:
                 pass
 
