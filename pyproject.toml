@@ -11,8 +11,10 @@ dependencies = [
     "click>=8.0",
     "httpx>=0.27",
     "keyring>=25.0",
+    "numpy>=1.0",
     "Pillow>=10.0",
     "openai>=1.0",
+    "together>=1.0",
     "google-genai>=1.0",
     "anthropic>=0.40",
     "python-dotenv>=1.0",
@@ -26,6 +28,7 @@ dev = [
     "pytest-tmp-files>=0.0.2",
     "ruff>=0.11",
     "ty>=0.0.1a7",
+    "iterm2>=2.0",
 ]
 iterm2 = [
     "iterm2>=2.0",
@@ -91,3 +94,4 @@ known-first-party = ["yoto_lib", "yoto_cli"]
 [tool.ty.environment]
 python-version = "3.10"
 root = ["src"]
+
