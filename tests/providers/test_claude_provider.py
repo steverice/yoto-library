@@ -115,8 +115,8 @@ class TestClaudeProviderCheckStatus:
         assert status.message == "Claude CLI not found on PATH"
 
     def test_delegates_to_statuspage_when_cli_found(self):
-        from yoto_lib.providers.claude_provider import ClaudeProvider
         from yoto_lib.providers.base import _cache, _lock
+        from yoto_lib.providers.claude_provider import ClaudeProvider
 
         # Clear cache so _fetch_statuspage actually calls httpx
         with _lock:

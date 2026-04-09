@@ -4,11 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
-
 
 # ---------------------------------------------------------------------------
 # load_lyrics_sources
@@ -132,6 +128,7 @@ def test_match_title_no_match():
 
 def _make_source(name: str = "TestSite") -> object:
     from yoto_lib.lyrics.lyrics_scrape import LyricsSource
+
     return LyricsSource(
         name=name,
         url="https://example.com/songs",
@@ -159,6 +156,7 @@ def test_fetch_lyrics_scrape_no_sources():
 def test_fetch_lyrics_scrape_no_node(caplog):
     """node not on PATH → (None, None) with warning logged."""
     import logging
+
     from yoto_lib.lyrics.lyrics_scrape import fetch_lyrics_scrape
 
     source = _make_source()
@@ -229,6 +227,7 @@ def test_fetch_lyrics_scrape_no_match():
 def test_run_js_node_timeout(caplog):
     """subprocess raises TimeoutExpired → returns None, logs warning."""
     import logging
+
     from yoto_lib.lyrics.lyrics_scrape import _run_js
 
     with (
@@ -247,6 +246,7 @@ def test_run_js_node_timeout(caplog):
 def test_run_js_nonzero_exit(caplog):
     """subprocess returns returncode=1 → returns None, logs warning."""
     import logging
+
     from yoto_lib.lyrics.lyrics_scrape import _run_js
 
     mock_result = MagicMock()

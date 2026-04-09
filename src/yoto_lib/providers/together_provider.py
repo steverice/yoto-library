@@ -1,4 +1,5 @@
 """Together AI image provider — FLUX models for generation and recomposition."""
+
 from __future__ import annotations
 
 import base64
@@ -43,6 +44,7 @@ class TogetherAIProvider(BetterStackMixin, ImageProvider):
         result = base64.b64decode(response.data[0].b64_json)
         logger.debug("together: generated %d bytes", len(result))
         from yoto_lib.billing.costs import get_tracker
+
         get_tracker().record("flux_generate")
         return result
 
@@ -83,5 +85,6 @@ class TogetherAIProvider(BetterStackMixin, ImageProvider):
         with PILImage.open(io.BytesIO(result)) as img:
             logger.debug("together: recomposed %d bytes, size=%dx%d", len(result), img.width, img.height)
         from yoto_lib.billing.costs import get_tracker
+
         get_tracker().record("flux_recompose")
         return result

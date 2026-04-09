@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import os
 import re
-import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -17,13 +16,14 @@ load_dotenv(find_dotenv(usecwd=True))
 
 logger = logging.getLogger(__name__)
 
-from yoto_lib.billing.costs import get_tracker
 from yoto_lib.billing import persist_session
+from yoto_lib.billing.costs import get_tracker
 from yoto_lib.mka import read_tags
 
 
 def _print_cost_summary():
     from yoto_cli.progress import _console
+
     tracker = get_tracker()
     if not tracker.has_records():
         return
@@ -50,17 +50,24 @@ def _setup_logging(verbose: bool = False) -> None:
         log.setLevel(logging.DEBUG)
 
         file_handler = RotatingFileHandler(
-            LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8",
+            LOG_FILE,
+            maxBytes=5 * 1024 * 1024,
+            backupCount=3,
+            encoding="utf-8",
         )
         file_handler.setLevel(logging.DEBUG)
-        file_handler.setFormatter(logging.Formatter(
-            "%(asctime)s %(levelname)-5s %(name)s %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        ))
+        file_handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s %(levelname)-5s %(name)s %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
         log.addHandler(file_handler)
 
         from rich.logging import RichHandler
+
         from yoto_cli.progress import _console as rich_console
+
         console_handler = RichHandler(
             console=rich_console,
             show_time=False,
@@ -85,10 +92,7 @@ def _is_card_id(value: str) -> bool:
     Heuristic: treat as card_id if it is a short (<=10 chars) alphanumeric
     string that does NOT exist as a path on disk.
     """
-    return (
-        bool(re.fullmatch(r"[A-Za-z0-9]{1,10}", value))
-        and not Path(value).exists()
-    )
+    return bool(re.fullmatch(r"[A-Za-z0-9]{1,10}", value)) and not Path(value).exists()
 
 
 def _strip_track_number(stem: str) -> str:
@@ -111,7 +115,9 @@ def _has_custom_icon(path: Path) -> bool:
     try:
         result = subprocess.run(
             ["mkvmerge", "-J", str(path)],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         data = json.loads(result.stdout)
         return any(a.get("file_name") == "icon" for a in data.get("attachments", []))
@@ -167,8 +173,7 @@ def _complete_unimported_dirs(ctx, param, incomplete):
     )
     # Filter to dirs without playlist.jsonl
     filtered = [
-        item for item in results
-        if not item.value.endswith("/") or not (Path(item.value) / "playlist.jsonl").exists()
+        item for item in results if not item.value.endswith("/") or not (Path(item.value) / "playlist.jsonl").exists()
     ]
     return filtered if any(item.value.endswith("/") for item in filtered) else results
 
@@ -232,11 +237,11 @@ def cli(verbose):
 # ── Register command modules ─────────────────────────────────────────────────
 # Importing these modules registers commands on the `cli` group via decorators.
 
+import yoto_cli.commands.billing  # noqa: E402
+import yoto_cli.commands.cover  # noqa: E402
+import yoto_cli.commands.icons  # noqa: E402
+import yoto_cli.commands.import_cmd  # noqa: E402
+import yoto_cli.commands.lyrics  # noqa: E402
+import yoto_cli.commands.misc  # noqa: E402
+import yoto_cli.commands.pull  # noqa: E402
 import yoto_cli.commands.sync  # noqa: F401, E402
-import yoto_cli.commands.pull  # noqa: F401, E402
-import yoto_cli.commands.icons  # noqa: F401, E402
-import yoto_cli.commands.cover  # noqa: F401, E402
-import yoto_cli.commands.import_cmd  # noqa: F401, E402
-import yoto_cli.commands.billing  # noqa: F401, E402
-import yoto_cli.commands.lyrics  # noqa: F401, E402
-import yoto_cli.commands.misc  # noqa: F401, E402

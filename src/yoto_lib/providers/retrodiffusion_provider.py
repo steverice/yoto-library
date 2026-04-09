@@ -1,4 +1,5 @@
 """Retro Diffusion image provider — purpose-built for pixel art, supports 16x16."""
+
 from __future__ import annotations
 
 import base64
@@ -28,7 +29,11 @@ class RetroDiffusionProvider(ImageProvider):
         return self.generate_batch(prompt, width, height, count=1)[0]
 
     def generate_batch(
-        self, prompt: str, width: int, height: int, count: int = 1,
+        self,
+        prompt: str,
+        width: int,
+        height: int,
+        count: int = 1,
     ) -> list[bytes]:
         """Generate multiple pixel art images. Returns list of PNG bytes."""
         logger.debug("retrodiffusion: generating %dx%d x%d, prompt=%.80s...", width, height, count, prompt)
@@ -49,5 +54,6 @@ class RetroDiffusionProvider(ImageProvider):
         images = [base64.b64decode(b64) for b64 in data["base64_images"]]
         logger.debug("retrodiffusion: generated %d images", len(images))
         from yoto_lib.billing.costs import get_tracker
+
         get_tracker().record("retrodiffusion", count=len(images))
         return images

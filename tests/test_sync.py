@@ -5,9 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from yoto_lib.sync import SyncResult, sync_playlist, _parse_remote_state, _has_audio_files, sync_path
+from yoto_lib.sync import SyncResult, _has_audio_files, _parse_remote_state, sync_path, sync_playlist
 
 
 def _make_audio_folder(tmp_path: Path, tracks: list[str], card_id: str | None = None) -> Path:
@@ -400,8 +398,11 @@ class TestSyncErrorPaths:
             patch("yoto_lib.sync.diff_playlists") as mock_diff,
         ):
             mock_diff.return_value = MagicMock(
-                new_tracks=["ghost.mp3"], removed_tracks=[], order_changed=False,
-                cover_changed=False, metadata_changed=False,
+                new_tracks=["ghost.mp3"],
+                removed_tracks=[],
+                order_changed=False,
+                cover_changed=False,
+                metadata_changed=False,
             )
             result = sync_playlist(folder)
 
@@ -451,11 +452,13 @@ class TestSyncResultFolder:
     def test_sync_result_has_folder(self):
         """SyncResult carries the folder path for post-sync actions like printing."""
         from yoto_lib.sync import SyncResult
+
         result = SyncResult(folder=Path("/tmp/album"))
         assert result.folder == Path("/tmp/album")
 
     def test_sync_result_folder_default_none(self):
         """SyncResult.folder defaults to None."""
         from yoto_lib.sync import SyncResult
+
         result = SyncResult()
         assert result.folder is None

@@ -68,6 +68,7 @@ def _try_scrape_sources(artist: str, title: str) -> tuple[str, str] | tuple[None
     if not list(_LYRICS_DIR.glob("*.json")):
         return None, None
     from .lyrics_scrape import fetch_lyrics_scrape
+
     return fetch_lyrics_scrape(artist, title)
 
 

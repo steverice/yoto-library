@@ -8,10 +8,9 @@ from pathlib import Path
 
 import click
 
+from yoto_cli.main import _is_card_id, cli
 from yoto_lib.pull import pull_playlist
 from yoto_lib.yoto.api import YotoAPI
-
-from yoto_cli.main import cli, _is_card_id
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +40,7 @@ def _pull_one(folder: Path, card_id: str | None = None, dry_run: bool = False) -
     """Pull a single playlist."""
     if sys.stderr.isatty():
         from yoto_cli.progress import make_progress
+
         with make_progress() as progress:
             task = progress.add_task(folder.name, total=None, status="fetching")
             inner_tasks: dict[str, int] = {}  # title -> task id
@@ -68,18 +68,26 @@ def _pull_one(folder: Path, card_id: str | None = None, dry_run: bool = False) -
                     progress.remove_task(inner_task)
 
             result = pull_playlist(
-                folder, card_id=card_id, dry_run=dry_run,
-                on_track_done=on_track, on_total=on_total,
+                folder,
+                card_id=card_id,
+                dry_run=dry_run,
+                on_track_done=on_track,
+                on_total=on_total,
                 on_track_start=on_track_start,
                 on_download_progress=on_download_progress,
             )
     else:
         from yoto_cli.progress import _console as _con
+
         def on_track(title: str) -> None:
             _con.print(f"  Downloaded: {title}")
+
         result = pull_playlist(folder, card_id=card_id, dry_run=dry_run, on_track_done=on_track)
 
-    from yoto_cli.progress import _console, success as _success, error as _error
+    from yoto_cli.progress import _console
+    from yoto_cli.progress import error as _error
+    from yoto_cli.progress import success as _success
+
     if dry_run:
         _console.print(f"[Dry run] {result.card_id}")
     else:
@@ -95,6 +103,7 @@ def _pull_all(dry_run: bool = False) -> None:
     cards = api.get_my_content()
 
     from yoto_cli.progress import _console
+
     if not cards:
         _console.print("[dim]No cards found.[/dim]")
         return

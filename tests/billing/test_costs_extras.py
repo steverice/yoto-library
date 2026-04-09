@@ -5,8 +5,6 @@ from __future__ import annotations
 import os
 from unittest.mock import patch
 
-import pytest
-
 from yoto_lib.billing.costs import CostTracker, get_tracker, reset_tracker
 from yoto_lib.providers.claude_provider import ClaudeProvider
 
@@ -22,6 +20,7 @@ class TestIsSubscription:
 
     def test_image_provider_is_not_subscription(self):
         from yoto_lib.providers.openai_provider import OpenAIProvider
+
         assert OpenAIProvider().is_subscription is False
 
 

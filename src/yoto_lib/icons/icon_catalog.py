@@ -77,7 +77,7 @@ def _filter_catalog(icons: list[dict]) -> list[dict]:
 
 
 def refresh_catalog(
-    api: "YotoAPI",
+    api: YotoAPI,
     cache_dir: Path = _DEFAULT_CACHE_DIR,
 ) -> list[dict]:
     """Fetch the catalog from the API, save it, and download missing PNGs."""
@@ -100,7 +100,7 @@ def refresh_catalog(
 
 
 def get_catalog(
-    api: "YotoAPI | None" = None,
+    api: YotoAPI | None = None,
     cache_dir: Path = _DEFAULT_CACHE_DIR,
 ) -> list[dict]:
     """Get the icon catalog, refreshing from API if stale.

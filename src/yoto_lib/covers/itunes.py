@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import logging
-from difflib import SequenceMatcher
-from pathlib import Path
 import re
 import subprocess
 import tempfile
+from difflib import SequenceMatcher
+from pathlib import Path
 from typing import Any
 
 import httpx
 
-from yoto_lib.mka import extract_album_art, write_tags, _run
+from yoto_lib.mka import _run, extract_album_art, write_tags
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,9 @@ def match_album(results: list[dict[str, Any]], artist: str, album: str) -> dict[
     if best_score < _MIN_SIMILARITY:
         logger.debug(
             "No iTunes match above threshold (best=%.2f) for '%s - %s'",
-            best_score, artist, album,
+            best_score,
+            artist,
+            album,
         )
         return None
 
@@ -111,10 +113,23 @@ def embed_album_art(mka_path: Path, image_bytes: bytes) -> bool:
     out_path = mka_path.with_suffix(".tmp.mka")
     try:
         result = _run(
-            ["ffmpeg", "-y", "-i", str(mka_path), "-i", str(img_path),
-             "-map", "0", "-map", "1", "-c", "copy",
-             "-disposition:v:0", "attached_pic",
-             str(out_path)],
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(mka_path),
+                "-i",
+                str(img_path),
+                "-map",
+                "0",
+                "-map",
+                "1",
+                "-c",
+                "copy",
+                "-disposition:v:0",
+                "attached_pic",
+                str(out_path),
+            ],
             check=False,
         )
         if result.returncode != 0 or not out_path.exists() or out_path.stat().st_size == 0:
@@ -208,7 +223,9 @@ def enrich_from_itunes(
         if embed_album_art(mka_path, image_bytes):
             logger.info(
                 "Embedded iTunes artwork in %s (%s - %s)",
-                mka_path.name, artist, album,
+                mka_path.name,
+                artist,
+                album,
             )
 
     # Backfill missing metadata

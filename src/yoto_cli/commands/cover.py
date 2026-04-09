@@ -8,13 +8,12 @@ from pathlib import Path
 
 import click
 
+from yoto_cli.main import _complete_dirs, _print_cost_summary, cli
 from yoto_lib.billing.costs import reset_tracker
 from yoto_lib.covers.cover import generate_cover_if_missing
 from yoto_lib.covers.printer import PrintError, print_cover
 from yoto_lib.description import generate_description
 from yoto_lib.playlist import load_playlist
-
-from yoto_cli.main import cli, _print_cost_summary, _complete_dirs
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +29,12 @@ def cover(path, force, backup, ignore_album_art):
         raise click.UsageError("--force and --backup are mutually exclusive")
     logger.debug("command: cover path=%s force=%s backup=%s ignore_album_art=%s", path, force, backup, ignore_album_art)
     reset_tracker()
-    from yoto_lib.covers.cover import build_cover_prompt, resize_cover, try_shared_album_art, add_title_to_illustration
-    from yoto_lib.providers import get_provider
-    from yoto_lib import mka
     import tempfile
 
     from yoto_cli.progress import _console as rich_console
+    from yoto_lib import mka
+    from yoto_lib.covers.cover import add_title_to_illustration, build_cover_prompt, resize_cover, try_shared_album_art
+    from yoto_lib.providers import get_provider
 
     folder = Path(path)
     playlist = load_playlist(folder)
@@ -56,13 +55,15 @@ def cover(path, force, backup, ignore_album_art):
     # Generate description if missing (interactive)
     if not playlist.description_path.exists():
         from rich.prompt import Prompt as _Prompt
+
         generate_description(
             playlist,
             log=lambda msg: rich_console.print(msg),
             ask_user=lambda q: _Prompt.ask(q, console=rich_console),
         )
 
-    from yoto_cli.progress import make_progress, success as _success
+    from yoto_cli.progress import make_progress
+    from yoto_cli.progress import success as _success
     from yoto_lib.covers.cover import RECOMPOSE_MAX_ATTEMPTS
 
     cover_name = playlist.title or folder.name
@@ -87,7 +88,7 @@ def cover(path, force, backup, ignore_album_art):
         def _cover_step() -> None:
             progress.update(task, advance=1)
 
-        def _cover_inner(status: "str | None", step: "int | None", total: "int | None") -> None:
+        def _cover_inner(status: str | None, step: int | None, total: int | None) -> None:
             if status is None:
                 # Remove the inner task
                 if _inner_task[0] is not None:
@@ -98,10 +99,14 @@ def cover(path, force, backup, ignore_album_art):
                 _inner_task[0] = progress.add_task(status, total=total, status="")
             else:
                 # Update the existing inner task
-                progress.update(_inner_task[0], description=status, completed=step if step is not None else 0, total=total)
+                progress.update(
+                    _inner_task[0], description=status, completed=step if step is not None else 0, total=total
+                )
 
         # Try reusing shared album art first
-        if not ignore_album_art and try_shared_album_art(playlist, log=_cover_log, on_step=_cover_step, on_inner=_cover_inner):
+        if not ignore_album_art and try_shared_album_art(
+            playlist, log=_cover_log, on_step=_cover_step, on_inner=_cover_inner
+        ):
             progress.update(task, completed=total_steps)
             progress.stop()
             _success(f"Reused album art as cover: {cover_path}")
@@ -165,7 +170,9 @@ def cover(path, force, backup, ignore_album_art):
 def print_cmd(path, yes, profile):
     """Print cover art to a photo printer."""
     logger.debug("command: print path=%s yes=%s profile=%s", path, yes, profile)
-    from yoto_cli.progress import _console, success as _success, warning as _warning
+    from yoto_cli.progress import _console
+    from yoto_cli.progress import success as _success
+    from yoto_cli.progress import warning as _warning
 
     folder = Path(path)
     playlist = load_playlist(folder)

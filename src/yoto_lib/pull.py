@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import logging
 import subprocess
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
 
 import httpx
 
@@ -15,10 +15,11 @@ from yoto_lib.config import WORKERS
 
 logger = logging.getLogger(__name__)
 
-from yoto_lib.yoto.api import YotoAPI
 from yoto_lib.icons import ICON_CACHE_DIR, apply_icon_to_mka, download_icon
-from yoto_lib.mka import sanitize_filename as _sanitize_filename, wrap_in_mka
+from yoto_lib.mka import sanitize_filename as _sanitize_filename
+from yoto_lib.mka import wrap_in_mka
 from yoto_lib.playlist import write_jsonl
+from yoto_lib.yoto.api import YotoAPI
 
 
 @dataclass
@@ -63,6 +64,7 @@ def _download_file(
 @dataclass
 class _TrackJob:
     """All info needed to download and process one track."""
+
     title: str
     filename: str
     track_url: str
@@ -181,12 +183,14 @@ def pull_playlist(
                 continue
             title = track.get("title") or chapter.get("title") or chapter.get("key") or "track"
             safe_name = _sanitize_filename(title)
-            jobs.append(_TrackJob(
-                title=title,
-                filename=f"{safe_name}.mka",
-                track_url=track_url,
-                icon_ref=icon_ref,
-            ))
+            jobs.append(
+                _TrackJob(
+                    title=title,
+                    filename=f"{safe_name}.mka",
+                    track_url=track_url,
+                    icon_ref=icon_ref,
+                )
+            )
 
     if on_total:
         on_total(len(jobs))
@@ -201,13 +205,19 @@ def pull_playlist(
             def _make_progress_cb(title: str) -> Callable[[int, int | None], None] | None:
                 if on_download_progress is None:
                     return None
+
                 def _cb(downloaded: int, total: int | None) -> None:
                     on_download_progress(title, downloaded, total)
+
                 return _cb
 
             future = executor.submit(
-                _process_track, job, folder, cache_dir,
-                _make_progress_cb(job.title), on_track_start,
+                _process_track,
+                job,
+                folder,
+                cache_dir,
+                _make_progress_cb(job.title),
+                on_track_start,
             )
             future_to_job[future] = job
 

@@ -2,15 +2,9 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
-import pytest
-
 from yoto_lib.playlist import (
     AUDIO_EXTENSIONS,
     Playlist,
-    PlaylistDiff,
     build_content_schema,
     diff_playlists,
     load_playlist,
@@ -18,7 +12,6 @@ from yoto_lib.playlist import (
     scan_audio_files,
     write_jsonl,
 )
-
 
 # ── TestJsonl ─────────────────────────────────────────────────────────────────
 
@@ -214,9 +207,7 @@ class TestDiffPlaylists:
         assert diff.removed_tracks == []
 
     def test_diff_no_changes(self, tmp_path):
-        pl = _make_playlist(
-            tmp_path, ["01.mka", "02.mka"], description="same", has_cover=False
-        )
+        pl = _make_playlist(tmp_path, ["01.mka", "02.mka"], description="same", has_cover=False)
         remote = {
             "tracks": ["01", "02"],  # titles (stems)
             "description": "same",
@@ -320,7 +311,11 @@ class TestBuildContentSchema:
             "02 - Main.mka": {"format": "aac", "channels": "stereo"},
         }
         schema = build_content_schema(
-            pl, track_hashes=hashes, icon_ids={}, cover_url=None, track_info=track_info,
+            pl,
+            track_hashes=hashes,
+            icon_ids={},
+            cover_url=None,
+            track_info=track_info,
         )
         chapters = schema["content"]["chapters"]
         assert chapters[0]["tracks"][0]["format"] == "aac"

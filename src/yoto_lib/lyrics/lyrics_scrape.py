@@ -63,9 +63,7 @@ def load_lyrics_sources() -> list[LyricsSource]:
                 lyrics_js=data["lyrics_js"],
             )
         except KeyError as exc:
-            logger.warning(
-                "lyrics_scrape: skipping %s — missing field %s", json_path.name, exc
-            )
+            logger.warning("lyrics_scrape: skipping %s — missing field %s", json_path.name, exc)
             continue
 
         sources.append(source)
@@ -83,7 +81,7 @@ def _run_js(
     *,
     url: str | None = None,
     html_path: Path | None = None,
-) -> "Any":
+) -> Any:
     """Run a JS snippet via scrape_runner.js and return the parsed JSON result.
 
     Returns None on any error (timeout, non-zero exit, JSON parse failure, OSError).
@@ -125,9 +123,7 @@ def _fetch_index(source: LyricsSource) -> dict[str, str]:
     raw = _run_js(source.index_js, url=source.url)
 
     if not isinstance(raw, list):
-        logger.warning(
-            "lyrics_scrape: index for %s returned unexpected type %s", source.name, type(raw).__name__
-        )
+        logger.warning("lyrics_scrape: index for %s returned unexpected type %s", source.name, type(raw).__name__)
         # Cache the empty dict intentionally: transient failures are cached for
         # the session to avoid hammering a failing source repeatedly.
         _index_cache[source.url] = {}

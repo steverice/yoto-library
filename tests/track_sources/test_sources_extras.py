@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
-import pytest
-
 from yoto_lib.track_sources import _unique_path, parse_webloc
 
 

@@ -1,11 +1,8 @@
 """Tests for yoto_lib.pull — pull engine downloading remote playlists."""
 
-from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-
-from yoto_lib.pull import pull_playlist, PullResult, _sanitize_filename, _process_track, _TrackJob
+from yoto_lib.pull import _process_track, _sanitize_filename, _TrackJob, pull_playlist
 
 
 class TestPullPlaylist:
@@ -22,12 +19,14 @@ class TestPullPlaylist:
                     {
                         "key": "song.mka",
                         "title": "Song",
-                        "tracks": [{
-                            "key": "song.mka",
-                            "title": "Song",
-                            "trackUrl": "https://signed.url/song.aac",
-                            "duration": 120.0,
-                        }],
+                        "tracks": [
+                            {
+                                "key": "song.mka",
+                                "title": "Song",
+                                "trackUrl": "https://signed.url/song.aac",
+                                "duration": 120.0,
+                            }
+                        ],
                     },
                 ],
             },
@@ -281,9 +280,21 @@ class TestPullCallback:
             "title": "Test",
             "content": {
                 "chapters": [
-                    {"key": "ch1", "title": "Zebra", "tracks": [{"trackUrl": "https://ex.com/z.aac", "title": "Zebra"}]},
-                    {"key": "ch2", "title": "Apple", "tracks": [{"trackUrl": "https://ex.com/a.aac", "title": "Apple"}]},
-                    {"key": "ch3", "title": "Mango", "tracks": [{"trackUrl": "https://ex.com/m.aac", "title": "Mango"}]},
+                    {
+                        "key": "ch1",
+                        "title": "Zebra",
+                        "tracks": [{"trackUrl": "https://ex.com/z.aac", "title": "Zebra"}],
+                    },
+                    {
+                        "key": "ch2",
+                        "title": "Apple",
+                        "tracks": [{"trackUrl": "https://ex.com/a.aac", "title": "Apple"}],
+                    },
+                    {
+                        "key": "ch3",
+                        "title": "Mango",
+                        "tracks": [{"trackUrl": "https://ex.com/m.aac", "title": "Mango"}],
+                    },
                 ]
             },
             "metadata": {"description": ""},
@@ -297,6 +308,7 @@ class TestPullCallback:
         result = pull_playlist(tmp_path)
 
         import json
+
         jsonl = (tmp_path / "playlist.jsonl").read_text(encoding="utf-8")
         filenames = [json.loads(line) for line in jsonl.splitlines() if line.strip()]
         assert filenames == ["Zebra.mka", "Apple.mka", "Mango.mka"]

@@ -71,7 +71,9 @@ class ClaudeProvider(StatusPageMixin, Provider):
         """
         if os.environ.get("ANTHROPIC_API_KEY"):
             return self._call_sdk(prompt, model=model, timeout=timeout, extract_json=extract_json)
-        return self._call_cli(prompt, model=model, timeout=timeout, extract_json=extract_json, allowed_tools=allowed_tools)
+        return self._call_cli(
+            prompt, model=model, timeout=timeout, extract_json=extract_json, allowed_tools=allowed_tools
+        )
 
     def _call_sdk(
         self,
@@ -107,6 +109,7 @@ class ClaudeProvider(StatusPageMixin, Provider):
 
             logger.debug("claude_provider.call_sdk response: %s", text[:500])
             from yoto_lib.billing.costs import get_tracker
+
             get_tracker().record(f"claude_{model}", subscription=self.is_subscription)
             return text
         except Exception as exc:
@@ -124,9 +127,13 @@ class ClaudeProvider(StatusPageMixin, Provider):
     ) -> str | None:
         """Call Claude via the CLI subprocess."""
         cmd = [
-            "claude", "-p", prompt,
-            "--output-format", "json",
-            "--model", model,
+            "claude",
+            "-p",
+            prompt,
+            "--output-format",
+            "json",
+            "--model",
+            model,
         ]
         if allowed_tools:
             cmd += ["--allowedTools", allowed_tools]
@@ -136,7 +143,9 @@ class ClaudeProvider(StatusPageMixin, Provider):
         try:
             logger.debug("claude_provider.call_cli: model=%s prompt_length=%d", model, len(prompt))
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-            logger.debug("claude_provider.call_cli: exit_code=%d response_length=%d", result.returncode, len(result.stdout))
+            logger.debug(
+                "claude_provider.call_cli: exit_code=%d response_length=%d", result.returncode, len(result.stdout)
+            )
             if result.returncode != 0:
                 return None
             wrapper = json.loads(result.stdout)
@@ -147,6 +156,7 @@ class ClaudeProvider(StatusPageMixin, Provider):
                 text = _extract_json(text)
             logger.debug("claude_provider.call_cli response: %s", text[:500])
             from yoto_lib.billing.costs import get_tracker
+
             get_tracker().record(f"claude_{model}", subscription=self.is_subscription)
             return text
         except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:

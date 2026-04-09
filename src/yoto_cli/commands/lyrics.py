@@ -9,10 +9,9 @@ from pathlib import Path
 
 import click
 
+from yoto_cli.main import _complete_lyrics_path, cli
 from yoto_lib.lyrics import get_lyrics
 from yoto_lib.mka import read_tags, write_tags
-
-from yoto_cli.main import cli, _complete_lyrics_path
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +20,13 @@ logger = logging.getLogger(__name__)
 @click.argument("path", type=click.Path(), required=False, default=None, shell_complete=_complete_lyrics_path)
 @click.option("--force", is_flag=True, help="Re-fetch lyrics even if already present / skip confirmation for stdin")
 @click.option("--show", is_flag=True, help="Display stored lyrics for each track")
-@click.option("--add-source", "add_source_url", default=None, metavar="URL",
-              help="Analyze a lyrics website and generate a scraping config.")
+@click.option(
+    "--add-source",
+    "add_source_url",
+    default=None,
+    metavar="URL",
+    help="Analyze a lyrics website and generate a scraping config.",
+)
 def lyrics(path: str | None, force: bool, show: bool, add_source_url: str | None) -> None:
     """Fetch and store lyrics for tracks in a playlist folder or single track.
 
@@ -31,13 +35,16 @@ def lyrics(path: str | None, force: bool, show: bool, add_source_url: str | None
     track path. Use --force to skip confirmation when overwriting.
     """
     logger.debug("command: lyrics path=%s force=%s show=%s add_source_url=%s", path, force, show, add_source_url)
-    from yoto_cli.progress import _console, error as _error, success as _success
     from rich.prompt import Confirm
 
+    from yoto_cli.progress import _console
+    from yoto_cli.progress import error as _error
+    from yoto_cli.progress import success as _success
+
     if add_source_url:
+        import json
         import shutil
         import subprocess
-        import json
 
         # 1. Check node is on PATH
         if not shutil.which("node"):
@@ -56,8 +63,9 @@ def lyrics(path: str | None, force: bool, show: bool, add_source_url: str | None
 
         # 3. Run the wizard
         try:
-            from yoto_lib.lyrics.lyrics_source_wizard import run_wizard
             from yoto_cli.progress import make_progress
+            from yoto_lib.lyrics.lyrics_source_wizard import run_wizard
+
             _WIZARD_STEPS = 6
             with make_progress() as progress:
                 task = progress.add_task("Analyzing lyrics site", total=_WIZARD_STEPS, status="")
@@ -76,18 +84,17 @@ def lyrics(path: str | None, force: bool, show: bool, add_source_url: str | None
 
         sample_lyrics = config.get("_sample_lyrics", "")
         sample_song = config.get("_sample_song", "(unknown)")
-        preview_text = (
-            f"Sample: {sample_song}\n\n"
-            f"{sample_lyrics[:500]}{'...' if len(sample_lyrics) > 500 else ''}"
+        preview_text = f"Sample: {sample_song}\n\n{sample_lyrics[:500]}{'...' if len(sample_lyrics) > 500 else ''}"
+        _console.print(
+            Panel(
+                Text(preview_text),
+                title=config["name"],
+                subtitle=config["url"],
+                border_style="cyan",
+                padding=(1, 2),
+                width=min(100, _console.width),
+            )
         )
-        _console.print(Panel(
-            Text(preview_text),
-            title=config["name"],
-            subtitle=config["url"],
-            border_style="cyan",
-            padding=(1, 2),
-            width=min(100, _console.width),
-        ))
 
         # 5. Confirm
         if not Confirm.ask("Save this lyrics source config?", console=_console):
@@ -153,6 +160,7 @@ def lyrics(path: str | None, force: bool, show: bool, add_source_url: str | None
     if show:
         from rich.panel import Panel
         from rich.text import Text
+
         with _console.pager(styles=True):
             for mka_path in mka_files:
                 tags = read_tags(mka_path)
@@ -163,17 +171,20 @@ def lyrics(path: str | None, force: bool, show: bool, add_source_url: str | None
                     _console.print(f"[dim]{mka_path.name}: no lyrics stored[/dim]")
                     continue
                 subtitle = artist if artist else None
-                _console.print(Panel(
-                    Text(text),
-                    title=title,
-                    subtitle=subtitle,
-                    border_style="cyan",
-                    padding=(1, 2),
-                    width=min(120, _console.width),
-                ))
+                _console.print(
+                    Panel(
+                        Text(text),
+                        title=title,
+                        subtitle=subtitle,
+                        border_style="cyan",
+                        padding=(1, 2),
+                        width=min(120, _console.width),
+                    )
+                )
         return
 
     from yoto_cli.progress import make_progress
+
     with make_progress() as progress:
         task = progress.add_task(target.name, total=len(mka_files), status="")
         for mka_path in mka_files:

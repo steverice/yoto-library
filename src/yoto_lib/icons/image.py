@@ -37,7 +37,9 @@ def _color_distance(a: tuple[int, ...], b: tuple[int, ...]) -> int:
 
 
 def remove_solid_background(
-    img: Image.Image, threshold: float = 0.5, tolerance: int = 80,
+    img: Image.Image,
+    threshold: float = 0.5,
+    tolerance: int = 80,
 ) -> Image.Image:
     """Flood-fill the dominant border color to transparency.
 
@@ -68,9 +70,7 @@ def remove_solid_background(
 
     # Find the dominant group: start from most frequent color, absorb neighbors
     dominant = max(counts, key=counts.get)  # type: ignore[arg-type]
-    group_total = sum(
-        c for color, c in counts.items() if _color_distance(color[:3], dominant[:3]) <= tolerance
-    )
+    group_total = sum(c for color, c in counts.items() if _color_distance(color[:3], dominant[:3]) <= tolerance)
 
     if group_total / len(border_colors) < threshold:
         return img  # no clear background color

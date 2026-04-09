@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 import io
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 from PIL import Image
 
-from yoto_lib.icons.icon_llm import CONFIDENCE_HIGH, CONFIDENCE_LOW
 from yoto_lib.icons import (
     ICNS_SIZES,
     ICNS_TYPE_MAP,
@@ -19,10 +16,8 @@ from yoto_lib.icons import (
     generate_icns_sizes,
     generate_retrodiffusion_icons,
     generate_track_icon,
-
     nearest_neighbor_upscale,
 )
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -68,7 +63,7 @@ class TestNearestNeighborUpscale:
         for dy in range(2):
             for dx in range(2):
                 assert pixels[dx, dy] == white, f"pixel ({dx},{dy}) should be white"
-                assert pixels[2 + dx, dy] == black, f"pixel ({2+dx},{dy}) should be black"
+                assert pixels[2 + dx, dy] == black, f"pixel ({2 + dx},{dy}) should be black"
 
 
 # ── TestGenerateIcnsSizes ─────────────────────────────────────────────────────
@@ -82,17 +77,13 @@ class TestGenerateIcnsSizes:
 
         assert set(result.keys()) == set(ICNS_SIZES)
         for size in ICNS_SIZES:
-            assert result[size].size == (size, size), (
-                f"Expected {size}x{size}, got {result[size].size}"
-            )
+            assert result[size].size == (size, size), f"Expected {size}x{size}, got {result[size].size}"
 
     def test_all_sizes_covered_by_type_map(self):
         """Every size in ICNS_SIZES has a corresponding entry in ICNS_TYPE_MAP."""
         for size in ICNS_SIZES:
             assert size in ICNS_TYPE_MAP, f"Size {size} missing from ICNS_TYPE_MAP"
-            assert len(ICNS_TYPE_MAP[size]) == 4, (
-                f"Type tag for size {size} must be exactly 4 bytes"
-            )
+            assert len(ICNS_TYPE_MAP[size]) == 4, f"Type tag for size {size} must be exactly 4 bytes"
 
 
 # ── TestExtractIconHash ──────────────────────────────────────────────────────
@@ -263,6 +254,7 @@ class TestResolveIconsZones:
             patch("yoto_lib.icons.generate_retrodiffusion_icons") as mock_gen,
         ):
             from yoto_lib.icons import resolve_icons
+
             result = resolve_icons(playlist, api)
 
         assert result["track.mka"] == "yoto-dino"
@@ -291,6 +283,7 @@ class TestResolveIconsZones:
             mock_gen.return_value = [(icon_png, img)] * 3
 
             from yoto_lib.icons import resolve_icons
+
             result = resolve_icons(playlist, api)
 
         assert result["track.mka"] == "uploaded-id"
@@ -321,18 +314,22 @@ class TestResolveIconsZones:
             mock_compare.return_value = (4, [0.5, 0.6, 0.5, 0.85])
 
             from yoto_lib.icons import resolve_icons
+
             result = resolve_icons(playlist, api)
 
         assert result["track.mka"] == "yoto-dino"
         call_args = mock_compare.call_args
         ai_candidates = call_args.args[1] if len(call_args.args) > 1 else call_args.kwargs.get("candidates", [])
         assert len(ai_candidates) == 3
-        assert call_args.kwargs.get("yoto_icon") is not None or (len(call_args.args) > 2 and call_args.args[2] is not None)
+        assert call_args.kwargs.get("yoto_icon") is not None or (
+            len(call_args.args) > 2 and call_args.args[2] is not None
+        )
 
 
 class TestResolveIconsLexicalShortcut:
     def _make_playlist(self, tmp_path, track_names):
         from yoto_lib.playlist import Playlist
+
         playlist_dir = tmp_path / "test_playlist"
         playlist_dir.mkdir()
         for name in track_names:
@@ -364,6 +361,7 @@ class TestResolveIconsLexicalShortcut:
             patch("yoto_lib.icons.set_macos_file_icon"),
         ):
             from yoto_lib.icons import resolve_icons
+
             result = resolve_icons(playlist, api)
 
         assert result["Dinosaur.mka"] == "dino-id"
@@ -386,6 +384,7 @@ class TestResolveIconsLexicalShortcut:
             patch("yoto_lib.icons.set_macos_file_icon"),
         ):
             from yoto_lib.icons import resolve_icons
+
             result = resolve_icons(playlist, api)
 
         mock_llm.assert_called_once()

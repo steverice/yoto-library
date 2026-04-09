@@ -4,25 +4,21 @@ from __future__ import annotations
 
 import io
 import struct
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
 from PIL import Image
 
 from yoto_lib.icons import (
-    ICON_SIZE,
     ICNS_SIZES,
     ICNS_TYPE_MAP,
+    _color_distance,
+    _sanitize_title,
+    apply_icon_to_mka,
     build_icns,
     crop_icon_from_grid,
     download_icon,
     remove_solid_background,
-    _color_distance,
-    _sanitize_title,
-    apply_icon_to_mka,
 )
-
 
 # ── TestColorDistance ─────────────────────────────────────────────────────────
 
@@ -63,8 +59,14 @@ class TestRemoveSolidBackground:
         # Create a rainbow border — no single dominant color
         img = Image.new("RGBA", (8, 8))
         colors = [
-            (255, 0, 0, 255), (0, 255, 0, 255), (0, 0, 255, 255), (255, 255, 0, 255),
-            (255, 0, 255, 255), (0, 255, 255, 255), (128, 0, 0, 255), (0, 128, 0, 255),
+            (255, 0, 0, 255),
+            (0, 255, 0, 255),
+            (0, 0, 255, 255),
+            (255, 255, 0, 255),
+            (255, 0, 255, 255),
+            (0, 255, 255, 255),
+            (128, 0, 0, 255),
+            (0, 128, 0, 255),
         ]
         for x in range(8):
             img.putpixel((x, 0), colors[x % len(colors)])

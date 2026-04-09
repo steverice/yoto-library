@@ -1,6 +1,6 @@
 import base64
-import subprocess
 import struct
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -66,7 +66,8 @@ def _ffmpeg_encode(wav_path: Path, output_path: Path, codec_args: list[str]) -> 
     """Helper: encode a WAV to another format via ffmpeg."""
     subprocess.run(
         ["ffmpeg", "-y", "-i", str(wav_path)] + codec_args + [str(output_path)],
-        capture_output=True, check=True,
+        capture_output=True,
+        check=True,
     )
     return output_path
 
@@ -82,6 +83,7 @@ def _longer_wav(tmp_path: Path, name: str = "tone.wav") -> Path:
     bits_per_sample = 16
     duration_samples = sample_rate  # 1 second
     import math
+
     samples = []
     for i in range(duration_samples):
         # 440 Hz sine wave at ~50% volume

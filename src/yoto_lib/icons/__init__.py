@@ -13,30 +13,11 @@ import httpx
 from PIL import Image
 
 from yoto_lib import mka
-from yoto_lib.mka import sanitize_filename as _sanitize_title
-
 from yoto_lib.icons.download import (
     ICON_CACHE_DIR,
     _download_bytes,
     download_icon,
     extract_icon_hash,
-)
-from yoto_lib.icons.image import (
-    ICON_SIZE,
-    ICNS_SIZES,
-    ICNS_TYPE_MAP,
-    _color_distance,
-    _dominant_color_downscale,
-    build_icns,
-    generate_icns_sizes,
-    nearest_neighbor_upscale,
-    remove_solid_background,
-)
-from yoto_lib.icons.macos import (
-    _run_osascript,
-    apply_icon_to_mka,
-    clear_macos_file_icon,
-    set_macos_file_icon,
 )
 from yoto_lib.icons.generate import (
     CANVAS_SIZE,
@@ -59,14 +40,32 @@ from yoto_lib.icons.icon_llm import (
     describe_icons_llm,
     match_icon_llm,
 )
+from yoto_lib.icons.image import (
+    ICNS_SIZES,
+    ICNS_TYPE_MAP,
+    ICON_SIZE,
+    _color_distance,
+    _dominant_color_downscale,
+    build_icns,
+    generate_icns_sizes,
+    nearest_neighbor_upscale,
+    remove_solid_background,
+)
+from yoto_lib.icons.macos import (
+    _run_osascript,
+    apply_icon_to_mka,
+    clear_macos_file_icon,
+    set_macos_file_icon,
+)
+from yoto_lib.mka import sanitize_filename as _sanitize_title
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from yoto_lib.yoto.api import YotoAPI
     from yoto_lib.playlist import Playlist
+    from yoto_lib.yoto.api import YotoAPI
 
 
 # ── resolve_icons ────────────────────────────────────────────────────────────
@@ -83,7 +82,7 @@ def _derive_track_title(track_path: Path, filename: str) -> str:
     return title
 
 
-def _upload_icon_bytes(api: "YotoAPI", icon_bytes: bytes) -> str | None:
+def _upload_icon_bytes(api: YotoAPI, icon_bytes: bytes) -> str | None:
     """Upload icon bytes to Yoto API, return mediaId or None on failure."""
     logger.debug("_upload_icon_bytes: %d bytes", len(icon_bytes))
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
@@ -104,12 +103,12 @@ def _upload_icon_bytes(api: "YotoAPI", icon_bytes: bytes) -> str | None:
 
 def _pick_ai_icon(
     track_title: str,
-    batch: "list[tuple[bytes, Image.Image]]",
-    yoto_icon_bytes: "bytes | None" = None,
-    yoto_media_id: "str | None" = None,
-    descriptions: "list[str] | None" = None,
-    album_description: "str | None" = None,
-) -> "tuple[bytes | None, Image.Image | None, str | None]":
+    batch: list[tuple[bytes, Image.Image]],
+    yoto_icon_bytes: bytes | None = None,
+    yoto_media_id: str | None = None,
+    descriptions: list[str] | None = None,
+    album_description: str | None = None,
+) -> tuple[bytes | None, Image.Image | None, str | None]:
     """Use LLM to pick the best icon from AI candidates (+ optional Yoto icon).
 
     Returns (icon_bytes, icon_image, media_id_if_yoto_won).
@@ -120,8 +119,11 @@ def _pick_ai_icon(
 
     raw_images = [raw for raw, _ in batch]
     winner, scores = compare_icons_llm(
-        track_title, raw_images, yoto_icon=yoto_icon_bytes,
-        descriptions=descriptions, album_description=album_description,
+        track_title,
+        raw_images,
+        yoto_icon=yoto_icon_bytes,
+        descriptions=descriptions,
+        album_description=album_description,
     )
 
     total = len(batch) + (1 if yoto_icon_bytes else 0)
@@ -151,9 +153,9 @@ def _read_album_description(playlist_path: Path) -> str | None:
 
 
 def resolve_icons(
-    playlist: "Playlist",
-    api: "YotoAPI",
-    log: "Callable[[str], None] | None" = None,
+    playlist: Playlist,
+    api: YotoAPI,
+    log: Callable[[str], None] | None = None,
 ) -> dict[str, str]:
     """Resolve and embed icons for each track in the playlist.
 
@@ -169,15 +171,15 @@ def resolve_icons(
     """
     _log = log or (lambda msg: None)
     result: dict[str, str] = {}
-    catalog: "list[dict] | None" = None  # lazy-loaded
+    catalog: list[dict] | None = None  # lazy-loaded
     total = len(playlist.track_files)
     logger.debug("resolve_icons: %d tracks", total)
 
     for i, filename in enumerate(playlist.track_files, 1):
         track_path = playlist.path / filename
         title = Path(filename).stem
-        media_id: "str | None" = None
-        icon_bytes: "bytes | None" = None
+        media_id: str | None = None
+        icon_bytes: bytes | None = None
 
         # 1. Check for existing MKA icon attachment
         try:
@@ -247,7 +249,8 @@ def resolve_icons(
                 batch = generate_retrodiffusion_icons(descriptions) if descriptions else []
 
                 icon_bytes_result, icon_img, yoto_won_id = _pick_ai_icon(
-                    track_title, batch,
+                    track_title,
+                    batch,
                     yoto_icon_bytes=yoto_bytes,
                     yoto_media_id=matched_id,
                     descriptions=descriptions,
@@ -279,7 +282,8 @@ def resolve_icons(
 
                 if batch:
                     icon_bytes_result, icon_img, _ = _pick_ai_icon(
-                        track_title, batch,
+                        track_title,
+                        batch,
                         descriptions=descriptions,
                         album_description=album_desc,
                     )

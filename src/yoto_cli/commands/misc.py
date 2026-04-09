@@ -11,12 +11,11 @@ from pathlib import Path
 
 import click
 
+from yoto_cli.main import _complete_dirs, cli
 from yoto_lib.config import WORKERS
 from yoto_lib.playlist import write_jsonl
 from yoto_lib.yoto.api import YotoAPI
 from yoto_lib.yoto.auth import AuthError, run_device_code_flow
-
-from yoto_cli.main import cli, _complete_dirs
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +40,9 @@ def reorder(playlist):
 
     edited = click.edit(original)
 
-    from yoto_cli.progress import _console, success as _success
+    from yoto_cli.progress import _console
+    from yoto_cli.progress import success as _success
+
     if edited is None or edited == original:
         _console.print("[dim]No changes made.[/dim]")
         return
@@ -57,9 +58,7 @@ def reorder(playlist):
         except json.JSONDecodeError as exc:
             raise click.ClickException(f"Invalid JSON on line {i}: {exc}") from exc
         if not isinstance(value, str):
-            raise click.ClickException(
-                f"Line {i}: expected a JSON string, got {type(value).__name__}"
-            )
+            raise click.ClickException(f"Line {i}: expected a JSON string, got {type(value).__name__}")
         filenames.append(value)
 
     write_jsonl(playlist_path, filenames)
@@ -72,7 +71,9 @@ def init(path):
     """Scaffold a new playlist folder."""
     logger.debug("command: init path=%s", path)
     folder = Path(path)
-    from yoto_cli.progress import success as _success, warning as _warning
+    from yoto_cli.progress import success as _success
+    from yoto_cli.progress import warning as _warning
+
     folder.mkdir(parents=True, exist_ok=True)
     jsonl_path = folder / "playlist.jsonl"
     if not jsonl_path.exists():
@@ -86,21 +87,24 @@ def init(path):
 @cli.command()
 @click.argument("playlist", type=click.Path(exists=True), shell_complete=_complete_dirs)
 @click.option(
-    "--output", "-o",
+    "--output",
+    "-o",
     default=None,
     type=click.Path(),
     help="Output folder (defaults to <playlist>-exported/)",
 )
 def export(playlist, output):
     """Export MKA tracks back to their original audio format."""
-    from yoto_lib.mka import extract_audio, apply_source_patch
+    from yoto_lib.mka import apply_source_patch, extract_audio
 
     logger.debug("command: export playlist=%s output=%s", playlist, output)
     playlist_path = Path(playlist)
     output_path = Path(output) if output else playlist_path.parent / f"{playlist_path.name}-exported"
     output_path.mkdir(parents=True, exist_ok=True)
 
-    from yoto_cli.progress import _console, success as _success
+    from yoto_cli.progress import _console
+    from yoto_cli.progress import success as _success
+
     mka_files = sorted(playlist_path.glob("*.mka"))
     if not mka_files:
         _console.print("[dim]No .mka files found.[/dim]")
@@ -108,9 +112,10 @@ def export(playlist, output):
 
     import shutil
     import tempfile
-    from yoto_lib.mka import get_attachment, PATCH_ATTACHMENT_NAME
     from contextlib import nullcontext
+
     from yoto_cli.progress import make_progress
+    from yoto_lib.mka import PATCH_ATTACHMENT_NAME, get_attachment
 
     progress_ctx = make_progress() if sys.stderr.isatty() else nullcontext()
     with progress_ctx as progress:
@@ -167,8 +172,10 @@ def list_cmd():
     api = YotoAPI()
     cards = api.get_my_content()
 
-    from yoto_cli.progress import _console
     from rich.table import Table
+
+    from yoto_cli.progress import _console
+
     if not cards:
         _console.print("[dim]No cards found.[/dim]")
         return
@@ -216,7 +223,9 @@ def completions(shell):
         line = f"eval ({env_var} yoto)"
         config = Path.home() / ".config" / "fish" / "completions" / "yoto.fish"
 
-    from yoto_cli.progress import _console, success as _success
+    from yoto_cli.progress import _console
+    from yoto_cli.progress import success as _success
+
     # Check if already installed
     if config.exists() and marker in config.read_text(encoding="utf-8"):
         _console.print(f"[dim]Completions already installed in {config}[/dim]")

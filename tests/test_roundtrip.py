@@ -11,14 +11,14 @@ from unittest.mock import patch
 import pytest
 
 from yoto_lib.mka import (
-    wrap_in_mka,
-    write_tags,
+    PATCH_ATTACHMENT_NAME,
+    apply_source_patch,
     extract_audio,
     generate_source_patch,
-    apply_source_patch,
-    set_attachment,
     get_attachment,
-    PATCH_ATTACHMENT_NAME,
+    set_attachment,
+    wrap_in_mka,
+    write_tags,
 )
 
 
@@ -122,11 +122,14 @@ class TestRoundTripAfterMutation:
         assert generate_source_patch(sample_m4a, mka_path)
 
         # Mutate: add tags
-        write_tags(mka_path, {
-            "title": "Test Song",
-            "artist": "Test Artist",
-            "album": "Test Album",
-        })
+        write_tags(
+            mka_path,
+            {
+                "title": "Test Song",
+                "artist": "Test Artist",
+                "album": "Test Album",
+            },
+        )
 
         # Mutate: add icon attachment
         icon_data = b"\x89PNG\r\n\x1a\n" + b"\x00" * 200

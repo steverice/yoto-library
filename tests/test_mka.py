@@ -5,15 +5,15 @@ from unittest.mock import patch
 import pytest
 
 from yoto_lib.mka import (
-    wrap_in_mka,
-    read_tags,
-    write_tags,
-    get_attachment,
-    set_attachment,
-    remove_attachment,
-    extract_album_art,
-    probe_audio,
     TAG_MAP,
+    extract_album_art,
+    get_attachment,
+    probe_audio,
+    read_tags,
+    remove_attachment,
+    set_attachment,
+    wrap_in_mka,
+    write_tags,
 )
 
 
@@ -140,6 +140,7 @@ class TestReadSourceTags:
     def test_reads_tags_from_wav(self, sample_wav, tmp_path):
         """read_source_tags returns empty dict for a tag-less WAV (baseline)."""
         from yoto_lib.mka import read_source_tags
+
         tags = read_source_tags(sample_wav)
         assert isinstance(tags, dict)
 
@@ -148,6 +149,7 @@ class TestReadSourceTags:
     def test_reads_tags_from_tagged_mka(self, sample_wav, tmp_path):
         """read_source_tags works on MKA files too (ffprobe reads both)."""
         from yoto_lib.mka import read_source_tags
+
         mka = tmp_path / "tagged.mka"
         wrap_in_mka(sample_wav, mka)
         write_tags(mka, {"title": "Hello", "artist": "World", "genre": "Pop"})
@@ -163,7 +165,6 @@ class TestMetadataPreservation:
     @needs_mkvtoolnix
     def test_source_tags_survive_mka_roundtrip(self, sample_wav, tmp_path):
         """Tags read from source can be written to MKA and read back."""
-        from yoto_lib.mka import read_source_tags
 
         # WAV has no tags, so write some to the MKA manually to simulate
         mka = tmp_path / "output.mka"
@@ -252,11 +253,13 @@ class TestLyricsTagMapping:
 
     def test_lyrics_in_source_tag_aliases(self):
         from yoto_lib.mka import _SOURCE_TAG_ALIASES
+
         assert _SOURCE_TAG_ALIASES["lyrics"] == "lyrics"
         assert _SOURCE_TAG_ALIASES["LYRICS"] == "lyrics"
 
     def test_lyrics_reverse_map(self):
         from yoto_lib.mka import _REVERSE_TAG_MAP
+
         assert _REVERSE_TAG_MAP["LYRICS"] == "lyrics"
         assert _REVERSE_TAG_MAP["YOTO_LYRICS_SUMMARY"] == "lyrics_summary"
 

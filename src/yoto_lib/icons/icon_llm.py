@@ -30,11 +30,11 @@ def summarize_lyrics_for_icon(lyrics: str, track_title: str) -> str | None:
 
     prompt = (
         f'Given these lyrics for a children\'s audio track called "{track_title}", '
-        f'describe the key visual imagery in 1-2 sentences. '
-        f'Focus on concrete objects, animals, settings, and actions that could be '
-        f'depicted in a tiny 16x16 pixel art icon. No abstract themes or emotions.\n\n'
-        f'Lyrics:\n{truncated}\n\n'
-        f'Return ONLY the visual description, no explanation or preamble.'
+        f"describe the key visual imagery in 1-2 sentences. "
+        f"Focus on concrete objects, animals, settings, and actions that could be "
+        f"depicted in a tiny 16x16 pixel art icon. No abstract themes or emotions.\n\n"
+        f"Lyrics:\n{truncated}\n\n"
+        f"Return ONLY the visual description, no explanation or preamble."
     )
 
     text = _claude.call(prompt)
@@ -64,20 +64,20 @@ def describe_icons_llm(
         context += f"\n\nLyrics context: {lyrics_summary}\n"
 
     prompt = (
-        f'I need 3 different visual concepts for a 16x16 pixel art icon '
+        f"I need 3 different visual concepts for a 16x16 pixel art icon "
         f'representing a children\'s audio track called "{track_title}".{context}\n'
-        f'Each concept should be a concrete subject — an object, animal, or symbol '
-        f'that captures the track\'s meaning. Think emoji: would you recognize '
-        f'this at a glance if it were tiny? The silhouette alone should be readable.\n'
-        f'Pairs are fine (fishing rod + fish, baseball + bat) but avoid hands, '
-        f'faces, fine detail, or anything needing more than a few bold shapes.\n'
-        f'Do NOT describe characters from the show.\n\n'
-        f'Make the 3 concepts genuinely different from each other — explore '
-        f'literal, metaphorical, and mood-based angles rather than 3 variations '
-        f'of the same idea.\n\n'
-        f'Return ONLY a JSON array of 3 short image prompts (under 8 words each). '
+        f"Each concept should be a concrete subject — an object, animal, or symbol "
+        f"that captures the track's meaning. Think emoji: would you recognize "
+        f"this at a glance if it were tiny? The silhouette alone should be readable.\n"
+        f"Pairs are fine (fishing rod + fish, baseball + bat) but avoid hands, "
+        f"faces, fine detail, or anything needing more than a few bold shapes.\n"
+        f"Do NOT describe characters from the show.\n\n"
+        f"Make the 3 concepts genuinely different from each other — explore "
+        f"literal, metaphorical, and mood-based angles rather than 3 variations "
+        f"of the same idea.\n\n"
+        f"Return ONLY a JSON array of 3 short image prompts (under 8 words each). "
         f'Example: ["fishing rod and fish", "compass on a map", "sunset over calm water"]\n'
-        f'No explanation, no markdown, just the JSON array.'
+        f"No explanation, no markdown, just the JSON array."
     )
 
     try:
@@ -113,18 +113,18 @@ def match_icon_llm(
         media_id = icon.get("mediaId", "")
         title = icon.get("title", "") or icon.get("name", "")
         if media_id and title:
-            icon_lines.append(f"- mediaId: \"{media_id}\", title: \"{title}\"")
+            icon_lines.append(f'- mediaId: "{media_id}", title: "{title}"')
 
     if not icon_lines:
         return None, 0.0
 
     prompt = (
         f'Given the track title "{track_title}", which of these Yoto icons best '
-        f'represents it? Return ONLY a JSON object: '
+        f"represents it? Return ONLY a JSON object: "
         f'{{"mediaId": "<best_match_id>", "confidence": <0.0-1.0>}}. '
         f'If nothing fits, return {{"mediaId": "none", "confidence": 0.0}}. '
-        f'No explanation, no markdown, just JSON.\n\n'
-        f'Icons:\n' + "\n".join(icon_lines)
+        f"No explanation, no markdown, just JSON.\n\n"
+        f"Icons:\n" + "\n".join(icon_lines)
     )
 
     try:
@@ -164,8 +164,9 @@ def compare_icons_llm(
     Returns:
         (winner, scores) where winner is 1-indexed. On failure, returns (1, []).
     """
-    logger.debug("compare_icons_llm: title='%s' %d candidates (yoto=%s)",
-                  track_title, len(candidates), yoto_icon is not None)
+    logger.debug(
+        "compare_icons_llm: title='%s' %d candidates (yoto=%s)", track_title, len(candidates), yoto_icon is not None
+    )
     all_images = list(candidates)
     if yoto_icon is not None:
         all_images.append(yoto_icon)
@@ -192,19 +193,18 @@ def compare_icons_llm(
 
         context = ""
         if album_description:
-            context = f'\nAlbum/show context: {album_description}\n'
+            context = f"\nAlbum/show context: {album_description}\n"
 
         prompt = (
-            f'You are evaluating 16x16 pixel art icons for a children\'s audio '
+            f"You are evaluating 16x16 pixel art icons for a children's audio "
             f'track called "{track_title}".{context}\n'
-            f'Read each icon image and evaluate it on these criteria:\n'
-            f'1. Does it clearly depict the intended subject at tiny 16x16 size?\n'
-            f'2. Is it recognizable at a glance — bold shapes, not muddy detail?\n'
-            f'3. Does it capture the meaning or emotion of the track title?\n\n'
-            f'Think through each option briefly, then return a JSON object:\n'
+            f"Read each icon image and evaluate it on these criteria:\n"
+            f"1. Does it clearly depict the intended subject at tiny 16x16 size?\n"
+            f"2. Is it recognizable at a glance — bold shapes, not muddy detail?\n"
+            f"3. Does it capture the meaning or emotion of the track title?\n\n"
+            f"Think through each option briefly, then return a JSON object:\n"
             f'{{"winner": <1-indexed>, "scores": [<score_per_option>]}}\n'
-            f'Scores should be 0.0-1.0. End your response with the JSON.\n\n'
-            + "\n".join(file_list)
+            f"Scores should be 0.0-1.0. End your response with the JSON.\n\n" + "\n".join(file_list)
         )
 
         try:

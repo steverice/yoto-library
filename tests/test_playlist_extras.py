@@ -3,10 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
-from pathlib import Path
-
-import pytest
 
 from yoto_lib.playlist import (
     Playlist,
@@ -126,8 +122,13 @@ class TestDiffPlaylistsCoverHash:
 class TestDiffPlaylistsDescriptionChanged:
     def test_description_changed_from_none_to_text(self, tmp_path):
         pl = Playlist(
-            path=tmp_path, title="t", track_files=[],
-            card_id=None, description="new desc", has_cover=False, missing_files=[],
+            path=tmp_path,
+            title="t",
+            track_files=[],
+            card_id=None,
+            description="new desc",
+            has_cover=False,
+            missing_files=[],
         )
         remote = {"tracks": [], "description": None}
         diff = diff_playlists(pl, remote)
@@ -135,8 +136,13 @@ class TestDiffPlaylistsDescriptionChanged:
 
     def test_description_unchanged(self, tmp_path):
         pl = Playlist(
-            path=tmp_path, title="t", track_files=[],
-            card_id=None, description="same", has_cover=False, missing_files=[],
+            path=tmp_path,
+            title="t",
+            track_files=[],
+            card_id=None,
+            description="same",
+            has_cover=False,
+            missing_files=[],
         )
         remote = {"tracks": [], "description": "same"}
         diff = diff_playlists(pl, remote)
@@ -146,35 +152,60 @@ class TestDiffPlaylistsDescriptionChanged:
 class TestPlaylistProperties:
     def test_cover_path(self, tmp_path):
         pl = Playlist(
-            path=tmp_path, title="t", track_files=[], card_id=None,
-            description=None, has_cover=False, missing_files=[],
+            path=tmp_path,
+            title="t",
+            track_files=[],
+            card_id=None,
+            description=None,
+            has_cover=False,
+            missing_files=[],
         )
         assert pl.cover_path == tmp_path / "cover.png"
 
     def test_description_path(self, tmp_path):
         pl = Playlist(
-            path=tmp_path, title="t", track_files=[], card_id=None,
-            description=None, has_cover=False, missing_files=[],
+            path=tmp_path,
+            title="t",
+            track_files=[],
+            card_id=None,
+            description=None,
+            has_cover=False,
+            missing_files=[],
         )
         assert pl.description_path == tmp_path / "description.txt"
 
     def test_jsonl_path(self, tmp_path):
         pl = Playlist(
-            path=tmp_path, title="t", track_files=[], card_id=None,
-            description=None, has_cover=False, missing_files=[],
+            path=tmp_path,
+            title="t",
+            track_files=[],
+            card_id=None,
+            description=None,
+            has_cover=False,
+            missing_files=[],
         )
         assert pl.jsonl_path == tmp_path / "playlist.jsonl"
 
     def test_card_id_path(self, tmp_path):
         pl = Playlist(
-            path=tmp_path, title="t", track_files=[], card_id=None,
-            description=None, has_cover=False, missing_files=[],
+            path=tmp_path,
+            title="t",
+            track_files=[],
+            card_id=None,
+            description=None,
+            has_cover=False,
+            missing_files=[],
         )
         assert pl.card_id_path == tmp_path / ".yoto-card-id"
 
     def test_cover_hash_path(self, tmp_path):
         pl = Playlist(
-            path=tmp_path, title="t", track_files=[], card_id=None,
-            description=None, has_cover=False, missing_files=[],
+            path=tmp_path,
+            title="t",
+            track_files=[],
+            card_id=None,
+            description=None,
+            has_cover=False,
+            missing_files=[],
         )
         assert pl.cover_hash_path == tmp_path / ".yoto-cover-hash"

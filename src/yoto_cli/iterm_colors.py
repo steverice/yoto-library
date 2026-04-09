@@ -32,9 +32,7 @@ _COLOR_PROPS = [
     ("selection_color", "set_selection_color"),
     ("selected_text_color", "set_selected_text_color"),
     ("link_color", "set_link_color"),
-] + [
-    (f"ansi_{i}_color", f"set_ansi_{i}_color") for i in range(16)
-]
+] + [(f"ansi_{i}_color", f"set_ansi_{i}_color") for i in range(16)]
 
 
 def _auto_install_iterm2() -> bool:
@@ -45,14 +43,18 @@ def _auto_install_iterm2() -> bool:
     _install_attempted = True
 
     from yoto_cli.progress import _console
+
     _console.print("[dim]Installing iterm2 package for improved icon display...[/dim]")
 
     import subprocess
     import sys
+
     try:
         result = subprocess.run(
             [sys.executable, "-m", "pip", "install", "iterm2", "-q"],
-            capture_output=True, text=True, timeout=60,
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
         if result.returncode == 0:
             logger.debug("iterm_colors: auto-installed iterm2 package")
@@ -61,7 +63,9 @@ def _auto_install_iterm2() -> bool:
     except (subprocess.TimeoutExpired, OSError) as exc:
         logger.debug("iterm_colors: pip install error: %s", exc)
 
-    _console.print("[dim]Could not install iterm2 package. Run 'pip install iterm2' manually for improved icon display.[/dim]")
+    _console.print(
+        "[dim]Could not install iterm2 package. Run 'pip install iterm2' manually for improved icon display.[/dim]"
+    )
     return False
 
 
@@ -99,7 +103,10 @@ def ensure_srgb() -> list | None:
                 continue
             originals.append((setter, color))
             srgb_color = iterm2.Color(
-                color.red, color.green, color.blue, color.alpha,
+                color.red,
+                color.green,
+                color.blue,
+                color.alpha,
                 color_space=iterm2.ColorSpace.SRGB,
             )
             getattr(change, setter)(srgb_color)
@@ -110,6 +117,7 @@ def ensure_srgb() -> list | None:
         # Suppress iTerm2's "problem connecting" message on stderr
         import io
         import sys
+
         old_stderr = sys.stderr
         sys.stderr = io.StringIO()
         try:
@@ -146,6 +154,7 @@ def restore_colors(originals: list) -> None:
     try:
         import io
         import sys
+
         old_stderr = sys.stderr
         sys.stderr = io.StringIO()
         try:
@@ -165,6 +174,7 @@ def show_hint_if_needed() -> None:
     _hint_shown = True
 
     from yoto_cli.progress import _console
+
     _console.print(
         "[dim]Tip: For improved icon display, enable iTerm2's Python API "
         "(Preferences > General > Magic > Enable Python API)[/dim]"

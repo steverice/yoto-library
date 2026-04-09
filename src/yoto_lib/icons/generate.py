@@ -9,14 +9,14 @@ from typing import TYPE_CHECKING
 import httpx
 from PIL import Image
 
-from yoto_lib.mka import sanitize_filename as _sanitize_title
-from yoto_lib.providers.base import check_status_on_error
 from yoto_lib.icons.download import ICON_CACHE_DIR
 from yoto_lib.icons.image import (
     ICON_SIZE,
     _dominant_color_downscale,
     remove_solid_background,
 )
+from yoto_lib.mka import sanitize_filename as _sanitize_title
+from yoto_lib.providers.base import check_status_on_error
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +87,7 @@ def generate_raw_grid(track_title: str) -> bytes | None:
     """
     try:
         from yoto_lib.providers import get_provider
+
         provider = get_provider()
     except (ImportError, ValueError):
         return None
@@ -128,6 +129,7 @@ def generate_retrodiffusion_icon(track_title: str) -> tuple[bytes | None, bytes 
     else:
         logger.debug("generate_retrodiffusion_icon: generating for '%s'", track_title)
         from yoto_lib.providers.retrodiffusion_provider import RetroDiffusionProvider
+
         provider = RetroDiffusionProvider()
         prompt = _build_pixelart_prompt(track_title)
 
@@ -154,9 +156,9 @@ def generate_retrodiffusion_icon(track_title: str) -> tuple[bytes | None, bytes 
 @check_status_on_error(RetroDiffusionProvider)
 def generate_retrodiffusion_icons(
     descriptions: list[str],
-    on_progress: "Callable[[int], None] | None" = None,
-    on_icon_start: "Callable[[int, str], None] | None" = None,
-    on_icon_done: "Callable[[int], None] | None" = None,
+    on_progress: Callable[[int], None] | None = None,
+    on_icon_start: Callable[[int, str], None] | None = None,
+    on_icon_done: Callable[[int], None] | None = None,
 ) -> list[tuple[bytes, Image.Image]]:
     """Generate one 16x16 icon per visual description via Retro Diffusion.
 
@@ -198,10 +200,7 @@ def generate_retrodiffusion_icons(
     ordered: dict[int, tuple[bytes, Image.Image] | None] = {}
     done_count = 0
     with ThreadPoolExecutor(max_workers=len(descriptions)) as pool:
-        futures = [
-            pool.submit(_generate_one, i, desc)
-            for i, desc in enumerate(descriptions)
-        ]
+        futures = [pool.submit(_generate_one, i, desc) for i, desc in enumerate(descriptions)]
         for future in as_completed(futures):
             idx, result = future.result()
             ordered[idx] = result

@@ -17,14 +17,15 @@ _claude = ClaudeProvider()
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
     from yoto_lib.playlist import Playlist
 
 
 @check_status_on_error(ClaudeProvider)
 def generate_description(
-    playlist: "Playlist",
-    log: "Callable[[str], None] | None" = None,
-    ask_user: "Callable[[str], str] | None" = None,
+    playlist: Playlist,
+    log: Callable[[str], None] | None = None,
+    ask_user: Callable[[str], str] | None = None,
 ) -> None:
     """Generate description.txt from track metadata via Claude CLI.
 
@@ -80,10 +81,9 @@ def generate_description(
     _log(f"Generated description: {description}")
 
 
-def _collect_metadata(playlist: "Playlist") -> dict[str, list[str]]:
+def _collect_metadata(playlist: Playlist) -> dict[str, list[str]]:
     """Read MKA tags from all tracks, deduplicate values."""
-    fields = ["title", "artist", "album_artist", "composer", "genre",
-              "read_by", "category", "min_age", "max_age"]
+    fields = ["title", "artist", "album_artist", "composer", "genre", "read_by", "category", "min_age", "max_age"]
     collected: dict[str, list[str]] = {f: [] for f in fields}
     collected["track_titles"] = []
 

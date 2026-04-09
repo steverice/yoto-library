@@ -15,8 +15,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 from PIL import Image
 
-from yoto_lib.providers import get_provider
 from yoto_lib import mka
+from yoto_lib.providers import get_provider
 from yoto_lib.providers.base import check_status_on_error
 from yoto_lib.providers.claude_provider import ClaudeProvider
 
@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
     from yoto_lib.playlist import Playlist
 
 COVER_WIDTH = 638
@@ -120,9 +121,9 @@ def _crop_flux_result(recomposed_raw: bytes) -> bytes:
 def reframe_album_art(
     art_bytes: bytes,
     output_path: Path,
-    log: "Callable[[str], None] | None" = None,
-    on_step: "Callable[[], None] | None" = None,
-    on_inner: "Callable[[str | None, int | None, int | None], None] | None" = None,
+    log: Callable[[str], None] | None = None,
+    on_step: Callable[[], None] | None = None,
+    on_inner: Callable[[str | None, int | None, int | None], None] | None = None,
 ) -> None:
     """Reframe square album art into a portrait cover via AI recomposition.
 
@@ -142,6 +143,7 @@ def reframe_album_art(
 
     try:
         from yoto_lib.providers.together_provider import TogetherAIProvider
+
         provider = TogetherAIProvider()
 
         for attempt in range(1, max_attempts + 1):
@@ -267,10 +269,10 @@ def add_title_to_illustration(image_bytes: bytes, title: str, width: int, height
 
 
 def try_shared_album_art(
-    playlist: "Playlist",
-    log: "Callable[[str], None] | None" = None,
-    on_step: "Callable[[], None] | None" = None,
-    on_inner: "Callable[[str | None, int | None, int | None], None] | None" = None,
+    playlist: Playlist,
+    log: Callable[[str], None] | None = None,
+    on_step: Callable[[], None] | None = None,
+    on_inner: Callable[[str | None, int | None, int | None], None] | None = None,
 ) -> bool:
     """Check if all tracks share identical album art; if so, save it as the cover.
 
@@ -306,7 +308,9 @@ def try_shared_album_art(
         elif art_hash != first_hash:
             logger.debug(
                 "try_shared_album_art: art mismatch at %s (hash=%s, expected=%s)",
-                filename, art_hash[:12], first_hash[:12],
+                filename,
+                art_hash[:12],
+                first_hash[:12],
             )
             return False
 
@@ -323,8 +327,8 @@ def try_shared_album_art(
 
 @check_status_on_error(ClaudeProvider)
 def generate_cover_if_missing(
-    playlist: "Playlist",
-    log: "Callable[[str], None] | None" = None,
+    playlist: Playlist,
+    log: Callable[[str], None] | None = None,
     ignore_album_art: bool = False,
 ) -> None:
     """Generate a cover image for the playlist if one doesn't already exist."""
@@ -433,9 +437,9 @@ def describe_album_text(art_bytes: bytes) -> list[dict] | None:
             f"Describe ALL visible text and its visual style. For each text element:\n"
             f"- text: the exact text\n"
             f"- font: serif/sans-serif, bold/light, italic, etc.\n"
-            f"- color: be specific (e.g. \"dark gray\", \"white\", \"yellow-green\")\n"
+            f'- color: be specific (e.g. "dark gray", "white", "yellow-green")\n'
             f"- size: small/medium/large relative to the image\n"
-            f"- position: e.g. \"top-right corner\", \"bottom-center\"\n"
+            f'- position: e.g. "top-right corner", "bottom-center"\n'
             f"- orientation: horizontal or vertical\n\n"
             f"Skip any parental advisory or rating labels.\n"
             f"Return ONLY a JSON array. No commentary.",
@@ -456,7 +460,10 @@ def describe_album_text(art_bytes: bytes) -> list[dict] | None:
 
 
 def get_text_placement(
-    original: bytes, recomposed: bytes, width: int, height: int,
+    original: bytes,
+    recomposed: bytes,
+    width: int,
+    height: int,
 ) -> dict | None:
     """Ask Claude where to place text on the recomposed image.
 
@@ -506,8 +513,8 @@ def render_text_layer(original: bytes, text_descriptions: list[dict]) -> bytes |
     for t in text_descriptions:
         instructions.append(
             f'- "{t["text"]}" in {t.get("color", "white")} {t.get("font", "")} font, '
-            f'{t.get("size", "medium")} size, {t.get("position", "center")}, '
-            f'{t.get("orientation", "horizontal")}'
+            f"{t.get('size', 'medium')} size, {t.get('position', 'center')}, "
+            f"{t.get('orientation', 'horizontal')}"
         )
 
     if not instructions:
@@ -522,6 +529,7 @@ def render_text_layer(original: bytes, text_descriptions: list[dict]) -> bytes |
 
     try:
         from yoto_lib.providers.gemini_provider import GeminiProvider
+
         return GeminiProvider().generate(prompt, reference_image=original)
     except Exception as exc:
         logger.warning("render_text_layer: failed: %s", exc)
@@ -529,7 +537,9 @@ def render_text_layer(original: bytes, text_descriptions: list[dict]) -> bytes |
 
 
 def composite_text(
-    recomposed: bytes, text_layer: bytes, placement: dict,
+    recomposed: bytes,
+    text_layer: bytes,
+    placement: dict,
 ) -> bytes:
     """Chroma-key text from black background and composite onto recomposed image.
 
@@ -578,8 +588,8 @@ def composite_text(
 def repair_text(
     original: bytes,
     recomposed: bytes,
-    log: "Callable[[str], None] | None" = None,
-    on_inner: "Callable[[str | None, int | None, int | None], None] | None" = None,
+    log: Callable[[str], None] | None = None,
+    on_inner: Callable[[str | None, int | None, int | None], None] | None = None,
 ) -> bytes:
     """Repair missing/mangled text on a recomposed cover.
 
@@ -608,7 +618,10 @@ def repair_text(
     _inner("getting placement", 2, 4)
     recomposed_img = Image.open(io.BytesIO(recomposed))
     placement = get_text_placement(
-        original, recomposed, recomposed_img.width, recomposed_img.height,
+        original,
+        recomposed,
+        recomposed_img.width,
+        recomposed_img.height,
     )
     if not placement:
         logger.warning("repair_text: placement failed")
@@ -621,7 +634,9 @@ def repair_text(
 
 
 def pick_best_candidate(
-    original: bytes, candidates: list[bytes], debug_dir: Path,
+    original: bytes,
+    candidates: list[bytes],
+    debug_dir: Path,
 ) -> bytes:
     """Ask Claude to pick the best candidate from a set of imperfect options.
 
@@ -639,7 +654,7 @@ def pick_best_candidate(
             file_list.append(f"Candidate {i}: {p}")
 
         prompt = (
-            f"Compare these album cover candidates.\n\n"
+            "Compare these album cover candidates.\n\n"
             + "\n".join(file_list)
             + f"\n\nWhich candidate looks best as an album cover? Consider:\n"
             f"- Is the text readable and correctly spelled?\n"
@@ -664,5 +679,3 @@ def pick_best_candidate(
 
     logger.warning("pick_best_candidate: falling back to last candidate")
     return candidates[-1]
-
-
