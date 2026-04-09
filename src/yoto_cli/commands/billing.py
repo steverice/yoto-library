@@ -17,34 +17,31 @@ from yoto_cli.main import cli
 
 logger = logging.getLogger(__name__)
 
-# Map display names to (env_var, provider_class_import_path)
-_PROVIDERS = [
-    ("RetroDiffusion", "RETRODIFFUSION_API_KEY"),
-    ("OpenAI", "OPENAI_API_KEY"),
-    ("Together AI", "TOGETHER_API_KEY"),
-    ("Gemini", "GEMINI_API_KEY"),
-    ("Claude", None),  # always available (CLI-based)
-]
+# (provider_class, env_var_for_api_key) — None env var means always available
+def _get_provider_classes() -> list[tuple[type, str | None]]:
+    """Import and return all provider classes with their env var requirements."""
+    from yoto_lib.providers.retrodiffusion_provider import RetroDiffusionProvider
+    from yoto_lib.providers.openai_provider import OpenAIProvider
+    from yoto_lib.providers.together_provider import TogetherAIProvider
+    from yoto_lib.providers.gemini_provider import GeminiProvider
+    from yoto_lib.providers.claude_provider import ClaudeProvider
+
+    return [
+        (RetroDiffusionProvider, "RETRODIFFUSION_API_KEY"),
+        (OpenAIProvider, "OPENAI_API_KEY"),
+        (TogetherAIProvider, "TOGETHER_API_KEY"),
+        (GeminiProvider, "GEMINI_API_KEY"),
+        (ClaudeProvider, None),  # always available (CLI-based)
+    ]
 
 
 def _check_all_status() -> dict[str, tuple[bool | None, str | None]]:
     """Check status of all providers. Returns {name: (healthy, status_page_host)}."""
-    from yoto_lib.providers.openai_provider import OpenAIProvider
-    from yoto_lib.providers.together_provider import TogetherAIProvider
-    from yoto_lib.providers.claude_provider import ClaudeProvider
-
-    # Map display names to provider classes (only those with real checks)
-    provider_classes: dict[str, type] = {
-        "OpenAI": OpenAIProvider,
-        "Together AI": TogetherAIProvider,
-        "Claude": ClaudeProvider,
-    }
-
     results: dict[str, tuple[bool | None, str | None]] = {}
-    for name, _env_var in _PROVIDERS:
-        cls = provider_classes.get(name)
-        if cls is None:
-            results[name] = (None, None)
+
+    for cls, env_var in _get_provider_classes():
+        name = cls.display_name
+        if env_var and not os.environ.get(env_var):
             continue
 
         status = cls.check_status()
@@ -129,12 +126,7 @@ def _print_status(statuses: dict[str, tuple[bool | None, str | None]]) -> None:
     table.add_column()
     table.add_column(style="dim")
 
-    for name, _env_var in _PROVIDERS:
-        # Skip providers without API keys (except Claude which is always available)
-        if _env_var and not os.environ.get(_env_var):
-            continue
-
-        healthy, host = statuses.get(name, (None, None))
+    for name, (healthy, host) in statuses.items():
         if healthy is None:
             table.add_row(name, "[dim]--[/dim]", "")
         elif healthy:

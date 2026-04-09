@@ -34,6 +34,8 @@ class ProviderStatus:
 class Provider(ABC):
     """Base class for all external service providers."""
 
+    display_name: str  # Human-readable name, e.g. "Together AI"
+
     @classmethod
     def check_status(cls) -> ProviderStatus | None:
         """Check provider health.

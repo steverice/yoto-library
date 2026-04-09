@@ -24,6 +24,7 @@ def _extract_json(text: str) -> str:
 class ClaudeProvider(StatusPageMixin, Provider):
     """Calls Claude CLI for text/vision tasks (matching, comparison, description)."""
 
+    display_name = "Claude"
     status_page_url = "https://status.claude.com/api/v2/status.json"
 
     @classmethod

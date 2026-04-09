@@ -29,8 +29,10 @@ def _nearest_size(width: int, height: int) -> tuple[int, int]:
 
 
 class OpenAIProvider(StatusPageMixin, ImageProvider):
-    status_page_url = "https://status.openai.com/api/v2/status.json"
     """Generates images using the OpenAI images API (gpt-image-1.5)."""
+
+    display_name = "OpenAI"
+    status_page_url = "https://status.openai.com/api/v2/status.json"
 
     def __init__(self) -> None:
         self._client = OpenAI()
