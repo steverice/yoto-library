@@ -46,6 +46,11 @@ class ClaudeProvider(StatusPageMixin, Provider):
             return ProviderStatus(healthy=False, message="Claude CLI not found on PATH")
         return super().check_status()
 
+    @property
+    def is_subscription(self) -> bool:
+        """Subscription when using CLI (no API key), pay-per-call with SDK."""
+        return "ANTHROPIC_API_KEY" not in os.environ
+
     def call(
         self,
         prompt: str,
@@ -101,8 +106,8 @@ class ClaudeProvider(StatusPageMixin, Provider):
                 text = _extract_json(text)
 
             logger.debug("claude_provider.call_sdk response: %s", text[:500])
-            from yoto_lib.billing.costs import get_tracker, is_subscription
-            get_tracker().record(f"claude_{model}", subscription=is_subscription(f"claude_{model}"))
+            from yoto_lib.billing.costs import get_tracker
+            get_tracker().record(f"claude_{model}", subscription=self.is_subscription)
             return text
         except Exception as exc:
             logger.debug("claude_provider.call_sdk: failed with %s: %s", type(exc).__name__, exc)
@@ -141,8 +146,8 @@ class ClaudeProvider(StatusPageMixin, Provider):
             if extract_json:
                 text = _extract_json(text)
             logger.debug("claude_provider.call_cli response: %s", text[:500])
-            from yoto_lib.billing.costs import get_tracker, is_subscription
-            get_tracker().record(f"claude_{model}", subscription=is_subscription(f"claude_{model}"))
+            from yoto_lib.billing.costs import get_tracker
+            get_tracker().record(f"claude_{model}", subscription=self.is_subscription)
             return text
         except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
             logger.debug("claude_provider.call_cli: failed with %s", type(exc).__name__)
