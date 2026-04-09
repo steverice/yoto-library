@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 _PROVIDERS = [
     ("RetroDiffusion", "RETRODIFFUSION_API_KEY"),
     ("OpenAI", "OPENAI_API_KEY"),
-    ("FLUX (Together)", "TOGETHER_API_KEY"),
+    ("Together AI", "TOGETHER_API_KEY"),
     ("Gemini", "GEMINI_API_KEY"),
     ("Claude", None),  # always available (CLI-based)
 ]
@@ -36,7 +36,7 @@ def _check_all_status() -> dict[str, tuple[bool | None, str | None]]:
     # Map display names to provider classes (only those with real checks)
     provider_classes: dict[str, type] = {
         "OpenAI": OpenAIProvider,
-        "FLUX (Together)": TogetherAIProvider,
+        "Together AI": TogetherAIProvider,
         "Claude": ClaudeProvider,
     }
 
