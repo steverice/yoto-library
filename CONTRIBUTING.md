@@ -57,8 +57,9 @@ Releases are automated via CI and restricted to maintainers. Never run `cz bump`
 
 To publish a release:
 
-1. Go to **Actions > Publish to PyPI > Run workflow** (or `gh workflow run publish.yml`)
-2. The workflow bumps the version, updates `CHANGELOG.md`, builds, publishes to TestPyPI then PyPI, and creates a GitHub release
+1. Run the Release workflow: **Actions > Release > Run workflow** (or `gh workflow run publish.yml`)
+2. The workflow bumps the version, updates `CHANGELOG.md`, builds, pushes the tag, and creates a GitHub release
+3. Publish to PyPI: `gh workflow run pypi.yml --ref v<version>` (using the tag just created)
 
 The version bump is determined automatically from commit history since the last tag:
 - `feat:` commits → minor bump

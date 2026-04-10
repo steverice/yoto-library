@@ -44,12 +44,18 @@ brew install ffmpeg mkvtoolnix yt-dlp
 ## Installation
 
 ```
-git clone <repo-url>
-cd yoto-library
-pip install -e .
+pip install yoto-library
 ```
 
 This installs the `yoto` command.
+
+To install from source:
+
+```
+git clone https://github.com/steverice/yoto-library.git
+cd yoto-library
+pip install -e .
+```
 
 ## Quick start
 
