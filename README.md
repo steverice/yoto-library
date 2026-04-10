@@ -4,6 +4,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey?logo=apple)](https://github.com)
 [![Built with Claude Code](https://img.shields.io/badge/Built%20with-Claude%20Code-6b48ff?logo=anthropic)](https://claude.ai/code)
+[![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow?logo=conventionalcommits&logoColor=white)](https://conventionalcommits.org)
+[![Gitmoji](https://img.shields.io/badge/gitmoji-%20😜%20😍-FFDD67)](https://gitmoji.dev)
 
 Manage Yoto Player Create-Your-Own (CYO) playlists as folders on disk, with two-way sync to the Yoto API.
 
