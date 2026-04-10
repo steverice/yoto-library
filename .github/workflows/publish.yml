@@ -1,4 +1,4 @@
-name: Publish to PyPI
+name: Release
 
 on:
   workflow_dispatch:
@@ -40,12 +40,12 @@ jobs:
       - name: Run unit tests
         run: make test
 
-  bump-and-build:
-    name: Bump, Build & Push
+  bump-and-release:
+    name: Bump, Build & Release
     needs: [lint, unit-test]
     runs-on: ubuntu-latest
     outputs:
-      bumped: ${{ steps.bump.outputs.bumped }}
+      released: ${{ steps.bump.outputs.bumped }}
       version: ${{ steps.bump.outputs.version }}
     permissions:
       contents: write
@@ -90,65 +90,11 @@ jobs:
           git push origin ${{ github.ref_name }}
           git push origin "v${{ steps.bump.outputs.version }}"
 
-      - uses: actions/upload-artifact@v4
+      - name: Create GitHub release
         if: steps.bump.outputs.bumped == 'true'
-        with:
-          name: dist
-          path: dist/
-
-  publish-testpypi:
-    name: Publish to TestPyPI
-    needs: bump-and-build
-    if: needs.bump-and-build.outputs.bumped == 'true'
-    runs-on: ubuntu-latest
-    environment: testpypi
-    permissions:
-      id-token: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-      - uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
-
-  publish:
-    name: Publish to PyPI
-    needs: [bump-and-build, publish-testpypi]
-    if: needs.bump-and-build.outputs.bumped == 'true'
-    runs-on: ubuntu-latest
-    environment: pypi
-    permissions:
-      id-token: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-      - uses: pypa/gh-action-pypi-publish@release/v1
-
-  release:
-    name: Create GitHub Release
-    needs: [bump-and-build, publish]
-    if: needs.bump-and-build.outputs.bumped == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Pull latest
-        run: git pull origin ${{ github.ref_name }}
-
-      - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v${{ needs.bump-and-build.outputs.version }}" \
-            --title "v${{ needs.bump-and-build.outputs.version }}" \
+          gh release create "v${{ steps.bump.outputs.version }}" \
+            --title "v${{ steps.bump.outputs.version }}" \
             --generate-notes
