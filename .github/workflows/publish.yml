@@ -90,8 +90,21 @@ jobs:
           git push origin ${{ github.ref_name }}
           git push origin "v${{ steps.bump.outputs.version }}"
 
-      - name: Create GitHub release
+      - name: Check if release already exists
         if: steps.bump.outputs.bumped == 'true'
+        id: check-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.bump.outputs.version }}" &>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release v${{ steps.bump.outputs.version }} already exists — skipping"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub release
+        if: steps.bump.outputs.bumped == 'true' && steps.check-release.outputs.exists != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
