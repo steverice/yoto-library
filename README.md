@@ -1,5 +1,7 @@
 # yoto-library
 
+[![CI](https://github.com/steverice/yoto-library/actions/workflows/ci.yml/badge.svg)](https://github.com/steverice/yoto-library/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/yoto-library?logo=pypi&logoColor=white)](https://pypi.org/project/yoto-library/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey?logo=apple)](https://github.com)
