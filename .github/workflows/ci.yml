@@ -23,6 +23,25 @@ jobs:
       - name: Run linters
         run: make lint
 
+  commit-check:
+    name: Commit Messages
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install commitizen
+        run: pip install commitizen cz-conventional-gitmoji
+
+      - name: Validate commit messages
+        run: cz check --rev-range origin/main..HEAD
+
   unit-test:
     name: Unit Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
