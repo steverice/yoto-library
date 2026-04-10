@@ -321,23 +321,7 @@ The `iterm2` Python package will be installed automatically on first use. Withou
 
 ## Development
 
-Install dev dependencies:
-
-```
-pip install -e ".[dev]"
-```
-
-Run tests:
-
-```
-python -m pytest
-```
-
-Integration tests (require network access and yt-dlp) are marked separately:
-
-```
-python -m pytest -m integration
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, commit conventions, and release process.
 
 ## Architecture
 

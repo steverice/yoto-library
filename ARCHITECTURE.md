@@ -246,3 +246,14 @@ Lightroom handles color-managed printing:
 
 Configuration via environment variables: `YOTO_PRINTER` (CUPS name) and `YOTO_ICC_PROFILE`
 (ICC profile path).
+
+## Release pipeline
+
+Releases are published via a manual `workflow_dispatch` GitHub Actions workflow. The pipeline:
+
+1. **Lint + test** — ruff, ty, pytest across Python 3.10–3.13
+2. **Version bump** — commitizen reads commits since the last tag, determines the bump type (patch/minor/major), updates `pyproject.toml` and `CHANGELOG.md`, commits and tags
+3. **Build** — builds sdist and wheel, validating the package before pushing
+4. **Push** — pushes the bump commit and tag to `main`
+5. **Publish** — uploads to TestPyPI, then PyPI via OIDC trusted publishing
+6. **Release** — creates a GitHub release with auto-generated notes

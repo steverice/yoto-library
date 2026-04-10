@@ -103,12 +103,14 @@ python -m pytest tests/test_foo.py  # single module
 
 Tests mock external calls (Yoto API, subprocess, Claude CLI). See `conftest.py` for shared fixtures. Tests use pytest's built-in `tmp_path` for temporary filesystem state.
 
-## Pre-commit checks
+## Commits and releases
 
-Run `make check` before every commit. This runs linting and unit tests.
-If formatting fails, run `make format` to auto-fix, then re-run `make check`.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for commit conventions and release process.
 
-Do not skip or bypass these checks.
+Agent-specific caveats:
+- Pre-commit hooks may not run automatically in your environment. Validate commit messages against conventional commit format (`type: description` or `type(scope): description`) before committing. Valid types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `ci`.
+- Run `make check` before every commit.
+- Never run `cz bump` — releases are CI-only via `workflow_dispatch`.
 
 ## External tool dependencies
 
