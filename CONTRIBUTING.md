@@ -21,8 +21,8 @@ This project uses [Conventional Commits](https://www.conventionalcommits.org/) w
 | `style:`   | 🎨    | Formatting, no code change         | none        |
 | `refactor:`| ♻️    | Code change, no new feature or fix | none        |
 | `test:`    | ✅    | Adding or updating tests           | none        |
-| `chore:`   | 🔧    | Maintenance, tooling, config       | none        |
-| `ci:`      | 👷    | CI/CD changes                      | none        |
+| `chore:`   | 🧹    | Maintenance, tooling, config       | none        |
+| `ci:`      | 💚    | CI/CD changes                      | none        |
 
 Include a scope when it helps: `feat(covers): add outpainting support`.
 
