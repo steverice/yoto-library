@@ -1,3 +1,14 @@
+## v0.1.2 (2026-04-10)
+
+### 🐛🚑️ Fixes
+
+- upgrade GitHub Actions to Node.js 24 compatible versions
+
+### 💚👷 CI & Build
+
+- make release and publish workflows idempotent
+- split release and PyPI publish into separate workflows
+
 ## v0.1.1 (2026-04-10)
 
 ### 🐛🚑️ Fixes
