@@ -83,11 +83,11 @@ def ensure_srgb() -> list | None:
         return None
 
     try:
-        import iterm2
+        import iterm2  # ty: ignore[unresolved-import]
     except ImportError:
         if not _auto_install_iterm2():
             return None
-        import iterm2
+        import iterm2  # ty: ignore[unresolved-import]
 
     originals = []
 
@@ -144,7 +144,7 @@ def ensure_srgb() -> list | None:
 def restore_colors(originals: list) -> None:
     """Restore original iTerm2 session colors after sRGB override."""
     try:
-        import iterm2
+        import iterm2  # ty: ignore[unresolved-import]
     except ImportError:
         return
 
