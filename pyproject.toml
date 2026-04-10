@@ -6,7 +6,24 @@ build-backend = "hatchling.build"
 name = "yoto-library"
 version = "0.1.0"
 description = "Manage Yoto CYO playlists as folders on disk"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.10"
+authors = [
+    { name = "Steve Rice" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio",
+]
 dependencies = [
     "click>=8.0",
     "httpx>=0.27",
@@ -36,6 +53,11 @@ dev = [
 iterm2 = [
     "iterm2>=2.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/steverice/yoto-library"
+Source = "https://github.com/steverice/yoto-library"
+Issues = "https://github.com/steverice/yoto-library/issues"
 
 [project.scripts]
 yoto = "yoto_cli.main:cli"
