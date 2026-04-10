@@ -40,39 +40,66 @@ jobs:
       - name: Run unit tests
         run: make test
 
-  build:
-    name: Build package
+  bump-and-build:
+    name: Bump, Build & Push
     needs: [lint, unit-test]
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.version.outputs.version }}
+      bumped: ${{ steps.bump.outputs.bumped }}
+      version: ${{ steps.bump.outputs.version }}
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
-      - name: Get version
-        id: version
-        run: |
-          version=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Install tools
+        run: pip install commitizen cz-conventional-gitmoji build
 
-      - name: Install build tools
-        run: pip install build
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        id: bump
+        run: |
+          if cz bump --yes --changelog 2>&1; then
+            VERSION=$(cz version --project)
+            echo "bumped=true" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "Bumped to $VERSION"
+          else
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
+            echo "No bumpable commits found — skipping release"
+          fi
 
       - name: Build sdist and wheel
+        if: steps.bump.outputs.bumped == 'true'
         run: python -m build
 
+      - name: Push bump commit and tag
+        if: steps.bump.outputs.bumped == 'true'
+        run: |
+          git push origin ${{ github.ref_name }}
+          git push origin "v${{ steps.bump.outputs.version }}"
+
       - uses: actions/upload-artifact@v4
+        if: steps.bump.outputs.bumped == 'true'
         with:
           name: dist
           path: dist/
 
   publish-testpypi:
     name: Publish to TestPyPI
-    needs: build
+    needs: bump-and-build
+    if: needs.bump-and-build.outputs.bumped == 'true'
     runs-on: ubuntu-latest
     environment: testpypi
     permissions:
@@ -89,7 +116,8 @@ jobs:
 
   publish:
     name: Publish to PyPI
-    needs: publish-testpypi
+    needs: [bump-and-build, publish-testpypi]
+    if: needs.bump-and-build.outputs.bumped == 'true'
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -104,17 +132,23 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [build, publish]
+    needs: [bump-and-build, publish]
+    if: needs.bump-and-build.outputs.bumped == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Pull latest
+        run: git pull origin ${{ github.ref_name }}
 
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v${{ needs.build.outputs.version }}" \
-            --title "v${{ needs.build.outputs.version }}" \
+          gh release create "v${{ needs.bump-and-build.outputs.version }}" \
+            --title "v${{ needs.bump-and-build.outputs.version }}" \
             --generate-notes
