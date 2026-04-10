@@ -1,3 +1,9 @@
+## v0.1.3 (2026-04-10)
+
+### 🐛🚑️ Fixes
+
+- trigger PyPI workflow via workflow_dispatch from release workflow
+
 ## v0.1.2 (2026-04-10)
 
 ### 🐛🚑️ Fixes
