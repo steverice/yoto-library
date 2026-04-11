@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 @click.argument("path", type=click.Path(), required=False, default=None, shell_complete=_complete_lyrics_path)
 @click.option("--force", is_flag=True, help="Re-fetch lyrics even if already present / skip confirmation for stdin")
 @click.option("--show", is_flag=True, help="Display stored lyrics for each track")
+@click.option("--clear", is_flag=True, help="Remove stored lyrics from tracks")
 @click.option(
     "--add-source",
     "add_source_url",
@@ -27,14 +28,21 @@ logger = logging.getLogger(__name__)
     metavar="URL",
     help="Analyze a lyrics website and generate a scraping config.",
 )
-def lyrics(path: str | None, force: bool, show: bool, add_source_url: str | None) -> None:
+def lyrics(path: str | None, force: bool, show: bool, clear: bool, add_source_url: str | None) -> None:
     """Fetch and store lyrics for tracks in a playlist folder or single track.
 
     Accepts a playlist folder or a single .mka file. When piping lyrics via
     stdin (e.g. `cat lyrics.txt | yoto lyrics track.mka`), requires a single
     track path. Use --force to skip confirmation when overwriting.
     """
-    logger.debug("command: lyrics path=%s force=%s show=%s add_source_url=%s", path, force, show, add_source_url)
+    logger.debug(
+        "command: lyrics path=%s force=%s show=%s clear=%s add_source_url=%s",
+        path,
+        force,
+        show,
+        clear,
+        add_source_url,
+    )
     from rich.prompt import Confirm
 
     from yoto_cli.progress import _console
@@ -181,6 +189,16 @@ def lyrics(path: str | None, force: bool, show: bool, add_source_url: str | None
                         width=min(120, _console.width),
                     )
                 )
+        return
+
+    if clear:
+        for mka_path in mka_files:
+            tags = read_tags(mka_path)
+            if not tags.get("lyrics"):
+                _console.print(f"  [dim]{mka_path.name}: no lyrics to clear[/dim]")
+                continue
+            write_tags(mka_path, {"lyrics": "", "lyrics_summary": ""})
+            _console.print(f"  {mka_path.name}: lyrics cleared")
         return
 
     from yoto_cli.progress import make_progress
