@@ -94,6 +94,8 @@ def _icc_convert(img: Image.Image, icc_profile: str) -> Image.Image:
     Handles both standard printer profiles (prtr) and device link profiles (link).
     """
     try:
+        if img.mode != "RGB":
+            img = img.convert("RGB")
         profile = ImageCms.getOpenProfile(icc_profile)
         if profile.profile.device_class == "link":
             transform = ImageCms.buildTransform(profile, profile, "RGB", "RGB")

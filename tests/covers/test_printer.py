@@ -148,6 +148,23 @@ class TestIccConvert:
         mock_cms.createProfile.assert_called_once_with("sRGB")
         mock_cms.profileToProfile.assert_called_once()
 
+    def test_palette_mode_converted_to_rgb(self):
+        """Palette-mode (P) image is converted to RGB before ICC transform."""
+        img = Image.new("P", (100, 160))
+
+        with patch("yoto_lib.covers.printer.ImageCms") as mock_cms:
+            mock_profile = MagicMock()
+            mock_profile.profile.device_class = "prtr"
+            mock_cms.getOpenProfile.return_value = mock_profile
+            mock_cms.createProfile.return_value = MagicMock()
+            mock_cms.profileToProfile.return_value = Image.new("RGB", (100, 160))
+
+            _icc_convert(img, "/path/to/printer.icc")
+
+        # The image passed to profileToProfile should be RGB, not P
+        actual_img = mock_cms.profileToProfile.call_args[0][0]
+        assert actual_img.mode == "RGB"
+
     def test_profile_error_raises(self):
         """PrintError when ICC profile can't be applied."""
         img = Image.new("RGB", (100, 160), color="blue")
