@@ -132,6 +132,43 @@ def import_cmd(source, output):
     from yoto_cli.progress import _console
     from yoto_cli.progress import success as _success
 
+    # Resolve .webloc files into .mka tracks before scanning for audio
+    webloc_count = len(list(source_path.glob("*.webloc")))
+    if webloc_count > 0:
+        if sys.stderr.isatty():
+            from yoto_cli.progress import make_progress
+
+            with make_progress() as dl_progress:
+                dl_task = dl_progress.add_task("Downloading", total=webloc_count, status="")
+                inner_tasks: dict[str, TaskID] = {}
+
+                def on_track_start(name: str) -> None:
+                    inner_tasks[name] = dl_progress.add_task(name, total=100, status="")
+
+                def on_download_progress(name: str, pct: float, downloaded: int, total: int | None, speed: str) -> None:
+                    inner_task = inner_tasks.get(name)
+                    if inner_task is not None:
+                        dl_progress.update(inner_task, completed=pct, status=speed or "")
+
+                def on_track_done(name: str) -> None:
+                    dl_progress.update(dl_task, advance=1, status=name)
+                    for key, tid in list(inner_tasks.items()):
+                        inner_tasks.pop(key)
+                        dl_progress.remove_task(tid)
+                        break
+
+                downloaded = resolve_weblocs(
+                    source_path,
+                    on_track_start=on_track_start,
+                    on_download_progress=on_download_progress,
+                    on_track_done=on_track_done,
+                )
+        else:
+            downloaded = resolve_weblocs(source_path)
+
+        for mka_path in downloaded:
+            _console.print(f"  Downloaded: {mka_path.name}")
+
     audio_files = scan_audio_files(source_path)
     if not audio_files:
         _console.print("[dim]No audio files found.[/dim]")
