@@ -7,10 +7,13 @@ import logging
 import re
 import shutil
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+import httpx
 
 if TYPE_CHECKING:
     from typing import Any
@@ -20,6 +23,7 @@ logger = logging.getLogger(__name__)
 _LYRICS_DIR = Path.home() / ".yoto" / "lyrics"
 _SCRAPE_RUNNER = Path(__file__).parent / "scrape_runner.js"
 _MIN_SIMILARITY = 0.6
+_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"  # noqa: E501
 
 # Module-level session cache keyed by source URL
 _index_cache: dict[str, dict[str, str]] = {}
@@ -36,6 +40,27 @@ class LyricsSource:
 def _normalize(s: str) -> str:
     """Lowercase and strip punctuation for fuzzy comparison."""
     return re.sub(r"[^\w\s]", "", s.lower()).strip()
+
+
+def _fetch_html(url: str) -> str | None:
+    """Fetch HTML using Python httpx.
+
+    Some sites use TLS fingerprinting to block Node.js fetch() and curl while
+    allowing Python HTTP clients.  Pre-fetching in Python and passing the HTML
+    to the JS runner via --html avoids these 403 blocks.
+    """
+    try:
+        response = httpx.get(
+            url,
+            follow_redirects=True,
+            timeout=30.0,
+            headers={"User-Agent": _USER_AGENT},
+        )
+        response.raise_for_status()
+        return response.text
+    except httpx.HTTPError as exc:
+        logger.warning("_fetch_html: failed to fetch %s: %s", url, exc)
+        return None
 
 
 def load_lyrics_sources() -> list[LyricsSource]:
@@ -120,7 +145,17 @@ def _fetch_index(source: LyricsSource) -> dict[str, str]:
     if source.url in _index_cache:
         return _index_cache[source.url]
 
-    raw = _run_js(source.index_js, url=source.url)
+    html = _fetch_html(source.url)
+    if html is None:
+        _index_cache[source.url] = {}
+        return {}
+
+    html_path = Path(tempfile.mkstemp(suffix=".html")[1])
+    html_path.write_text(html, encoding="utf-8")
+    try:
+        raw = _run_js(source.index_js, url=source.url, html_path=html_path)
+    finally:
+        html_path.unlink(missing_ok=True)
 
     if not isinstance(raw, list):
         logger.warning("lyrics_scrape: index for %s returned unexpected type %s", source.name, type(raw).__name__)
@@ -165,7 +200,17 @@ def _fetch_lyrics(url: str, source: LyricsSource) -> str | None:
 
     Returns the stripped lyrics string, or None on failure.
     """
-    result = _run_js(source.lyrics_js, url=url)
+    html = _fetch_html(url)
+    if html is None:
+        return None
+
+    html_path = Path(tempfile.mkstemp(suffix=".html")[1])
+    html_path.write_text(html, encoding="utf-8")
+    try:
+        result = _run_js(source.lyrics_js, url=url, html_path=html_path)
+    finally:
+        html_path.unlink(missing_ok=True)
+
     if isinstance(result, str) and result.strip():
         return result.strip()
     logger.warning("_fetch_lyrics: expected str from JS snippet, got %s", type(result).__name__)

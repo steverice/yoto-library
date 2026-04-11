@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import httpx
 import pytest
 
 # ---------------------------------------------------------------------------
@@ -111,15 +110,6 @@ def test_analyze_lyrics_page_missing_key(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def _make_httpx_response(text: str, status_code: int = 200) -> MagicMock:
-    """Build a fake httpx.Response-like object."""
-    mock = MagicMock()
-    mock.text = text
-    mock.status_code = status_code
-    mock.raise_for_status = MagicMock()
-    return mock
-
-
 def test_run_wizard_success():
     """Full happy-path: all mocks cooperate → returns dict with all expected keys."""
     from yoto_lib.lyrics.lyrics_source_wizard import run_wizard
@@ -129,17 +119,14 @@ def test_run_wizard_success():
     song_title = "Song One"
     lyrics_text = "Some lyrics text"
 
-    index_response = _make_httpx_response("<html>index</html>")
-    song_response = _make_httpx_response("<html>song</html>")
+    fetch_count = 0
 
-    call_count = 0
-
-    def fake_httpx_get(url, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            return index_response
-        return song_response
+    def fake_fetch_html(url):
+        nonlocal fetch_count
+        fetch_count += 1
+        if fetch_count == 1:
+            return "<html>index</html>"
+        return "<html>song</html>"
 
     run_js_count = 0
 
@@ -156,7 +143,7 @@ def test_run_wizard_success():
     lyrics_analysis = {"lyrics_js": "return ''"}
 
     with (
-        patch("yoto_lib.lyrics.lyrics_source_wizard.httpx.get", side_effect=fake_httpx_get),
+        patch("yoto_lib.lyrics.lyrics_source_wizard._fetch_html", side_effect=fake_fetch_html),
         patch("yoto_lib.lyrics.lyrics_source_wizard._analyze_index_page", return_value=index_analysis),
         patch("yoto_lib.lyrics.lyrics_source_wizard._analyze_lyrics_page", return_value=lyrics_analysis),
         patch("yoto_lib.lyrics.lyrics_source_wizard._run_js", side_effect=fake_run_js),
@@ -172,14 +159,11 @@ def test_run_wizard_success():
 
 
 def test_run_wizard_fetch_error():
-    """httpx.get raises HTTPError → raises ValueError."""
+    """_fetch_html returns None → raises ValueError."""
     from yoto_lib.lyrics.lyrics_source_wizard import run_wizard
 
     with (
-        patch(
-            "yoto_lib.lyrics.lyrics_source_wizard.httpx.get",
-            side_effect=httpx.HTTPError("connection failed"),
-        ),
+        patch("yoto_lib.lyrics.lyrics_source_wizard._fetch_html", return_value=None),
         pytest.raises(ValueError, match="Failed to fetch"),
     ):
         run_wizard("https://example.com/songs")
@@ -189,12 +173,10 @@ def test_run_wizard_index_js_no_results():
     """_run_js returns [] for index step → raises ValueError."""
     from yoto_lib.lyrics.lyrics_source_wizard import run_wizard
 
-    index_response = _make_httpx_response("<html>index</html>")
-
     index_analysis = {"name": "Test Archive", "index_js": "return []"}
 
     with (
-        patch("yoto_lib.lyrics.lyrics_source_wizard.httpx.get", return_value=index_response),
+        patch("yoto_lib.lyrics.lyrics_source_wizard._fetch_html", return_value="<html>index</html>"),
         patch("yoto_lib.lyrics.lyrics_source_wizard._analyze_index_page", return_value=index_analysis),
         patch("yoto_lib.lyrics.lyrics_source_wizard._run_js", return_value=[]),
         pytest.raises(ValueError, match="no results"),
@@ -210,17 +192,14 @@ def test_run_wizard_lyrics_js_no_content():
     song_url = "https://example.com/song/one"
     song_title = "Song One"
 
-    index_response = _make_httpx_response("<html>index</html>")
-    song_response = _make_httpx_response("<html>song</html>")
+    fetch_count = 0
 
-    call_count = 0
-
-    def fake_httpx_get(url, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            return index_response
-        return song_response
+    def fake_fetch_html(url):
+        nonlocal fetch_count
+        fetch_count += 1
+        if fetch_count == 1:
+            return "<html>index</html>"
+        return "<html>song</html>"
 
     run_js_results = [
         [{"title": song_title, "url": song_url}],  # index validation succeeds
@@ -231,7 +210,7 @@ def test_run_wizard_lyrics_js_no_content():
     lyrics_analysis = {"lyrics_js": "return ''"}
 
     with (
-        patch("yoto_lib.lyrics.lyrics_source_wizard.httpx.get", side_effect=fake_httpx_get),
+        patch("yoto_lib.lyrics.lyrics_source_wizard._fetch_html", side_effect=fake_fetch_html),
         patch("yoto_lib.lyrics.lyrics_source_wizard._analyze_index_page", return_value=index_analysis),
         patch("yoto_lib.lyrics.lyrics_source_wizard._analyze_lyrics_page", return_value=lyrics_analysis),
         patch("yoto_lib.lyrics.lyrics_source_wizard._run_js", side_effect=run_js_results),

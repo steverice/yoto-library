@@ -9,15 +9,11 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
-import httpx
-
 from yoto_lib.providers.claude_provider import ClaudeProvider
 
-from .lyrics_scrape import _run_js
+from .lyrics_scrape import _fetch_html, _run_js
 
 logger = logging.getLogger(__name__)
-
-_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"  # noqa: E501
 
 
 def _analyze_index_page(html_path: Path) -> dict[str, str]:
@@ -113,17 +109,11 @@ def run_wizard(
         if on_step:
             on_step(msg)
 
-    headers = {"User-Agent": _USER_AGENT}
-
     # Step 1: fetch index page
     _step("Fetching index page…")
-    try:
-        response = httpx.get(index_url, follow_redirects=True, timeout=30.0, headers=headers)
-        response.raise_for_status()
-    except httpx.HTTPError as exc:
-        raise ValueError(f"Failed to fetch index URL {index_url!r}: {exc}") from exc
-
-    index_html = response.text
+    index_html = _fetch_html(index_url)
+    if index_html is None:
+        raise ValueError(f"Failed to fetch index URL {index_url!r}")
 
     index_tmp: Path | None = None
     song_tmp: Path | None = None
@@ -157,14 +147,12 @@ def run_wizard(
 
         # Step 5: fetch song lyrics page
         _step(f"Fetching sample song: {song_title}…")
-        try:
-            song_response = httpx.get(song_url, follow_redirects=True, timeout=30.0, headers=headers)
-            song_response.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise ValueError(f"Failed to fetch song URL {song_url!r}: {exc}") from exc
+        song_html = _fetch_html(song_url)
+        if song_html is None:
+            raise ValueError(f"Failed to fetch song URL {song_url!r}")
 
         with tempfile.NamedTemporaryFile(suffix=".html", mode="w", encoding="utf-8", delete=False) as f:
-            f.write(song_response.text)
+            f.write(song_html)
             song_tmp = Path(f.name)
 
         # Step 6: analyze lyrics page

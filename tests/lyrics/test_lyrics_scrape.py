@@ -193,6 +193,7 @@ def test_fetch_lyrics_scrape_success():
     with (
         patch("yoto_lib.lyrics.lyrics_scrape.load_lyrics_sources", return_value=[source]),
         patch("yoto_lib.lyrics.lyrics_scrape._check_node", return_value=True),
+        patch("yoto_lib.lyrics.lyrics_scrape._fetch_html", return_value="<html></html>"),
         patch("yoto_lib.lyrics.lyrics_scrape._run_js", side_effect=fake_run_js),
         patch.dict("yoto_lib.lyrics.lyrics_scrape._index_cache", {}, clear=True),
     ):
@@ -211,6 +212,7 @@ def test_fetch_lyrics_scrape_no_match():
     with (
         patch("yoto_lib.lyrics.lyrics_scrape.load_lyrics_sources", return_value=[source]),
         patch("yoto_lib.lyrics.lyrics_scrape._check_node", return_value=True),
+        patch("yoto_lib.lyrics.lyrics_scrape._fetch_html", return_value="<html></html>"),
         patch("yoto_lib.lyrics.lyrics_scrape._run_js", return_value=index_data),
         patch.dict("yoto_lib.lyrics.lyrics_scrape._index_cache", {}, clear=True),
     ):
