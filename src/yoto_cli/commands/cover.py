@@ -131,7 +131,7 @@ def cover(path, force, backup, ignore_album_art, style):
             return
 
         # No shared art -- generate from scratch
-        progress.update(task, completed=recompose_steps, status="generating cover art")
+        progress.update(task, completed=recompose_steps, status=f"generating cover art ({resolved_style.name})")
 
         track_titles: list[str] = []
         artists: list[str] = []
