@@ -354,7 +354,7 @@ def generate_cover_if_missing(
         return
 
     # Resolve style from .yoto-style file (or default)
-    style = CoverStyle.get(playlist.style) if playlist.style else CoverStyle.default()
+    style = CoverStyle.get(playlist.style)
     logger.debug("generate_cover: using style '%s'", style.name)
 
     track_titles: list[str] = []

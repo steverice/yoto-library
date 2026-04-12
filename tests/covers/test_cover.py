@@ -169,7 +169,7 @@ class TestGenerateCoverIfMissing:
         playlist.cover_path = cover_path
         playlist.description = "A fun story"
         playlist.track_files = ["track01.mka", "track02.mka"]
-        playlist.style = None
+        playlist.style = "storybook"
 
         # Mock provider
         mock_provider = MagicMock()
