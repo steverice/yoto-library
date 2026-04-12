@@ -283,7 +283,8 @@ def diff_playlists(playlist: Playlist, remote: dict[str, Any] | None) -> Playlis
         stored_hash = playlist.cover_hash_path.read_text(encoding="utf-8").strip()
         cover_changed = _cover_hash(playlist.cover_path) != stored_hash
     else:
-        cover_changed = False
+        # No hash file means we can't verify — assume changed if local cover exists
+        cover_changed = playlist.has_cover
 
     # Metadata changed — compare description
     remote_description = remote.get("description", None)

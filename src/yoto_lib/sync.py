@@ -310,8 +310,10 @@ def sync_playlist(
         _log("Uploading cover...")
         try:
             cover_result = api.upload_cover(playlist.cover_path)
+            logger.debug("sync: upload_cover response: %s", cover_result)
             ci = cover_result.get("coverImage", cover_result)
             cover_url = ci.get("mediaUrl") or ci.get("url") or cover_result.get("coverUrl")
+            logger.debug("sync: extracted cover_url=%s", cover_url)
             result.cover_uploaded = True
             # Store hash so we can detect future local changes
             from yoto_lib.playlist import _cover_hash
@@ -326,7 +328,7 @@ def sync_playlist(
     elif remote_state and remote_state.get("cover_url"):
         # Preserve existing remote cover URL so POST doesn't remove it
         cover_url = remote_state["cover_url"]
-        logger.debug("sync: preserving existing cover URL")
+        logger.debug("sync: preserving existing cover URL: %s", cover_url)
 
     # 11. Build content schema and POST
     logger.debug("sync: POSTing content schema")
