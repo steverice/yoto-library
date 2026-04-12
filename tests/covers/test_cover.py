@@ -169,6 +169,7 @@ class TestGenerateCoverIfMissing:
         playlist.cover_path = cover_path
         playlist.description = "A fun story"
         playlist.track_files = ["track01.mka", "track02.mka"]
+        playlist.style = None
 
         # Mock provider
         mock_provider = MagicMock()
@@ -199,6 +200,41 @@ class TestGenerateCoverIfMissing:
 
         # provider.generate was called with the prompt at the tall portrait size
         mock_provider.generate.assert_called_once_with("test prompt", 1024, 1536, quality="low")
+
+    def test_passes_style_to_prompt_builder(self, tmp_path):
+        """generate_cover_if_missing resolves style from playlist and passes it."""
+        import io
+
+        fake_img = Image.new("RGB", (COVER_WIDTH, COVER_HEIGHT), color="red")
+        buf = io.BytesIO()
+        fake_img.save(buf, format="PNG")
+        fake_png_bytes = buf.getvalue()
+
+        cover_path = tmp_path / "cover.png"
+        playlist = MagicMock()
+        playlist.has_cover = False
+        playlist.path = tmp_path
+        playlist.cover_path = cover_path
+        playlist.description = "A fun story"
+        playlist.track_files = ["track01.mka"]
+        playlist.title = None
+        playlist.style = "cartoon"
+
+        mock_provider = MagicMock()
+        mock_provider.generate.return_value = fake_png_bytes
+
+        with (
+            patch("yoto_lib.covers.cover.get_provider", return_value=mock_provider),
+            patch("yoto_lib.covers.cover.build_cover_prompt", return_value="test prompt") as mock_prompt,
+            patch("yoto_lib.covers.cover.mka.read_tags", return_value={"title": "Ch1", "artist": "Jane"}),
+        ):
+            generate_cover_if_missing(playlist)
+
+        # build_cover_prompt should receive the resolved CoverStyle object
+        call_kwargs = mock_prompt.call_args
+        style_arg = call_kwargs.kwargs.get("style") or call_kwargs[1].get("style")
+        assert style_arg is not None
+        assert style_arg.name == "cartoon"
 
 
 # ── TestTrySharedAlbumArt ────────────────────────────────────────────────────

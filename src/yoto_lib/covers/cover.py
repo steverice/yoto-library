@@ -353,6 +353,10 @@ def generate_cover_if_missing(
     if not ignore_album_art and try_shared_album_art(playlist, log=log):
         return
 
+    # Resolve style from .yoto-style file (or default)
+    style = CoverStyle.get(playlist.style) if playlist.style else CoverStyle.default()
+    logger.debug("generate_cover: using style '%s'", style.name)
+
     track_titles: list[str] = []
     artists: list[str] = []
 
@@ -370,7 +374,7 @@ def generate_cover_if_missing(
         if artist:
             artists.append(artist)
 
-    prompt = build_cover_prompt(playlist.description, track_titles, artists, playlist.title)
+    prompt = build_cover_prompt(playlist.description, track_titles, artists, playlist.title, style=style)
     logger.debug("generate_cover prompt: %s", prompt)
 
     provider = get_provider()
@@ -383,7 +387,7 @@ def generate_cover_if_missing(
     # Add title via AI inpainting before resize (edit API needs supported dimensions).
     if playlist.title:
         logger.debug("generate_cover: adding title '%s' via inpainting", playlist.title)
-        image_bytes = add_title_to_illustration(image_bytes, playlist.title, 1024, 1536)
+        image_bytes = add_title_to_illustration(image_bytes, playlist.title, 1024, 1536, style=style)
 
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp.write(image_bytes)
