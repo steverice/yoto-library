@@ -208,10 +208,13 @@ Generate cover art for a playlist folder without syncing.
 
 ```
 yoto cover                          # generate cover in current directory
+yoto cover --style cartoon          # generate with a specific art style
 yoto cover --force                  # regenerate even if cover.png exists
 yoto cover --backup                 # rename existing cover.png before generating
 yoto cover --ignore-album-art       # skip album art reuse, generate from prompt
 ```
+
+Available styles: `cartoon`, `cel`, `chalk`, `crayon`, `gouache`, `papercraft`, `storybook` (default), `watercolor`. The chosen style is saved to `.yoto-style` in the playlist folder and reused on future regenerations.
 
 ### `yoto reorder [playlist]`
 
@@ -294,6 +297,8 @@ Each service handles a specific part of the pipeline — see [AI providers](#ai-
 **Icon pipeline** — if a track already has an icon attachment in its MKA, that icon is used. Otherwise, the track title is matched against Yoto's public icon catalog via LLM. High-confidence matches are used directly; lower-confidence matches are compared against 3 AI-generated alternatives (via RetroDiffusion pixel art). The LLM picks the winner.
 
 **Cover art** — if `cover.png` is missing, the tool first checks whether all tracks share identical embedded album art (e.g., from a ripped CD or tagged album). If so, FLUX Kontext recomposes the square art into a 638x1011 portrait layout. Claude checks the result for text quality — if text is mangled after 3 attempts, a repair pipeline kicks in: Claude OCRs the original text, Gemini renders a styled text layer, Claude picks placement coordinates, and PIL composites the text onto the artwork. If no shared album art exists, OpenAI generates a cover from scratch using track metadata. Delete `cover.png` to regenerate.
+
+Text-to-image covers accept a `--style` flag to control the visual art direction (e.g., `cartoon`, `watercolor`, `gouache`). The choice is persisted in `.yoto-style` so future regenerations reuse it.
 
 Use `yoto cover --force` to regenerate an existing cover. Set `YOTO_RECOMPOSE_ATTEMPTS` (default 3) to control how many FLUX attempts before falling back to the text repair pipeline.
 

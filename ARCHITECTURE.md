@@ -173,6 +173,8 @@ All Claude CLI calls in the cover pipeline use Sonnet for better visual judgment
 1. **Generate illustration** — creates a cover illustration from track metadata with no text in the image. The prompt explicitly requests clear space in the upper portion for a title.
 2. **Add title via edit** — a separate edit call adds the playlist title as a decorative banner. This is a deliberate two-step process because single-pass generation frequently crops title text at image boundaries.
 
+Both steps accept an optional `CoverStyle` that modifies the generation and title prompts to produce a specific visual art direction (cartoon, watercolor, gouache, etc.). Style is resolved from the playlist's `.yoto-style` file.
+
 ## Upload pipeline
 
 Yoto's transcode API accepts any audio format — including MKA — and transcodes to Opus/OGG for playback. MKA files are uploaded directly without extraction; the transcoder handles the Matroska container and finds the audio stream inside.
