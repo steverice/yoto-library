@@ -16,6 +16,7 @@ from yoto_cli.main import _complete_dirs, _print_cost_summary, cli
 from yoto_lib.billing.costs import reset_tracker
 from yoto_lib.covers.cover import generate_cover_if_missing
 from yoto_lib.covers.printer import PrintError, print_cover
+from yoto_lib.covers.styles import CoverStyle
 from yoto_lib.description import generate_description
 from yoto_lib.playlist import load_playlist
 
@@ -27,7 +28,13 @@ logger = logging.getLogger(__name__)
 @click.option("--force", is_flag=True, help="Regenerate even if cover.png exists")
 @click.option("--backup", is_flag=True, help="Like --force, but rename existing cover.png first")
 @click.option("--ignore-album-art", is_flag=True, help="Skip album art reuse; generate cover purely from prompt")
-def cover(path, force, backup, ignore_album_art):
+@click.option(
+    "--style",
+    type=click.Choice(sorted(CoverStyle.names()), case_sensitive=False),
+    default=None,
+    help="Visual art style for the cover",
+)
+def cover(path, force, backup, ignore_album_art, style):
     """Generate cover art for a playlist folder."""
     if force and backup:
         raise click.UsageError("--force and --backup are mutually exclusive")
@@ -66,6 +73,12 @@ def cover(path, force, backup, ignore_album_art):
             ask_user=lambda q: _Prompt.ask(q, console=rich_console),
         )
 
+    # Resolve style: --style flag > .yoto-style file > default
+    if style:
+        playlist.style_path.write_text(style + "\n", encoding="utf-8")
+        rich_console.print(f"Style set to: {style}")
+    resolved_style = CoverStyle.get(playlist.style)
+
     from yoto_cli.progress import make_progress
     from yoto_cli.progress import success as _success
     from yoto_lib.covers.cover import RECOMPOSE_MAX_ATTEMPTS
@@ -77,7 +90,7 @@ def cover(path, force, backup, ignore_album_art):
     total_steps = recompose_steps + 1 + title_steps + 1
 
     with make_progress() as progress:
-        initial_status = "generating cover art" if ignore_album_art else "checking album art"
+        initial_status = f"generating cover art ({resolved_style.name})" if ignore_album_art else "checking album art"
         task = progress.add_task(cover_name, total=total_steps, status=initial_status)
 
         # Tracks the current inner task for nested progress
@@ -135,7 +148,7 @@ def cover(path, force, backup, ignore_album_art):
             if artist:
                 artists.append(artist)
 
-        prompt = build_cover_prompt(playlist.description, track_titles, artists, playlist.title)
+        prompt = build_cover_prompt(playlist.description, track_titles, artists, playlist.title, style=resolved_style)
 
         provider = get_provider()
         # Request 1024x1536 -- maps exactly to that OpenAI size (~0.667),
@@ -148,7 +161,7 @@ def cover(path, force, backup, ignore_album_art):
         if playlist.title:
             progress.update(task, advance=1, status="adding title")
             inner = progress.add_task("Adding title", total=None, status="")
-            image_bytes = add_title_to_illustration(image_bytes, playlist.title, 1024, 1536)
+            image_bytes = add_title_to_illustration(image_bytes, playlist.title, 1024, 1536, style=resolved_style)
             progress.remove_task(inner)
             progress.update(task, status="title added")
 
