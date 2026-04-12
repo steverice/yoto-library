@@ -16,6 +16,7 @@ import numpy as np
 from PIL import Image
 
 from yoto_lib import mka
+from yoto_lib.covers.styles import CoverStyle
 from yoto_lib.providers import get_provider
 from yoto_lib.providers.base import check_status_on_error
 from yoto_lib.providers.claude_provider import ClaudeProvider
@@ -213,6 +214,7 @@ def build_cover_prompt(
     track_titles: list[str],
     artists: list[str],
     playlist_title: str | None = None,
+    style: CoverStyle | None = None,
 ) -> str:
     """Build a text prompt for image generation from playlist metadata."""
     parts: list[str] = []
@@ -235,10 +237,15 @@ def build_cover_prompt(
         " color gradient there. No words, letters, or signs anywhere in the image."
     )
 
+    if style:
+        parts.append(style.illustration_prompt)
+
     return " ".join(parts)
 
 
-def add_title_to_illustration(image_bytes: bytes, title: str, width: int, height: int) -> bytes:
+def add_title_to_illustration(
+    image_bytes: bytes, title: str, width: int, height: int, style: CoverStyle | None = None
+) -> bytes:
     """Add a title to an illustration using OpenAI image editing.
 
     Passes the illustration to OpenAI's edit endpoint (no mask) and asks it
@@ -254,9 +261,15 @@ def add_title_to_illustration(image_bytes: bytes, title: str, width: int, height
     img_buf = io.BytesIO()
     img.save(img_buf, format="PNG")
 
+    lettering_guidance = (
+        style.title_prompt
+        if style
+        else "Use large, elegant lettering that matches the illustration's art style and color palette."
+    )
+
     prompt = (
         f'Add the title "{title}" as a decorative banner in the upper portion of the image. '
-        f"Use large, elegant lettering that matches the illustration's art style and color palette. "
+        f"{lettering_guidance} "
         f"The title must be fully visible, horizontally centered, and well within the image boundaries — "
         f"leave clear margin on all sides. Keep the rest of the illustration unchanged."
     )

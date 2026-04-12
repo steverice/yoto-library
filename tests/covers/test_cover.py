@@ -20,6 +20,7 @@ from yoto_lib.covers.cover import (
     resize_cover,
     try_shared_album_art,
 )
+from yoto_lib.covers.styles import CoverStyle
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -110,6 +111,30 @@ class TestBuildCoverPrompt:
             playlist_title="Daniel Tiger's Neighborhood",
         )
         assert "Daniel Tiger's Neighborhood" not in prompt
+
+    def test_appends_style_illustration_prompt(self):
+        """When a CoverStyle is provided, its illustration_prompt is appended."""
+        style = CoverStyle.get("cartoon")
+        prompt = build_cover_prompt(
+            description="A fun story",
+            track_titles=[],
+            artists=[],
+            style=style,
+        )
+        assert style.illustration_prompt in prompt
+
+    def test_no_style_fragment_when_none(self):
+        """When style is None, no style fragment appears."""
+        prompt_without = build_cover_prompt(
+            description="A fun story",
+            track_titles=[],
+            artists=[],
+            style=None,
+        )
+        # Should not contain any style-specific language
+        for name in CoverStyle.names():
+            s = CoverStyle.get(name)
+            assert s.illustration_prompt not in prompt_without
 
 
 # ── TestGenerateCoverIfMissing ────────────────────────────────────────────────
