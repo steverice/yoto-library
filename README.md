@@ -199,6 +199,7 @@ Fetch and store lyrics for tracks in a playlist. Checks source tags first, then 
 yoto lyrics "Bedtime Songs"           # fetch missing lyrics
 yoto lyrics "Bedtime Songs" --force   # re-fetch all lyrics
 yoto lyrics "Bedtime Songs" --show    # display stored lyrics in a pager
+yoto lyrics "Bedtime Songs" --clear   # remove stored lyrics from tracks
 ```
 
 ### `yoto cover [path]`
@@ -244,6 +245,7 @@ Fetch and embed lyrics for tracks in a playlist folder. Tries embedded tags, the
 ```
 yoto lyrics                          # fetch lyrics for current directory
 yoto lyrics "Bedtime Songs"          # fetch lyrics for a specific folder
+yoto lyrics --clear                  # remove stored lyrics from tracks
 yoto lyrics --add-source <url>       # analyze a website and add it as a lyrics source
 ```
 

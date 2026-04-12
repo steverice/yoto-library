@@ -256,4 +256,4 @@ Releases are published via a manual `workflow_dispatch` GitHub Actions workflow.
 3. **Build** — builds sdist and wheel, validating the package before pushing
 4. **Push** — pushes the bump commit and tag to `main`
 5. **Publish** — uploads to TestPyPI, then PyPI via OIDC trusted publishing
-6. **Release** — creates a GitHub release with auto-generated notes
+6. **Release** — creates a GitHub release with the commitizen changelog for the new version
