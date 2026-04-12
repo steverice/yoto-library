@@ -103,6 +103,13 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Extract changelog for release
+        if: steps.bump.outputs.bumped == 'true' && steps.check-release.outputs.exists != 'true'
+        id: changelog
+        run: |
+          # Extract the section between the first and second ## headings
+          awk '/^## v/{if(found) exit; found=1; next} found' CHANGELOG.md > /tmp/release-notes.md
+
       - name: Create GitHub release
         if: steps.bump.outputs.bumped == 'true' && steps.check-release.outputs.exists != 'true'
         env:
@@ -110,4 +117,4 @@ jobs:
         run: |
           gh release create "v${{ steps.bump.outputs.version }}" \
             --title "v${{ steps.bump.outputs.version }}" \
-            --generate-notes
+            --notes-file /tmp/release-notes.md
