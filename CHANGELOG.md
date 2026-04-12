@@ -1,3 +1,24 @@
+## v0.2.0 (2026-04-12)
+
+### ✨ Features
+
+- add `yoto lyrics --clear` to remove stored lyrics from tracks
+
+### 🐛🚑️ Fixes
+
+- re-upload cover when `.yoto-cover-hash` is missing
+- resolve `.webloc` files during `yoto import` before scanning for audio
+- convert palette-mode images to RGB before ICC transform in `_icc_convert`
+- pre-fetch HTML in Python to bypass TLS-fingerprint-based 403 blocks
+
+### 💚👷 CI & Build
+
+- remove automatic PyPI workflow trigger from release workflow
+
+### 📝💡 Documentation
+
+- update installation for PyPI and document two-step release process
+
 ## v0.1.3 (2026-04-10)
 
 ### 🐛🚑️ Fixes
