@@ -47,3 +47,24 @@ class TestCoverStyleRegistration:
         """Exactly one style should have is_default=True."""
         defaults = [CoverStyle.get(n) for n in CoverStyle.names() if CoverStyle.get(n).is_default]
         assert len(defaults) == 1
+
+    def test_duplicate_name_raises(self):
+        """Registering a style with an existing name raises ValueError."""
+        with pytest.raises(ValueError, match="Duplicate style"):
+            CoverStyle(
+                name="cartoon",
+                label="duplicate",
+                illustration_prompt="duplicate",
+                title_prompt="duplicate",
+            )
+
+    def test_multiple_defaults_raises(self):
+        """Registering a second default style raises ValueError."""
+        with pytest.raises(ValueError, match="Multiple default styles"):
+            CoverStyle(
+                name="_test_second_default",
+                label="test",
+                illustration_prompt="test",
+                title_prompt="test",
+                is_default=True,
+            )

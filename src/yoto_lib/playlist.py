@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from yoto_lib.covers.styles import CoverStyle
+
+logger = logging.getLogger(__name__)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -84,7 +87,12 @@ class Playlist:
     @property
     def style(self) -> str:
         if self.style_path.exists():
-            return self.style_path.read_text(encoding="utf-8").strip()
+            name = self.style_path.read_text(encoding="utf-8").strip()
+            try:
+                CoverStyle.get(name)
+                return name
+            except ValueError:
+                logger.warning("Unknown style %r in %s, using default", name, self.style_path)
         return CoverStyle.default().name
 
 

@@ -382,3 +382,17 @@ class TestPlaylistStyle:
             missing_files=[],
         )
         assert playlist.style_path == tmp_path / ".yoto-style"
+
+    def test_style_falls_back_on_invalid_name(self, tmp_path):
+        """style property returns default when .yoto-style contains an invalid name."""
+        (tmp_path / ".yoto-style").write_text("stoyrbook\n")
+        playlist = Playlist(
+            path=tmp_path,
+            title="Test",
+            track_files=[],
+            card_id=None,
+            description=None,
+            has_cover=False,
+            missing_files=[],
+        )
+        assert playlist.style == CoverStyle.default().name
