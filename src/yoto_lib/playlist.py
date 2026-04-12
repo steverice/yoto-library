@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from yoto_lib.covers.styles import CoverStyle
+
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 AUDIO_EXTENSIONS: set[str] = {".mka", ".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac", ".wma"}
@@ -74,6 +76,16 @@ class Playlist:
     @property
     def cover_hash_path(self) -> Path:
         return self.path / ".yoto-cover-hash"
+
+    @property
+    def style_path(self) -> Path:
+        return self.path / ".yoto-style"
+
+    @property
+    def style(self) -> str:
+        if self.style_path.exists():
+            return self.style_path.read_text(encoding="utf-8").strip()
+        return CoverStyle.default().name
 
 
 def _cover_hash(cover_path: Path) -> str:

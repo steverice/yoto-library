@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from yoto_lib.covers.styles import CoverStyle
 from yoto_lib.playlist import (
     AUDIO_EXTENSIONS,
     Playlist,
@@ -322,3 +323,62 @@ class TestBuildContentSchema:
         assert chapters[0]["tracks"][0]["channels"] == "stereo"
         assert chapters[1]["tracks"][0]["format"] == "aac"
         assert chapters[1]["tracks"][0]["channels"] == "stereo"
+
+
+# ── TestPlaylistStyle ─────────────────────────────────────────────────────────
+
+
+class TestPlaylistStyle:
+    def test_style_reads_yoto_style_file(self, tmp_path):
+        """style property returns the name from .yoto-style file."""
+        (tmp_path / ".yoto-style").write_text("cartoon\n")
+        playlist = Playlist(
+            path=tmp_path,
+            title="Test",
+            track_files=[],
+            card_id=None,
+            description=None,
+            has_cover=False,
+            missing_files=[],
+        )
+        assert playlist.style == "cartoon"
+
+    def test_style_returns_default_when_no_file(self, tmp_path):
+        """style property returns default style name when .yoto-style is missing."""
+        playlist = Playlist(
+            path=tmp_path,
+            title="Test",
+            track_files=[],
+            card_id=None,
+            description=None,
+            has_cover=False,
+            missing_files=[],
+        )
+        assert playlist.style == CoverStyle.default().name
+
+    def test_style_strips_whitespace(self, tmp_path):
+        """style property strips whitespace from file contents."""
+        (tmp_path / ".yoto-style").write_text("  watercolor  \n")
+        playlist = Playlist(
+            path=tmp_path,
+            title="Test",
+            track_files=[],
+            card_id=None,
+            description=None,
+            has_cover=False,
+            missing_files=[],
+        )
+        assert playlist.style == "watercolor"
+
+    def test_style_path_property(self, tmp_path):
+        """style_path returns the .yoto-style path."""
+        playlist = Playlist(
+            path=tmp_path,
+            title="Test",
+            track_files=[],
+            card_id=None,
+            description=None,
+            has_cover=False,
+            missing_files=[],
+        )
+        assert playlist.style_path == tmp_path / ".yoto-style"
