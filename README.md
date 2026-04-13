@@ -54,7 +54,7 @@ To install from source:
 ```
 git clone https://github.com/steverice/yoto-library.git
 cd yoto-library
-pip install -e .
+uv sync
 ```
 
 ## Quick start

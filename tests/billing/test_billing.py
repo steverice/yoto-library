@@ -125,7 +125,7 @@ class TestFetchBalances:
 
         with (
             patch.dict("os.environ", {"RETRODIFFUSION_API_KEY": "test-key"}),
-            patch("yoto_lib.billing.httpx.post", side_effect=Exception("timeout")),
+            patch("yoto_lib.billing.httpx.post", side_effect=OSError("timeout")),
         ):
             balances = fetch_balances()
         assert balances["RetroDiffusion"]["error"] == "timeout"

@@ -96,9 +96,9 @@ If a block genuinely needs to catch everything (e.g., a top-level CLI error boun
 ## Testing
 
 ```
-python -m pytest                    # all tests
-python -m pytest -m integration     # network-dependent tests (require yt-dlp)
-python -m pytest tests/test_foo.py  # single module
+uv run python -m pytest                    # all tests
+uv run python -m pytest -m integration     # network-dependent tests (require yt-dlp)
+uv run python -m pytest tests/test_foo.py  # single module
 ```
 
 Tests mock external calls (Yoto API, subprocess, Claude CLI). See `conftest.py` for shared fixtures. Tests use pytest's built-in `tmp_path` for temporary filesystem state.

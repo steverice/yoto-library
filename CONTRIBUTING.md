@@ -5,8 +5,8 @@
 ```
 git clone https://github.com/steverice/yoto-library.git
 cd yoto-library
-pip install -e ".[dev]"
-pre-commit install --hook-type commit-msg --hook-type pre-commit
+uv sync
+uv run pre-commit install --hook-type commit-msg --hook-type pre-commit
 ```
 
 ## Commit conventions
