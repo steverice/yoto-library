@@ -1,5 +1,5 @@
 from __future__ import annotations
 
-from yoto_cli.main import cli
+from yoto_cli.main import main
 
-cli()
+main()

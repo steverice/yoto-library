@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import os
@@ -11,6 +12,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import argcomplete
 import click
 from click.shell_completion import CompletionItem
 
@@ -36,6 +38,72 @@ def _print_cost_summary() -> None:
     persist_session(tracker)
     for line in tracker.summary_lines():
         _console.print(f"[dim]{line}[/dim]")
+
+
+class Formatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
+    pass
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the top-level argument parser with all subcommands."""
+    parser = argparse.ArgumentParser(
+        description="Manage Yoto CYO playlists as folders on disk.",
+        formatter_class=Formatter,
+        allow_abbrev=False,
+    )
+    parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose (DEBUG) console output")
+    subparsers = parser.add_subparsers(dest="command")  # noqa: F841
+
+    # Commands will be registered here as they're migrated
+
+    argcomplete.autocomplete(parser)
+    return parser
+
+
+def main() -> None:
+    """CLI entry point — parse args and dispatch."""
+    from yoto_cli.progress import error
+
+    try:
+        parser = build_parser()
+        args = parser.parse_args()
+        _setup_logging(getattr(args, "verbose", False))
+        if not hasattr(args, "func"):
+            parser.print_help()
+            raise SystemExit(0)
+        args.func(args)
+    except KeyboardInterrupt:
+        pass
+    except Exception as exc:  # noqa: BLE001 — top-level CLI boundary
+        error(str(exc))
+        raise SystemExit(1) from None
+
+
+def require_path(path: Path) -> None:
+    """Raise SystemExit if path does not exist. Replaces click.Path(exists=True)."""
+    if not path.exists():
+        from yoto_cli.progress import error
+
+        error(f"Path does not exist: {path}")
+        raise SystemExit(2)
+
+
+def _open_editor(content: str, suffix: str = ".jsonl") -> str | None:
+    """Open content in $EDITOR. Returns edited text, or None if unchanged."""
+    import tempfile
+
+    editor = os.environ.get("EDITOR", os.environ.get("VISUAL", "vi"))
+    with tempfile.NamedTemporaryFile(suffix=suffix, mode="w", delete=False, encoding="utf-8") as tmp:
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+    try:
+        subprocess.run([editor, str(tmp_path)], check=True)
+        edited = tmp_path.read_text(encoding="utf-8")
+        return edited if edited != content else None
+    except subprocess.CalledProcessError:
+        return None
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 # ── Logging setup ────────────────────────────────────────────────────────────
