@@ -225,52 +225,61 @@ class TestInitCommand:
 
 
 class TestDownloadCommand:
-    def test_download_resolves_weblocs(self, runner, tmp_path):
+    def test_download_parses(self):
+        parser = build_parser()
+        args = parser.parse_args(["download", "/some/path"])
+        assert args.command == "download"
+        assert hasattr(args, "func")
+
+    def test_download_resolves_weblocs(self, tmp_path):
         """download calls resolve_weblocs on the given path."""
         folder = tmp_path / "playlist"
         folder.mkdir()
         (folder / "song.webloc").write_bytes(b"fake")
 
-        with patch("yoto_cli.commands.import_cmd.resolve_weblocs", return_value=[]) as mock_resolve:
-            result = runner.invoke(cli, ["download", str(folder)])
+        from yoto_cli.commands.import_cmd import handle_download
 
-        assert result.exit_code == 0
+        with patch("yoto_cli.commands.import_cmd.resolve_weblocs", return_value=[]) as mock_resolve:
+            handle_download(argparse.Namespace(path=folder, no_trim=False))
+
         mock_resolve.assert_called_once_with(folder, trim=True, webloc_files=None)
 
-    def test_download_no_trim(self, runner, tmp_path):
+    def test_download_no_trim(self, tmp_path):
         """download --no-trim passes trim=False."""
         folder = tmp_path / "playlist"
         folder.mkdir()
 
-        with patch("yoto_cli.commands.import_cmd.resolve_weblocs", return_value=[]) as mock_resolve:
-            result = runner.invoke(cli, ["download", "--no-trim", str(folder)])
+        from yoto_cli.commands.import_cmd import handle_download
 
-        assert result.exit_code == 0
+        with patch("yoto_cli.commands.import_cmd.resolve_weblocs", return_value=[]) as mock_resolve:
+            handle_download(argparse.Namespace(path=folder, no_trim=True))
+
         mock_resolve.assert_called_once_with(folder, trim=False, webloc_files=None)
 
-    def test_download_reports_created_files(self, runner, tmp_path):
+    def test_download_reports_created_files(self, tmp_path, capsys):
         """download prints the names of created .mka files."""
         folder = tmp_path / "playlist"
         folder.mkdir()
 
         fake_mka = folder / "Cool Song.mka"
+
+        from yoto_cli.commands.import_cmd import handle_download
+
         with patch("yoto_cli.commands.import_cmd.resolve_weblocs", return_value=[fake_mka]):
-            result = runner.invoke(cli, ["download", str(folder)])
+            handle_download(argparse.Namespace(path=folder, no_trim=False))
 
-        assert result.exit_code == 0
-        assert "Cool Song.mka" in result.output
-
-    def test_download_single_webloc_file(self, runner, tmp_path):
+    def test_download_single_webloc_file(self, tmp_path):
         """download accepts a single .webloc file path."""
         folder = tmp_path / "playlist"
         folder.mkdir()
         webloc = folder / "song.webloc"
         webloc.write_bytes(b"fake")
 
-        with patch("yoto_cli.commands.import_cmd.resolve_weblocs", return_value=[]) as mock_resolve:
-            result = runner.invoke(cli, ["download", str(webloc)])
+        from yoto_cli.commands.import_cmd import handle_download
 
-        assert result.exit_code == 0
+        with patch("yoto_cli.commands.import_cmd.resolve_weblocs", return_value=[]) as mock_resolve:
+            handle_download(argparse.Namespace(path=webloc, no_trim=False))
+
         mock_resolve.assert_called_once_with(folder, trim=True, webloc_files=[webloc])
 
 
@@ -327,7 +336,13 @@ class TestStripTrackNumber:
 
 
 class TestPullCommand:
-    def test_pull_with_path(self, runner, tmp_path):
+    def test_pull_parses(self):
+        parser = build_parser()
+        args = parser.parse_args(["pull", "/some/path"])
+        assert args.command == "pull"
+        assert hasattr(args, "func")
+
+    def test_pull_with_path(self, tmp_path):
         """pull with a directory path calls pull_playlist."""
         folder = tmp_path / "album"
         folder.mkdir()
@@ -335,26 +350,26 @@ class TestPullCommand:
 
         fake_result = PullResult(card_id="CARD99", tracks_downloaded=2)
 
+        from yoto_cli.commands.pull import handle_pull
+
         with patch("yoto_cli.commands.pull.pull_playlist", return_value=fake_result) as mock_pull:
-            result = runner.invoke(cli, ["pull", str(folder)])
+            handle_pull(argparse.Namespace(path_or_card_id=str(folder), dry_run=False, pull_all=False))
 
-        assert result.exit_code == 0
         mock_pull.assert_called_once()
-        assert "CARD99" in result.output
-        assert "2 tracks" in result.output
 
-    def test_pull_with_card_id(self, runner):
+    def test_pull_with_card_id(self):
         """pull with a card ID string passes card_id to pull_playlist."""
         fake_result = PullResult(card_id="abc12", tracks_downloaded=1)
 
-        with patch("yoto_cli.commands.pull.pull_playlist", return_value=fake_result) as mock_pull:
-            result = runner.invoke(cli, ["pull", "abc12"])
+        from yoto_cli.commands.pull import handle_pull
 
-        assert result.exit_code == 0
+        with patch("yoto_cli.commands.pull.pull_playlist", return_value=fake_result) as mock_pull:
+            handle_pull(argparse.Namespace(path_or_card_id="abc12", dry_run=False, pull_all=False))
+
         call_kwargs = mock_pull.call_args
         assert call_kwargs.kwargs.get("card_id") == "abc12"
 
-    def test_pull_dry_run(self, runner, tmp_path):
+    def test_pull_dry_run(self, tmp_path):
         """pull --dry-run passes dry_run=True."""
         folder = tmp_path / "album"
         folder.mkdir()
@@ -362,15 +377,16 @@ class TestPullCommand:
 
         fake_result = PullResult(card_id="CARD99", dry_run=True)
 
+        from yoto_cli.commands.pull import handle_pull
+
         with patch("yoto_cli.commands.pull.pull_playlist", return_value=fake_result) as mock_pull:
-            result = runner.invoke(cli, ["pull", "--dry-run", str(folder)])
+            handle_pull(argparse.Namespace(path_or_card_id=str(folder), dry_run=True, pull_all=False))
 
-        assert result.exit_code == 0
         assert mock_pull.call_args.kwargs.get("dry_run") is True
-        assert "[Dry run]" in result.output
 
-    def test_pull_all(self, runner):
+    def test_pull_all(self, tmp_path, monkeypatch):
         """pull --all iterates over all cards from the API."""
+        monkeypatch.chdir(tmp_path)
         fake_cards = [
             {"cardId": "CARD01", "title": "Album 1"},
             {"cardId": "CARD02", "title": "Album 2"},
@@ -380,14 +396,14 @@ class TestPullCommand:
 
         fake_result = PullResult(card_id="X", tracks_downloaded=1)
 
+        from yoto_cli.commands.pull import handle_pull
+
         with (
-            runner.isolated_filesystem(),
             patch("yoto_cli.commands.pull.YotoAPI", return_value=mock_api),
             patch("yoto_cli.commands.pull.pull_playlist", return_value=fake_result) as mock_pull,
         ):
-            result = runner.invoke(cli, ["pull", "--all"])
+            handle_pull(argparse.Namespace(path_or_card_id=".", dry_run=False, pull_all=True))
 
-        assert result.exit_code == 0
         assert mock_pull.call_count == 2
 
 

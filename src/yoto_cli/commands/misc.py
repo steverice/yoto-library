@@ -11,10 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import click
 import httpx
-
-from yoto_cli.main import cli
 
 if TYPE_CHECKING:
     import argparse
@@ -232,39 +229,40 @@ def handle_list(args: argparse.Namespace) -> None:
     _console.print(table)
 
 
-@cli.command()
-@click.argument("shell", required=False, default=None, type=click.Choice(["zsh", "bash", "fish"]))
-def completions(shell: str | None) -> None:
-    """Install context-aware shell completions."""
-    logger.debug("command: completions shell=%s", shell)
+def add_completions_command(subparsers: argparse._SubParsersAction) -> None:
+    sub = subparsers.add_parser("completions", help="install shell completions")
+    sub.add_argument("shell", nargs="?", default=None, choices=["zsh", "bash", "fish"], help="shell type")
+    sub.set_defaults(func=handle_completions)
+
+
+def handle_completions(args: argparse.Namespace) -> None:
+    logger.debug("command: completions shell=%s", args.shell)
+    shell = args.shell
     if shell is None:
         parent_shell = Path(os.environ.get("SHELL", "")).name
         shell = parent_shell if parent_shell in ("zsh", "bash", "fish") else None
         if shell is None:
-            raise click.ClickException("Could not detect shell. Pass zsh, bash, or fish.")
+            from yoto_cli.progress import error
 
-    env_var = f"_YOTO_COMPLETE={shell}_source"
+            error("Could not detect shell. Pass zsh, bash, or fish.")
+            raise SystemExit(1)
+
     marker = "# yoto shell completions"
 
-    if shell == "zsh":
-        line = f'eval "$({env_var} yoto)"'
-        config = Path.home() / ".zshrc"
-    elif shell == "bash":
-        line = f'eval "$({env_var} yoto)"'
-        config = Path.home() / ".bashrc"
-    else:
-        line = f"eval ({env_var} yoto)"
+    if shell == "fish":
+        line = "register-python-argcomplete --shell fish yoto | source"
         config = Path.home() / ".config" / "fish" / "completions" / "yoto.fish"
+    else:
+        line = 'eval "$(register-python-argcomplete yoto)"'
+        config = Path.home() / (f".{shell}rc")
 
     from yoto_cli.progress import _console
     from yoto_cli.progress import success as _success
 
-    # Check if already installed
     if config.exists() and marker in config.read_text(encoding="utf-8"):
         _console.print(f"[dim]Completions already installed in {config}[/dim]")
         return
 
-    # Append to config
     config.parent.mkdir(parents=True, exist_ok=True)
     with config.open("a", encoding="utf-8") as f:
         f.write(f"\n{marker}\n{line}\n")

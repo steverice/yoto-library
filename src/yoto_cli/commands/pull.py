@@ -7,37 +7,45 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import click
-
 if TYPE_CHECKING:
+    import argparse
+
     from rich.progress import TaskID
 
-from yoto_cli.main import _is_card_id, cli
+from yoto_cli.main import _is_card_id
 from yoto_lib.pull import pull_playlist
 from yoto_lib.yoto.api import YotoAPI
 
 logger = logging.getLogger(__name__)
 
 
-@cli.command()
-@click.argument("path_or_card_id", default=".")
-@click.option("--dry-run", is_flag=True, help="Preview changes without executing")
-@click.option("--all", "pull_all", is_flag=True, help="Pull all playlists into subdirectories of cwd")
-def pull(path_or_card_id: str, dry_run: bool, pull_all: bool) -> None:
+def add_pull_command(subparsers: argparse._SubParsersAction) -> None:
+    sub = subparsers.add_parser("pull", help="pull remote playlist state to local")
+    sub.add_argument("path_or_card_id", nargs="?", default=".", help="folder path or card ID")
+    sub.add_argument("--dry-run", action="store_true", help="preview changes without executing")
+    sub.add_argument(
+        "--all", dest="pull_all", action="store_true", help="pull all playlists into subdirectories of cwd"
+    )
+    sub.set_defaults(func=handle_pull)
+
+
+def handle_pull(args: argparse.Namespace) -> None:
     """Pull remote playlist state to local."""
-    logger.debug("command: pull path_or_card_id=%s dry_run=%s all=%s", path_or_card_id, dry_run, pull_all)
-    if pull_all:
-        _pull_all(dry_run=dry_run)
+    logger.debug(
+        "command: pull path_or_card_id=%s dry_run=%s all=%s", args.path_or_card_id, args.dry_run, args.pull_all
+    )
+    if args.pull_all:
+        _pull_all(dry_run=args.dry_run)
         return
 
-    if _is_card_id(path_or_card_id):
+    if _is_card_id(args.path_or_card_id):
         folder = Path()
-        card_id = path_or_card_id
+        card_id = args.path_or_card_id
     else:
-        folder = Path(path_or_card_id)
+        folder = Path(args.path_or_card_id)
         card_id = None
 
-    _pull_one(folder, card_id=card_id, dry_run=dry_run)
+    _pull_one(folder, card_id=card_id, dry_run=args.dry_run)
 
 
 def _pull_one(folder: Path, card_id: str | None = None, dry_run: bool = False) -> None:

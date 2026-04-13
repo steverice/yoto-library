@@ -14,9 +14,11 @@ from typing import TYPE_CHECKING
 import click
 
 if TYPE_CHECKING:
+    import argparse
+
     from rich.progress import TaskID
 
-from yoto_cli.main import _complete_unimported_dirs, _complete_weblocs, _print_cost_summary, cli
+from yoto_cli.main import _complete_unimported_dirs, _print_cost_summary, cli
 from yoto_lib.billing.costs import reset_tracker
 from yoto_lib.config import WORKERS
 from yoto_lib.covers.itunes import enrich_from_itunes
@@ -38,14 +40,18 @@ def _strip_track_number(stem: str) -> str:
     return stripped if stripped else stem
 
 
-@cli.command()
-@click.argument("path", default=".", type=click.Path(exists=True), shell_complete=_complete_weblocs)
-@click.option("--no-trim", is_flag=True, help="Skip silence trimming on YouTube downloads")
-def download(path: str, no_trim: bool) -> None:
+def add_download_command(subparsers: argparse._SubParsersAction) -> None:
+    sub = subparsers.add_parser("download", help="download audio from .webloc URLs in a playlist folder")
+    sub.add_argument("path", nargs="?", default=".", type=Path, help="playlist folder or .webloc file")
+    sub.add_argument("--no-trim", action="store_true", help="skip silence trimming on YouTube downloads")
+    sub.set_defaults(func=handle_download)
+
+
+def handle_download(args: argparse.Namespace) -> None:
     """Download audio from .webloc URLs in a playlist folder."""
-    logger.debug("command: download path=%s no_trim=%s", path, no_trim)
-    trim = not no_trim
-    folder = Path(path)
+    logger.debug("command: download path=%s no_trim=%s", args.path, args.no_trim)
+    trim = not args.no_trim
+    folder = args.path
 
     # Support passing a single .webloc file directly
     if folder.is_file() and folder.suffix.lower() == ".webloc":

@@ -10,11 +10,10 @@ import re
 import subprocess
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import argcomplete
 import click
-from click.shell_completion import CompletionItem
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -55,13 +54,16 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
 
     from yoto_cli.commands.billing import add_providers_command
+    from yoto_cli.commands.import_cmd import add_download_command
     from yoto_cli.commands.misc import (
         add_auth_command,
+        add_completions_command,
         add_export_command,
         add_init_command,
         add_list_command,
         add_reorder_command,
     )
+    from yoto_cli.commands.pull import add_pull_command
     from yoto_cli.commands.sync import add_status_command
 
     add_auth_command(subparsers)
@@ -71,6 +73,9 @@ def build_parser() -> argparse.ArgumentParser:
     add_reorder_command(subparsers)
     add_export_command(subparsers)
     add_status_command(subparsers)
+    add_download_command(subparsers)
+    add_pull_command(subparsers)
+    add_completions_command(subparsers)
 
     argcomplete.autocomplete(parser)
     return parser
@@ -219,7 +224,7 @@ def _has_custom_icon(path: Path) -> bool:
         return False
 
 
-def _complete_path(incomplete: str, filter_fn: Callable[[Path], bool]) -> list[CompletionItem]:
+def _complete_path(incomplete: str, filter_fn: Callable[[Path], bool]) -> list[str]:
     """Complete filesystem paths, yielding dirs (for navigation) and filtered files."""
     inc_path = Path(incomplete) if incomplete else Path()
 
@@ -233,7 +238,7 @@ def _complete_path(incomplete: str, filter_fn: Callable[[Path], bool]) -> list[C
     if not search_dir.is_dir():
         return []
 
-    items = []
+    items: list[str] = []
     for entry in sorted(search_dir.iterdir()):
         if entry.name.startswith("."):
             continue
@@ -243,45 +248,55 @@ def _complete_path(incomplete: str, filter_fn: Callable[[Path], bool]) -> list[C
         value = entry.name if str(search_dir) == "." else str(search_dir / entry.name)
 
         if entry.is_dir():
-            items.append(CompletionItem(value + "/", type="plain"))
+            items.append(value + "/")
         elif filter_fn(entry):
-            items.append(CompletionItem(value, type="plain"))
+            items.append(value)
     return items
 
 
-def _complete_weblocs(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
-    """Complete .webloc file paths."""
-    return _complete_path(incomplete, lambda p: p.suffix.lower() == ".webloc")
+class _DirCompleter:
+    """Complete directory paths."""
+
+    def __call__(self, prefix: str, **kwargs: Any) -> list[str]:
+        return _complete_path(prefix, lambda _: False)
 
 
-def _complete_dirs(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
-    """Complete directory paths only."""
-    return _complete_path(incomplete, lambda _: False)
+class _WeblocCompleter:
+    """Complete .webloc files and directories."""
+
+    def __call__(self, prefix: str, **kwargs: Any) -> list[str]:
+        return _complete_path(prefix, lambda p: p.suffix.lower() == ".webloc")
 
 
-def _complete_unimported_dirs(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
-    """Complete directories that lack a playlist.jsonl, falling back to all dirs."""
-    results = _complete_path(
-        incomplete,
-        lambda p: False,  # no files, dirs only
-    )
-    # Filter to dirs without playlist.jsonl
-    filtered = [
-        item for item in results if not item.value.endswith("/") or not (Path(item.value) / "playlist.jsonl").exists()
-    ]
-    return filtered if any(item.value.endswith("/") for item in filtered) else results
+class _MkaCompleter:
+    """Complete .mka files and directories."""
+
+    def __call__(self, prefix: str, **kwargs: Any) -> list[str]:
+        return _complete_path(prefix, _is_mka)
+
+
+class _MkaWithIconCompleter:
+    """Complete .mka files that have a custom icon."""
+
+    def __call__(self, prefix: str, **kwargs: Any) -> list[str]:
+        results = _complete_path(prefix, lambda p: _is_mka(p) and _has_custom_icon(p))
+        if not any(not v.endswith("/") for v in results):
+            results = _complete_path(prefix, _is_mka)
+        return results
+
+
+class _MkaWithoutIconCompleter:
+    """Complete .mka files that lack a custom icon."""
+
+    def __call__(self, prefix: str, **kwargs: Any) -> list[str]:
+        results = _complete_path(prefix, lambda p: _is_mka(p) and not _has_custom_icon(p))
+        if not any(not v.endswith("/") for v in results):
+            results = _complete_path(prefix, _is_mka)
+        return results
 
 
 def _is_mka(p: Path) -> bool:
     return p.suffix.lower() == ".mka"
-
-
-def _complete_mka_with_icon(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
-    """Complete .mka files that have a custom icon, falling back to all .mka."""
-    results = _complete_path(incomplete, lambda p: _is_mka(p) and _has_custom_icon(p))
-    if not any(item.type == "plain" and not item.value.endswith("/") for item in results):
-        results = _complete_path(incomplete, _is_mka)
-    return results
 
 
 def _has_lyrics(path: Path) -> bool:
@@ -293,27 +308,67 @@ def _has_lyrics(path: Path) -> bool:
         return False
 
 
-def _complete_lyrics_path(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
-    """Complete dirs and .mka files for lyrics command.
+class _LyricsPathCompleter:
+    """Complete dirs and .mka files for lyrics command."""
 
-    With --show: prefer tracks that have lyrics.
-    Without --show: prefer tracks that lack lyrics.
-    Falls back to all .mka files if the preferred filter matches none.
-    """
+    def __init__(self, show_mode: bool = False) -> None:
+        self.show_mode = show_mode
+
+    def __call__(self, prefix: str, parsed_args: argparse.Namespace | None = None, **kwargs: Any) -> list[str]:
+        show = self.show_mode or (parsed_args and getattr(parsed_args, "show", False))
+        if show:
+            results = _complete_path(prefix, lambda p: _is_mka(p) and _has_lyrics(p))
+        else:
+            results = _complete_path(prefix, lambda p: _is_mka(p) and not _has_lyrics(p))
+        if not any(not v.endswith("/") for v in results):
+            results = _complete_path(prefix, _is_mka)
+        return results
+
+
+# ── Click-compatible completion wrappers (used by commands not yet migrated) ──
+
+
+def _complete_weblocs(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[str]:
+    """Complete .webloc file paths."""
+    return _complete_path(incomplete, lambda p: p.suffix.lower() == ".webloc")
+
+
+def _complete_dirs(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[str]:
+    """Complete directory paths only."""
+    return _complete_path(incomplete, lambda _: False)
+
+
+def _complete_unimported_dirs(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[str]:
+    """Complete directories that lack a playlist.jsonl, falling back to all dirs."""
+    results = _complete_path(incomplete, lambda _: False)
+    filtered = [item for item in results if not item.endswith("/") or not (Path(item) / "playlist.jsonl").exists()]
+    return filtered if any(item.endswith("/") for item in filtered) else results
+
+
+def _complete_mka_with_icon(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[str]:
+    """Complete .mka files that have a custom icon, falling back to all .mka."""
+    results = _complete_path(incomplete, lambda p: _is_mka(p) and _has_custom_icon(p))
+    if not any(not v.endswith("/") for v in results):
+        results = _complete_path(incomplete, _is_mka)
+    return results
+
+
+def _complete_mka_without_icon(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[str]:
+    """Complete .mka files that lack a custom icon, falling back to all .mka."""
+    results = _complete_path(incomplete, lambda p: _is_mka(p) and not _has_custom_icon(p))
+    if not any(not v.endswith("/") for v in results):
+        results = _complete_path(incomplete, _is_mka)
+    return results
+
+
+def _complete_lyrics_path(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[str]:
+    """Complete dirs and .mka files for lyrics command."""
     show_mode = ctx.params.get("show", False)
     if show_mode:
         results = _complete_path(incomplete, lambda p: _is_mka(p) and _has_lyrics(p))
     else:
         results = _complete_path(incomplete, lambda p: _is_mka(p) and not _has_lyrics(p))
-    if not any(item.type == "plain" and not item.value.endswith("/") for item in results):
-        results = _complete_path(incomplete, _is_mka)
-    return results
-
-
-def _complete_mka_without_icon(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
-    """Complete .mka files that lack a custom icon, falling back to all .mka."""
-    results = _complete_path(incomplete, lambda p: _is_mka(p) and not _has_custom_icon(p))
-    if not any(item.type == "plain" and not item.value.endswith("/") for item in results):
+    if not any(not v.endswith("/") for v in results):
         results = _complete_path(incomplete, _is_mka)
     return results
 
@@ -335,6 +390,4 @@ import yoto_cli.commands.cover  # noqa: E402
 import yoto_cli.commands.icons  # noqa: E402
 import yoto_cli.commands.import_cmd  # noqa: E402
 import yoto_cli.commands.lyrics  # noqa: E402
-import yoto_cli.commands.misc  # noqa: E402
-import yoto_cli.commands.pull  # noqa: E402
 import yoto_cli.commands.sync  # noqa: F401, E402
