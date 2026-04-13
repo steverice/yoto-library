@@ -8,12 +8,11 @@ repos:
 
   - repo: local
     hooks:
-      - id: ty-check
-        name: ty
-        entry: ty check src/
+      - id: ty
+        name: ty check
+        entry: uv run ty check src/
         language: system
         pass_filenames: false
-        types: [python]
 
   - repo: https://github.com/commitizen-tools/commitizen
     rev: v4.13.9
