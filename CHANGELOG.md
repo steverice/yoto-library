@@ -1,3 +1,31 @@
+## v0.3.0 (2026-04-13)
+
+### ✨ Features
+
+- add --style option to `yoto cover` command
+- wire `CoverStyle` through `generate_cover_if_missing`
+- add `style` parameter to `build_cover_prompt` and `add_title_to_illustration`
+- add `style` property to `Playlist`, reads `.yoto-style` dotfile
+- add `CoverStyle` dataclass with 8 self-registering art styles
+
+### 🐛🚑️ Fixes
+
+- show style name in progress status on both generation paths
+- remove unnecessary None guard in style resolution
+
+### ✅🤡🧪 Tests
+
+- add duplicate-name/multiple-default guard tests; handle corrupted .yoto-style
+
+### 💚👷 CI & Build
+
+- use commitizen changelog for GitHub release notes instead of `--generate-notes`
+
+### 📝💡 Documentation
+
+- document cover art style selection
+- document `yoto lyrics --clear` and update release pipeline description
+
 ## v0.2.0 (2026-04-12)
 
 ### ✨ Features
