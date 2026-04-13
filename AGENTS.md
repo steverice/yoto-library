@@ -14,7 +14,7 @@ src/
     providers/         # AI service providers (OpenAI, FLUX, Gemini, RetroD, Claude)
     track_sources/     # .webloc URL resolution (YouTube via yt-dlp)
     yoto/              # Yoto API client and OAuth authentication
-  yoto_cli/            # thin Click CLI wrapper
+  yoto_cli/            # argparse CLI layer
 tests/                 # pytest suite (mirrors src/ subpackage structure)
 validation/            # standalone validation scripts
 ```
@@ -27,12 +27,12 @@ validation/            # standalone validation scripts
 
 **Authentication** — macOS Keychain via the `keyring` package. No config files for auth. Token refresh is automatic.
 
-**CLI framework** — Click. All commands live in `src/yoto_cli/main.py`.
+**CLI framework** — argparse + argcomplete. Parser is built in `src/yoto_cli/main.py`, commands live in `src/yoto_cli/commands/`.
 
 ### CLI output
 
 All terminal output goes through the shared rich `Console` in `src/yoto_cli/progress.py`.
-Never use `click.echo()` or `print()` directly.
+Never use `print()` directly.
 
 - **Success**: `success(msg)` — green ✓ prefix
 - **Error**: `error(msg)` — red ✗ prefix
@@ -65,7 +65,7 @@ Never use `click.echo()` or `print()` directly.
 
 ## Architecture rules
 
-- **Library/CLI separation** — `yoto_lib` must be importable without Click. No CLI framework imports in library code. The library is designed to be called by other tools (e.g., a Quick Look plugin).
+- **Library/CLI separation** — `yoto_lib` must be importable without CLI framework dependencies. No CLI framework imports in library code. The library is designed to be called by other tools (e.g., a Quick Look plugin).
 - **No global config file** — env vars for API keys, Keychain for auth. This is a deliberate choice, not an oversight. **Exception: `~/.yoto/lyrics/*.json` are per-source scraping configs (not a central config file — each is self-contained).**
 - **Sync is one-directional** — `sync` is always local→remote (local wins). `pull` is always remote→local (remote wins). There is no conflict resolution, and none should be added.
 - **One chapter per track** — each track maps to one Yoto chapter, giving the user dial control per song on the physical player. Do not collapse tracks into shared chapters.

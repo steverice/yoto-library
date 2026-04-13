@@ -2060,7 +2060,6 @@ source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "argcomplete" },
-    { name = "click" },
     { name = "google-genai" },
     { name = "httpx" },
     { name = "keyring" },
@@ -2095,7 +2094,6 @@ dev = [
 requires-dist = [
     { name = "anthropic", specifier = ">=0.40" },
     { name = "argcomplete", specifier = ">=3.0" },
-    { name = "click", specifier = ">=8.0" },
     { name = "google-genai", specifier = ">=1.0" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "iterm2", marker = "extra == 'iterm2'", specifier = ">=2.0" },

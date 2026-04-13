@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import argcomplete
-import click
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -97,14 +96,12 @@ def main() -> None:
 
     try:
         parser = build_parser()
-        args, remaining = parser.parse_known_args()
+        args = parser.parse_args()
         _setup_logging(getattr(args, "verbose", False))
-        if hasattr(args, "func"):
-            if remaining:
-                parser.error(f"unrecognized arguments: {' '.join(remaining)}")
-            args.func(args)
-        else:
-            cli(standalone_mode=True)
+        if not hasattr(args, "func"):
+            parser.print_help()
+            raise SystemExit(0)
+        args.func(args)
     except KeyboardInterrupt:
         pass
     except SystemExit:
@@ -342,61 +339,3 @@ class _LyricsPathCompleter:
         if not any(not v.endswith("/") for v in results):
             results = _complete_path(prefix, _is_mka)
         return results
-
-
-# ── Click-compatible completion wrappers (used by commands not yet migrated) ──
-
-
-def _complete_weblocs(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[str]:
-    """Complete .webloc file paths."""
-    return _complete_path(incomplete, lambda p: p.suffix.lower() == ".webloc")
-
-
-def _complete_dirs(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[str]:
-    """Complete directory paths only."""
-    return _complete_path(incomplete, lambda _: False)
-
-
-def _complete_unimported_dirs(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[str]:
-    """Complete directories that lack a playlist.jsonl, falling back to all dirs."""
-    results = _complete_path(incomplete, lambda _: False)
-    filtered = [item for item in results if not item.endswith("/") or not (Path(item) / "playlist.jsonl").exists()]
-    return filtered if any(item.endswith("/") for item in filtered) else results
-
-
-def _complete_mka_with_icon(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[str]:
-    """Complete .mka files that have a custom icon, falling back to all .mka."""
-    results = _complete_path(incomplete, lambda p: _is_mka(p) and _has_custom_icon(p))
-    if not any(not v.endswith("/") for v in results):
-        results = _complete_path(incomplete, _is_mka)
-    return results
-
-
-def _complete_mka_without_icon(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[str]:
-    """Complete .mka files that lack a custom icon, falling back to all .mka."""
-    results = _complete_path(incomplete, lambda p: _is_mka(p) and not _has_custom_icon(p))
-    if not any(not v.endswith("/") for v in results):
-        results = _complete_path(incomplete, _is_mka)
-    return results
-
-
-def _complete_lyrics_path(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[str]:
-    """Complete dirs and .mka files for lyrics command."""
-    show_mode = ctx.params.get("show", False)
-    if show_mode:
-        results = _complete_path(incomplete, lambda p: _is_mka(p) and _has_lyrics(p))
-    else:
-        results = _complete_path(incomplete, lambda p: _is_mka(p) and not _has_lyrics(p))
-    if not any(not v.endswith("/") for v in results):
-        results = _complete_path(incomplete, _is_mka)
-    return results
-
-
-# ── CLI group ─────────────────────────────────────────────────────────────────
-
-
-@click.group()
-@click.option("-v", "--verbose", is_flag=True, help="Enable verbose (DEBUG) console output")
-def cli(verbose: bool) -> None:
-    """Manage Yoto CYO playlists as folders on disk."""
-    _setup_logging(verbose)
