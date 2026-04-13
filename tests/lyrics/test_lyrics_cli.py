@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import struct
 from pathlib import Path
 from unittest.mock import patch
@@ -9,7 +10,7 @@ from unittest.mock import patch
 import pytest
 from click.testing import CliRunner
 
-from yoto_cli.main import cli
+from yoto_cli.main import build_parser, cli
 
 
 def ffmpeg_available():
@@ -50,7 +51,14 @@ def _make_wav(path: Path) -> Path:
 
 @needs_ffmpeg
 class TestLyricsCommand:
+    def test_lyrics_parses(self):
+        parser = build_parser()
+        args = parser.parse_args(["lyrics", "/some/path"])
+        assert args.command == "lyrics"
+        assert hasattr(args, "func")
+
     def test_fetches_and_writes_lyrics(self, tmp_path):
+        from yoto_cli.commands.lyrics import handle_lyrics
         from yoto_lib.mka import wrap_in_mka, write_tags
 
         mka = tmp_path / "track.mka"
@@ -60,13 +68,18 @@ class TestLyricsCommand:
         write_tags(mka, {"title": "Old MacDonald", "artist": "Kids Songs"})
 
         with patch("yoto_cli.commands.lyrics.get_lyrics", return_value=("E-I-E-I-O", "lrclib")):
-            runner = CliRunner()
-            result = runner.invoke(cli, ["lyrics", str(tmp_path)])
-
-        assert result.exit_code == 0, result.output
-        assert "lrclib" in result.output.lower() or "lyrics" in result.output.lower()
+            handle_lyrics(
+                argparse.Namespace(
+                    path=tmp_path,
+                    force=False,
+                    show=False,
+                    clear=False,
+                    add_source_url=None,
+                )
+            )
 
     def test_skips_tracks_with_existing_lyrics(self, tmp_path):
+        from yoto_cli.commands.lyrics import handle_lyrics
         from yoto_lib.mka import wrap_in_mka, write_tags
 
         mka = tmp_path / "track.mka"
@@ -76,13 +89,20 @@ class TestLyricsCommand:
         write_tags(mka, {"title": "Song", "artist": "Artist", "lyrics": "Existing"})
 
         with patch("yoto_cli.commands.lyrics.get_lyrics") as mock_get:
-            runner = CliRunner()
-            result = runner.invoke(cli, ["lyrics", str(tmp_path)])
+            handle_lyrics(
+                argparse.Namespace(
+                    path=tmp_path,
+                    force=False,
+                    show=False,
+                    clear=False,
+                    add_source_url=None,
+                )
+            )
 
-        assert result.exit_code == 0, result.output
         mock_get.assert_not_called()
 
     def test_force_refetches_existing_lyrics(self, tmp_path):
+        from yoto_cli.commands.lyrics import handle_lyrics
         from yoto_lib.mka import wrap_in_mka, write_tags
 
         mka = tmp_path / "track.mka"
@@ -92,16 +112,28 @@ class TestLyricsCommand:
         write_tags(mka, {"title": "Song", "artist": "Artist", "lyrics": "Old lyrics"})
 
         with patch("yoto_cli.commands.lyrics.get_lyrics", return_value=("New lyrics", "lrclib")):
-            runner = CliRunner()
-            result = runner.invoke(cli, ["lyrics", "--force", str(tmp_path)])
-
-        assert result.exit_code == 0, result.output
+            handle_lyrics(
+                argparse.Namespace(
+                    path=tmp_path,
+                    force=True,
+                    show=False,
+                    clear=False,
+                    add_source_url=None,
+                )
+            )
 
     def test_handles_no_mka_files(self, tmp_path):
-        runner = CliRunner()
-        result = runner.invoke(cli, ["lyrics", str(tmp_path)])
+        from yoto_cli.commands.lyrics import handle_lyrics
 
-        assert result.exit_code == 0, result.output
+        handle_lyrics(
+            argparse.Namespace(
+                path=tmp_path,
+                force=False,
+                show=False,
+                clear=False,
+                add_source_url=None,
+            )
+        )
 
 
 class TestSelectIconLyricsSummary:

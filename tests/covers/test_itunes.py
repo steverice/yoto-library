@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, patch
 import httpx
 import httpx as httpx_client
 import pytest
-from click.testing import CliRunner
 
 from yoto_lib.covers.itunes import _artwork_url, embed_album_art, enrich_from_itunes, match_album, search_itunes_album
 from yoto_lib.mka import extract_album_art, wrap_in_mka
@@ -336,7 +335,7 @@ class TestImportIntegration:
     @needs_ffmpeg
     def test_import_calls_enrich(self, tmp_path):
         """Verify import_cmd calls enrich_from_itunes for each wrapped track."""
-        from yoto_cli.main import cli
+        import argparse
 
         # Create a minimal WAV
         wav = tmp_path / "source" / "track.wav"
@@ -363,14 +362,14 @@ class TestImportIntegration:
 
         output = tmp_path / "output"
 
+        from yoto_cli.commands.import_cmd import handle_import
+
         with (
             patch("yoto_cli.commands.import_cmd.enrich_from_itunes") as mock_enrich,
             patch("yoto_cli.commands.import_cmd.generate_description"),
         ):
-            runner = CliRunner()
-            result = runner.invoke(cli, ["import", str(wav.parent), "-o", str(output)])
+            handle_import(argparse.Namespace(source=wav.parent, output=output))
 
-        assert result.exit_code == 0, result.output
         assert mock_enrich.call_count >= 1
         # First arg is the MKA path, second is the tags dict, third is the cache dict
         call_args = mock_enrich.call_args_list[0][0]
@@ -381,7 +380,7 @@ class TestImportIntegration:
     @needs_ffmpeg
     def test_import_calls_get_lyrics(self, tmp_path):
         """Verify import_cmd calls get_lyrics and writes LYRICS tag when found."""
-        from yoto_cli.main import cli
+        import argparse
 
         wav = tmp_path / "source" / "track.wav"
         wav.parent.mkdir()
@@ -407,16 +406,16 @@ class TestImportIntegration:
 
         output = tmp_path / "output"
 
+        from yoto_cli.commands.import_cmd import handle_import
+
         with (
             patch("yoto_cli.commands.import_cmd.enrich_from_itunes"),
             patch("yoto_cli.commands.import_cmd.generate_description"),
             patch("yoto_cli.commands.import_cmd.get_lyrics", return_value=("La la la", "lrclib")) as mock_lyrics,
             patch("yoto_cli.commands.import_cmd.write_tags") as mock_write_tags,
         ):
-            runner = CliRunner()
-            result = runner.invoke(cli, ["import", str(wav.parent), "-o", str(output)])
+            handle_import(argparse.Namespace(source=wav.parent, output=output))
 
-        assert result.exit_code == 0, result.output
         mock_lyrics.assert_called_once()
         # write_tags should have been called with lyrics
         lyrics_calls = [call for call in mock_write_tags.call_args_list if "lyrics" in call[0][1]]

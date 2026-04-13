@@ -6,35 +6,46 @@ import logging
 import re
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import click
+if TYPE_CHECKING:
+    import argparse
 
-from yoto_cli.main import _complete_lyrics_path, cli
 from yoto_lib.lyrics import get_lyrics
 from yoto_lib.mka import read_tags, write_tags
 
 logger = logging.getLogger(__name__)
 
 
-@cli.command()
-@click.argument("path", type=click.Path(), required=False, default=None, shell_complete=_complete_lyrics_path)
-@click.option("--force", is_flag=True, help="Re-fetch lyrics even if already present / skip confirmation for stdin")
-@click.option("--show", is_flag=True, help="Display stored lyrics for each track")
-@click.option("--clear", is_flag=True, help="Remove stored lyrics from tracks")
-@click.option(
-    "--add-source",
-    "add_source_url",
-    default=None,
-    metavar="URL",
-    help="Analyze a lyrics website and generate a scraping config.",
-)
-def lyrics(path: str | None, force: bool, show: bool, clear: bool, add_source_url: str | None) -> None:
-    """Fetch and store lyrics for tracks in a playlist folder or single track.
+def add_lyrics_command(subparsers: argparse._SubParsersAction) -> None:
+    """Register the lyrics subcommand."""
+    from yoto_cli.main import _LyricsPathCompleter
 
-    Accepts a playlist folder or a single .mka file. When piping lyrics via
-    stdin (e.g. `cat lyrics.txt | yoto lyrics track.mka`), requires a single
-    track path. Use --force to skip confirmation when overwriting.
-    """
+    sub = subparsers.add_parser("lyrics", help="fetch and store lyrics for tracks")
+    sub.add_argument(
+        "path", nargs="?", default=None, type=Path, help="playlist folder or .mka file"
+    ).completer = _LyricsPathCompleter()
+    sub.add_argument("--force", action="store_true", help="re-fetch even if already present")
+    sub.add_argument("--show", action="store_true", help="display stored lyrics")
+    sub.add_argument("--clear", action="store_true", help="remove stored lyrics")
+    sub.add_argument(
+        "--add-source",
+        dest="add_source_url",
+        default=None,
+        metavar="URL",
+        help="analyze a lyrics website and generate a scraping config",
+    )
+    sub.set_defaults(func=handle_lyrics)
+
+
+def handle_lyrics(args: argparse.Namespace) -> None:
+    """Fetch and store lyrics for tracks in a playlist folder or single track."""
+    path: Path | None = args.path
+    force: bool = args.force
+    show: bool = args.show
+    clear: bool = args.clear
+    add_source_url: str | None = args.add_source_url
+
     logger.debug(
         "command: lyrics path=%s force=%s show=%s clear=%s add_source_url=%s",
         path,
@@ -129,7 +140,7 @@ def lyrics(path: str | None, force: bool, show: bool, clear: bool, add_source_ur
         _error("Missing argument 'PATH'. Run 'yoto lyrics --help' for usage.")
         return
 
-    target = Path(path)
+    target = path
 
     # Resolve target to a list of MKA files
     if target.is_file() and target.suffix.lower() == ".mka":

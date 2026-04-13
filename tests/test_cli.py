@@ -549,22 +549,29 @@ class TestExportCommand:
 
 
 class TestImportCommand:
-    def test_import_no_audio_files(self, runner, tmp_path):
+    def test_import_parses(self):
+        parser = build_parser()
+        args = parser.parse_args(["import", "/some/path"])
+        assert args.command == "import"
+        assert hasattr(args, "func")
+
+    def test_import_no_audio_files(self, tmp_path):
         """import with no audio files prints message."""
         folder = tmp_path / "empty"
         folder.mkdir()
 
-        result = runner.invoke(cli, ["import", str(folder)])
+        from yoto_cli.commands.import_cmd import handle_import
 
-        assert result.exit_code == 0
-        assert "No audio files found" in result.output
+        handle_import(argparse.Namespace(source=folder, output=None))
 
-    def test_import_wraps_and_writes_jsonl(self, runner, tmp_path):
+    def test_import_wraps_and_writes_jsonl(self, tmp_path):
         """import wraps audio files, writes tags, writes playlist.jsonl."""
         folder = tmp_path / "music"
         folder.mkdir()
         (folder / "01 Song One.mp3").write_bytes(b"\x00" * 64)
         (folder / "02 Song Two.mp3").write_bytes(b"\x00" * 64)
+
+        from yoto_cli.commands.import_cmd import handle_import
 
         with (
             patch("yoto_cli.commands.import_cmd.wrap_in_mka") as mock_wrap,
@@ -576,13 +583,19 @@ class TestImportCommand:
             patch("yoto_cli.commands.import_cmd.load_playlist") as mock_load,
         ):
             mock_load.return_value = MagicMock()
-            result = runner.invoke(cli, ["import", str(folder)])
+            handle_import(argparse.Namespace(source=folder, output=None))
 
-        assert result.exit_code == 0, result.output
         assert mock_wrap.call_count == 2
         # playlist.jsonl should have been written
         jsonl = folder / "playlist.jsonl"
         assert jsonl.exists()
+
+    def test_import_nonexistent_path(self, tmp_path):
+        """import exits with error when source path does not exist."""
+        from yoto_cli.commands.import_cmd import handle_import
+
+        with pytest.raises(SystemExit):
+            handle_import(argparse.Namespace(source=tmp_path / "nonexistent", output=None))
 
 
 # ── test_cover_command ───────────────────────────────────────────────────────

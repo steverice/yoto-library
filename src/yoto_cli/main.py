@@ -54,7 +54,8 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
 
     from yoto_cli.commands.billing import add_providers_command
-    from yoto_cli.commands.import_cmd import add_download_command
+    from yoto_cli.commands.import_cmd import add_download_command, add_import_command
+    from yoto_cli.commands.lyrics import add_lyrics_command
     from yoto_cli.commands.misc import (
         add_auth_command,
         add_completions_command,
@@ -74,7 +75,9 @@ def build_parser() -> argparse.ArgumentParser:
     add_export_command(subparsers)
     add_status_command(subparsers)
     add_download_command(subparsers)
+    add_import_command(subparsers)
     add_pull_command(subparsers)
+    add_lyrics_command(subparsers)
     add_completions_command(subparsers)
 
     argcomplete.autocomplete(parser)
@@ -268,6 +271,15 @@ class _WeblocCompleter:
         return _complete_path(prefix, lambda p: p.suffix.lower() == ".webloc")
 
 
+class _UnimportedDirCompleter:
+    """Complete directories that lack a playlist.jsonl, falling back to all dirs."""
+
+    def __call__(self, prefix: str, **kwargs: Any) -> list[str]:
+        results = _complete_path(prefix, lambda _: False)
+        filtered = [item for item in results if not item.endswith("/") or not (Path(item) / "playlist.jsonl").exists()]
+        return filtered if any(item.endswith("/") for item in filtered) else results
+
+
 class _MkaCompleter:
     """Complete .mka files and directories."""
 
@@ -388,6 +400,4 @@ def cli(verbose: bool) -> None:
 
 import yoto_cli.commands.cover  # noqa: E402
 import yoto_cli.commands.icons  # noqa: E402
-import yoto_cli.commands.import_cmd  # noqa: E402
-import yoto_cli.commands.lyrics  # noqa: E402
 import yoto_cli.commands.sync  # noqa: F401, E402

@@ -11,14 +11,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import click
-
 if TYPE_CHECKING:
     import argparse
 
     from rich.progress import TaskID
 
-from yoto_cli.main import _complete_unimported_dirs, _print_cost_summary, cli
+from yoto_cli.main import _print_cost_summary
 from yoto_lib.billing.costs import reset_tracker
 from yoto_lib.config import WORKERS
 from yoto_lib.covers.itunes import enrich_from_itunes
@@ -118,20 +116,27 @@ def handle_download(args: argparse.Namespace) -> None:
 # generation) that could be extracted to a library function in
 # yoto_lib/import_.py, similar to the select-icon extraction into
 # yoto_lib/icons/select.py.
-@cli.command(name="import")
-@click.argument("source", type=click.Path(exists=True), shell_complete=_complete_unimported_dirs)
-@click.option(
-    "--output",
-    "-o",
-    default=None,
-    type=click.Path(),
-    help="Output folder (defaults to source folder)",
-)
-def import_cmd(source: str, output: str | None) -> None:
+
+
+def add_import_command(subparsers: argparse._SubParsersAction) -> None:
+    """Register the import subcommand."""
+    from yoto_cli.main import _UnimportedDirCompleter
+
+    sub = subparsers.add_parser("import", help="bulk import: convert audio files into a playlist")
+    sub.add_argument("source", type=Path, help="source folder of audio files").completer = _UnimportedDirCompleter()
+    sub.add_argument("--output", "-o", default=None, type=Path, help="output folder (defaults to source)")
+    sub.set_defaults(func=handle_import)
+
+
+def handle_import(args: argparse.Namespace) -> None:
     """Bulk import: convert a folder of audio files into a playlist."""
-    logger.debug("command: import source=%s output=%s", source, output)
-    source_path = Path(source)
-    output_path = Path(output) if output else source_path
+    from yoto_cli.main import require_path
+
+    require_path(args.source)
+
+    logger.debug("command: import source=%s output=%s", args.source, args.output)
+    source_path: Path = args.source
+    output_path: Path = args.output if args.output else source_path
 
     output_path.mkdir(parents=True, exist_ok=True)
     reset_tracker()
