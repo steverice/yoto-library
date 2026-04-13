@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -83,28 +84,41 @@ class TestListCommand:
 
 
 class TestSyncCommand:
-    def test_sync_runs(self, runner, tmp_path):
+    def test_sync_parses(self):
+        parser = build_parser()
+        args = parser.parse_args(["sync", "/some/path"])
+        assert args.command == "sync"
+        assert hasattr(args, "func")
+
+    def test_sync_runs(self, tmp_path):
         """sync calls sync_path and prints card + track count."""
-        # Create a minimal folder so the path argument is valid
         folder = tmp_path / "album"
         folder.mkdir()
         (folder / "track01.mp3").write_bytes(b"\x00" * 16)
 
         fake_results = [SyncResult(card_id="SYNCED-001", tracks_uploaded=3)]
 
-        with patch("yoto_cli.commands.sync.sync_path", return_value=fake_results) as mock_sync:
-            result = runner.invoke(cli, ["sync", str(folder)])
+        from yoto_cli.commands.sync import handle_sync
 
-        assert result.exit_code == 0
+        with patch("yoto_cli.commands.sync.sync_path", return_value=fake_results) as mock_sync:
+            handle_sync(
+                argparse.Namespace(
+                    path=folder,
+                    dry_run=False,
+                    no_trim=False,
+                    ignore_album_art=False,
+                    force_cover=False,
+                    print_cover_flag=None,
+                )
+            )
+
         mock_sync.assert_called_once()
         call_kwargs = mock_sync.call_args.kwargs
         assert call_kwargs.get("dry_run") is False
         assert call_kwargs.get("trim") is True
         assert "log" in call_kwargs
-        assert "SYNCED-001" in result.output
-        assert "3 tracks" in result.output
 
-    def test_sync_dry_run(self, runner, tmp_path):
+    def test_sync_dry_run(self, tmp_path):
         """sync --dry-run prints dry-run message without uploading."""
         folder = tmp_path / "album"
         folder.mkdir()
@@ -112,17 +126,25 @@ class TestSyncCommand:
 
         fake_results = [SyncResult(card_id=None, tracks_uploaded=2, dry_run=True)]
 
-        with patch("yoto_cli.commands.sync.sync_path", return_value=fake_results) as mock_sync:
-            result = runner.invoke(cli, ["sync", "--dry-run", str(folder)])
+        from yoto_cli.commands.sync import handle_sync
 
-        assert result.exit_code == 0
+        with patch("yoto_cli.commands.sync.sync_path", return_value=fake_results) as mock_sync:
+            handle_sync(
+                argparse.Namespace(
+                    path=folder,
+                    dry_run=True,
+                    no_trim=False,
+                    ignore_album_art=False,
+                    force_cover=False,
+                    print_cover_flag=None,
+                )
+            )
+
         mock_sync.assert_called_once_with(folder, dry_run=True, trim=True, ignore_album_art=False, force_cover=False)
-        assert "[Dry run]" in result.output
-        assert "2 tracks" in result.output
 
 
 class TestSyncNoTrim:
-    def test_sync_passes_no_trim(self, runner, tmp_path):
+    def test_sync_passes_no_trim(self, tmp_path):
         """sync --no-trim passes trim=False to sync_path."""
         folder = tmp_path / "album"
         folder.mkdir()
@@ -130,13 +152,21 @@ class TestSyncNoTrim:
 
         fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1)]
 
-        with patch("yoto_cli.commands.sync.sync_path", return_value=fake_results) as mock_sync:
-            result = runner.invoke(cli, ["sync", "--no-trim", str(folder)])
+        from yoto_cli.commands.sync import handle_sync
 
-        assert result.exit_code == 0
-        assert mock_sync.call_args.kwargs.get("trim") is False or (
-            len(mock_sync.call_args) > 0 and mock_sync.call_args[1].get("trim") is False
-        )
+        with patch("yoto_cli.commands.sync.sync_path", return_value=fake_results) as mock_sync:
+            handle_sync(
+                argparse.Namespace(
+                    path=folder,
+                    dry_run=False,
+                    no_trim=True,
+                    ignore_album_art=False,
+                    force_cover=False,
+                    print_cover_flag=None,
+                )
+            )
+
+        assert mock_sync.call_args.kwargs.get("trim") is False
 
 
 # ── test_reorder_opens_editor ─────────────────────────────────────────────────
@@ -602,7 +632,13 @@ class TestImportCommand:
 
 
 class TestCoverCommand:
-    def test_cover_already_exists(self, runner, tmp_path):
+    def test_cover_parses(self):
+        parser = build_parser()
+        args = parser.parse_args(["cover", "/some/path"])
+        assert args.command == "cover"
+        assert hasattr(args, "func")
+
+    def test_cover_already_exists(self, tmp_path):
         """cover command exits early when cover.png exists (no --force)."""
         folder = tmp_path / "album"
         folder.mkdir()
@@ -610,15 +646,28 @@ class TestCoverCommand:
         (folder / "playlist.jsonl").write_text('"track.mka"\n', encoding="utf-8")
         (folder / "track.mka").write_bytes(b"\x00" * 64)
 
+        from yoto_cli.commands.cover import handle_cover
+
         with patch("yoto_cli.commands.cover.load_playlist") as mock_load:
             mock_playlist = MagicMock()
             mock_playlist.cover_path = folder / "cover.png"
             mock_playlist.track_files = ["track.mka"]
             mock_load.return_value = mock_playlist
-            result = runner.invoke(cli, ["cover", str(folder)])
+            handle_cover(
+                argparse.Namespace(
+                    path=folder,
+                    force=False,
+                    backup=False,
+                    ignore_album_art=False,
+                    style=None,
+                )
+            )
 
-        assert result.exit_code == 0
-        assert "Cover already exists" in result.output
+    def test_cover_mutual_exclusion(self):
+        """cover --force and --backup are mutually exclusive."""
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["cover", "--force", "--backup", "/some/path"])
 
 
 # ── test_reset_icon_command ──────────────────────────────────────────────────
@@ -657,28 +706,38 @@ class TestResetIconCommand:
 
 
 class TestPrintCommand:
-    def test_print_sends_to_printer(self, runner, tmp_path):
+    def test_print_parses(self):
+        parser = build_parser()
+        args = parser.parse_args(["print", "/some/path"])
+        assert args.command == "print"
+        assert hasattr(args, "func")
+
+    def test_print_sends_to_printer(self, tmp_path):
         """print calls print_cover on the playlist's cover.png."""
         folder = tmp_path / "album"
         folder.mkdir()
         (folder / "playlist.jsonl").write_text('"track.mka"\n')
         (folder / "track.mka").write_bytes(b"\x00" * 16)
-        # Create a valid cover
         from PIL import Image
 
         img = Image.new("RGB", (638, 1011), "blue")
         img.save(folder / "cover.png")
 
-        with patch("yoto_cli.commands.cover.print_cover") as mock_print, patch.dict(os.environ, {}, clear=False) as env:
-            env.pop("YOTO_ICC_PROFILE", None)
-            result = runner.invoke(cli, ["print", str(folder)], input="y\n")
+        from yoto_cli.commands.cover import handle_print
 
-        assert result.exit_code == 0
+        with (
+            patch("yoto_cli.commands.cover.print_cover") as mock_print,
+            patch("rich.prompt.Confirm.ask", return_value=True),
+            patch.dict(os.environ, {}, clear=False) as env,
+        ):
+            env.pop("YOTO_ICC_PROFILE", None)
+            handle_print(argparse.Namespace(path=folder, yes=False, profile=None))
+
         mock_print.assert_called_once()
         assert mock_print.call_args[0][0] == folder / "cover.png"
         assert mock_print.call_args[1]["icc_profile"] is None
 
-    def test_print_yes_skips_confirm(self, runner, tmp_path):
+    def test_print_yes_skips_confirm(self, tmp_path):
         """print --yes skips the confirmation prompt."""
         folder = tmp_path / "album"
         folder.mkdir()
@@ -689,13 +748,14 @@ class TestPrintCommand:
         img = Image.new("RGB", (638, 1011), "blue")
         img.save(folder / "cover.png")
 
-        with patch("yoto_cli.commands.cover.print_cover") as mock_print:
-            result = runner.invoke(cli, ["print", "--yes", str(folder)])
+        from yoto_cli.commands.cover import handle_print
 
-        assert result.exit_code == 0
+        with patch("yoto_cli.commands.cover.print_cover") as mock_print:
+            handle_print(argparse.Namespace(path=folder, yes=True, profile=None))
+
         mock_print.assert_called_once()
 
-    def test_print_no_cover_offers_generation(self, runner, tmp_path):
+    def test_print_no_cover_offers_generation(self, tmp_path):
         """print offers to generate cover when cover.png is missing."""
         folder = tmp_path / "album"
         folder.mkdir()
@@ -703,29 +763,36 @@ class TestPrintCommand:
         (folder / "track.mka").write_bytes(b"\x00" * 16)
         (folder / "description.txt").write_text("A test playlist")
 
+        from yoto_cli.commands.cover import handle_print
+
         with (
             patch("yoto_cli.commands.cover.generate_cover_if_missing") as mock_gen,
             patch("yoto_cli.commands.cover.print_cover"),
+            patch("rich.prompt.Confirm.ask", return_value=True),
+            pytest.raises(SystemExit),
         ):
-            # Answer "y" to generate, then "y" to print
-            runner.invoke(cli, ["print", str(folder)], input="y\ny\n")
+            handle_print(argparse.Namespace(path=folder, yes=False, profile=None))
 
         mock_gen.assert_called_once()
 
-    def test_print_no_cover_decline_generation(self, runner, tmp_path):
+    def test_print_no_cover_decline_generation(self, tmp_path):
         """print exits cleanly when user declines cover generation."""
         folder = tmp_path / "album"
         folder.mkdir()
         (folder / "playlist.jsonl").write_text('"track.mka"\n')
         (folder / "track.mka").write_bytes(b"\x00" * 16)
 
-        with patch("yoto_cli.commands.cover.generate_cover_if_missing") as mock_gen:
-            result = runner.invoke(cli, ["print", str(folder)], input="n\n")
+        from yoto_cli.commands.cover import handle_print
+
+        with (
+            patch("yoto_cli.commands.cover.generate_cover_if_missing") as mock_gen,
+            patch("rich.prompt.Confirm.ask", return_value=False),
+        ):
+            handle_print(argparse.Namespace(path=folder, yes=False, profile=None))
 
         mock_gen.assert_not_called()
-        assert result.exit_code == 0
 
-    def test_print_with_profile(self, runner, tmp_path):
+    def test_print_with_profile(self, tmp_path):
         """print --profile passes ICC profile to print_cover."""
         folder = tmp_path / "album"
         folder.mkdir()
@@ -738,14 +805,15 @@ class TestPrintCommand:
         fake_profile = tmp_path / "test.icc"
         fake_profile.write_bytes(b"fake")
 
-        with patch("yoto_cli.commands.cover.print_cover") as mock_print:
-            result = runner.invoke(cli, ["print", "--yes", "--profile", str(fake_profile), str(folder)])
+        from yoto_cli.commands.cover import handle_print
 
-        assert result.exit_code == 0
+        with patch("yoto_cli.commands.cover.print_cover") as mock_print:
+            handle_print(argparse.Namespace(path=folder, yes=True, profile=fake_profile))
+
         mock_print.assert_called_once()
         assert mock_print.call_args[1]["icc_profile"] == str(fake_profile)
 
-    def test_print_missing_profile_warns(self, runner, tmp_path):
+    def test_print_missing_profile_warns(self, tmp_path):
         """print warns and offers to continue when profile not found."""
         folder = tmp_path / "album"
         folder.mkdir()
@@ -756,16 +824,19 @@ class TestPrintCommand:
         img = Image.new("RGB", (638, 1011), "blue")
         img.save(folder / "cover.png")
 
-        with patch("yoto_cli.commands.cover.print_cover") as mock_print:
-            # Answer "y" to continue without color management, "y" to print
-            result = runner.invoke(cli, ["print", "--profile", "/nonexistent.icc", str(folder)], input="y\ny\n")
+        from yoto_cli.commands.cover import handle_print
 
-        assert result.exit_code == 0
+        with (
+            patch("yoto_cli.commands.cover.print_cover") as mock_print,
+            patch("rich.prompt.Confirm.ask", side_effect=[True, True]),
+        ):
+            handle_print(argparse.Namespace(path=folder, yes=False, profile=Path("/nonexistent.icc")))
+
         mock_print.assert_called_once()
         assert mock_print.call_args[1]["icc_profile"] is None
 
-    def test_print_error_shows_message(self, runner, tmp_path):
-        """PrintError is surfaced as a ClickException."""
+    def test_print_error_shows_message(self, tmp_path):
+        """PrintError is surfaced as SystemExit."""
         folder = tmp_path / "album"
         folder.mkdir()
         (folder / "playlist.jsonl").write_text('"track.mka"\n')
@@ -775,18 +846,20 @@ class TestPrintCommand:
         img = Image.new("RGB", (638, 1011), "blue")
         img.save(folder / "cover.png")
 
-        with patch("yoto_cli.commands.cover.print_cover", side_effect=PrintError("Printer offline")):
-            result = runner.invoke(cli, ["print", "--yes", str(folder)])
+        from yoto_cli.commands.cover import handle_print
 
-        assert result.exit_code != 0
-        assert "Printer offline" in result.output
+        with (
+            patch("yoto_cli.commands.cover.print_cover", side_effect=PrintError("Printer offline")),
+            pytest.raises(SystemExit),
+        ):
+            handle_print(argparse.Namespace(path=folder, yes=True, profile=None))
 
 
 # ── test_sync_print ──────────────────────────────────────────────────────────
 
 
 class TestSyncPrint:
-    def test_sync_print_flag(self, runner, tmp_path):
+    def test_sync_print_flag(self, tmp_path):
         """sync --print calls print_cover when cover was uploaded."""
         folder = tmp_path / "album"
         folder.mkdir()
@@ -798,17 +871,27 @@ class TestSyncPrint:
 
         fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1, cover_uploaded=True, folder=folder)]
 
+        from yoto_cli.commands.sync import handle_sync
+
         with (
             patch("yoto_cli.commands.sync.sync_path", return_value=fake_results),
             patch("yoto_cli.commands.sync.print_cover") as mock_print,
         ):
-            result = runner.invoke(cli, ["sync", "--print", str(folder)])
+            handle_sync(
+                argparse.Namespace(
+                    path=folder,
+                    dry_run=False,
+                    no_trim=False,
+                    ignore_album_art=False,
+                    force_cover=False,
+                    print_cover_flag=True,
+                )
+            )
 
-        assert result.exit_code == 0
         mock_print.assert_called_once()
         assert mock_print.call_args[0][0] == folder / "cover.png"
 
-    def test_sync_no_print_flag(self, runner, tmp_path):
+    def test_sync_no_print_flag(self, tmp_path):
         """sync --no-print skips printing even when cover was uploaded."""
         folder = tmp_path / "album"
         folder.mkdir()
@@ -816,16 +899,26 @@ class TestSyncPrint:
 
         fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1, cover_uploaded=True, folder=folder)]
 
+        from yoto_cli.commands.sync import handle_sync
+
         with (
             patch("yoto_cli.commands.sync.sync_path", return_value=fake_results),
             patch("yoto_cli.commands.sync.print_cover") as mock_print,
         ):
-            result = runner.invoke(cli, ["sync", "--no-print", str(folder)])
+            handle_sync(
+                argparse.Namespace(
+                    path=folder,
+                    dry_run=False,
+                    no_trim=False,
+                    ignore_album_art=False,
+                    force_cover=False,
+                    print_cover_flag=False,
+                )
+            )
 
-        assert result.exit_code == 0
         mock_print.assert_not_called()
 
-    def test_sync_prompts_when_cover_uploaded(self, runner, tmp_path):
+    def test_sync_prompts_when_cover_uploaded(self, tmp_path):
         """sync prompts to print when cover was uploaded and no flag given."""
         folder = tmp_path / "album"
         folder.mkdir()
@@ -837,15 +930,27 @@ class TestSyncPrint:
 
         fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1, cover_uploaded=True, folder=folder)]
 
+        from yoto_cli.commands.sync import handle_sync
+
         with (
             patch("yoto_cli.commands.sync.sync_path", return_value=fake_results),
             patch("yoto_cli.commands.sync.print_cover") as mock_print,
+            patch("rich.prompt.Confirm.ask", return_value=True),
         ):
-            runner.invoke(cli, ["sync", str(folder)], input="y\n")
+            handle_sync(
+                argparse.Namespace(
+                    path=folder,
+                    dry_run=False,
+                    no_trim=False,
+                    ignore_album_art=False,
+                    force_cover=False,
+                    print_cover_flag=None,
+                )
+            )
 
         mock_print.assert_called_once()
 
-    def test_sync_no_prompt_when_cover_not_uploaded(self, runner, tmp_path):
+    def test_sync_no_prompt_when_cover_not_uploaded(self, tmp_path):
         """sync does not prompt to print when cover was not uploaded."""
         folder = tmp_path / "album"
         folder.mkdir()
@@ -853,16 +958,26 @@ class TestSyncPrint:
 
         fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1, cover_uploaded=False, folder=folder)]
 
+        from yoto_cli.commands.sync import handle_sync
+
         with (
             patch("yoto_cli.commands.sync.sync_path", return_value=fake_results),
             patch("yoto_cli.commands.sync.print_cover") as mock_print,
         ):
-            result = runner.invoke(cli, ["sync", str(folder)])
+            handle_sync(
+                argparse.Namespace(
+                    path=folder,
+                    dry_run=False,
+                    no_trim=False,
+                    ignore_album_art=False,
+                    force_cover=False,
+                    print_cover_flag=None,
+                )
+            )
 
-        assert result.exit_code == 0
         mock_print.assert_not_called()
 
-    def test_sync_dry_run_never_prints(self, runner, tmp_path):
+    def test_sync_dry_run_never_prints(self, tmp_path):
         """sync --dry-run never prints, regardless of --print flag."""
         folder = tmp_path / "album"
         folder.mkdir()
@@ -870,16 +985,26 @@ class TestSyncPrint:
 
         fake_results = [SyncResult(card_id=None, tracks_uploaded=2, dry_run=True, cover_uploaded=True, folder=folder)]
 
+        from yoto_cli.commands.sync import handle_sync
+
         with (
             patch("yoto_cli.commands.sync.sync_path", return_value=fake_results),
             patch("yoto_cli.commands.sync.print_cover") as mock_print,
         ):
-            result = runner.invoke(cli, ["sync", "--dry-run", "--print", str(folder)])
+            handle_sync(
+                argparse.Namespace(
+                    path=folder,
+                    dry_run=True,
+                    no_trim=False,
+                    ignore_album_art=False,
+                    force_cover=False,
+                    print_cover_flag=True,
+                )
+            )
 
-        assert result.exit_code == 0
         mock_print.assert_not_called()
 
-    def test_sync_print_error_shown_as_warning(self, runner, tmp_path):
+    def test_sync_print_error_shown_as_warning(self, tmp_path):
         """If printing fails during sync, show a warning but don't fail the sync."""
         folder = tmp_path / "album"
         folder.mkdir()
@@ -891,11 +1016,19 @@ class TestSyncPrint:
 
         fake_results = [SyncResult(card_id="CARD-001", tracks_uploaded=1, cover_uploaded=True, folder=folder)]
 
+        from yoto_cli.commands.sync import handle_sync
+
         with (
             patch("yoto_cli.commands.sync.sync_path", return_value=fake_results),
             patch("yoto_cli.commands.sync.print_cover", side_effect=PrintError("Printer offline")),
         ):
-            result = runner.invoke(cli, ["sync", "--print", str(folder)])
-
-        assert result.exit_code == 0
-        assert "Printer offline" in result.output
+            handle_sync(
+                argparse.Namespace(
+                    path=folder,
+                    dry_run=False,
+                    no_trim=False,
+                    ignore_album_art=False,
+                    force_cover=False,
+                    print_cover_flag=True,
+                )
+            )

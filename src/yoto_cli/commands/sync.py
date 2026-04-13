@@ -2,20 +2,18 @@
 
 from __future__ import annotations
 
+import argparse
 import logging
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import click
 import httpx
 
 if TYPE_CHECKING:
-    import argparse
-
     from rich.progress import TaskID
 
-from yoto_cli.main import _print_cost_summary, cli
+from yoto_cli.main import _print_cost_summary
 from yoto_lib.billing.costs import reset_tracker
 from yoto_lib.covers.printer import PrintError, print_cover
 from yoto_lib.playlist import diff_playlists, load_playlist, scan_audio_files
@@ -25,22 +23,38 @@ from yoto_lib.yoto.api import YotoAPI
 logger = logging.getLogger(__name__)
 
 
-@cli.command()
-@click.argument("path", default=".", type=click.Path(exists=True))
-@click.option("--dry-run", is_flag=True, help="Preview changes without executing")
-@click.option("--no-trim", is_flag=True, help="Skip silence trimming on YouTube downloads")
-@click.option("--ignore-album-art", is_flag=True, help="Skip album art reuse; generate cover purely from prompt")
-@click.option("--force-cover", is_flag=True, help="Re-upload cover art even if unchanged")
-@click.option("--print/--no-print", "print_cover_flag", default=None, help="Print cover art after sync")
-def sync(
-    path: str,
-    dry_run: bool,
-    no_trim: bool,
-    ignore_album_art: bool,
-    force_cover: bool,
-    print_cover_flag: bool | None,
-) -> None:
+def add_sync_command(subparsers: argparse._SubParsersAction) -> None:
+    sub = subparsers.add_parser("sync", help="push local playlist state to Yoto")
+    sub.add_argument("path", nargs="?", default=".", type=Path, help="playlist folder")
+    sub.add_argument("--dry-run", action="store_true", help="preview changes without executing")
+    sub.add_argument("--no-trim", action="store_true", help="skip silence trimming on YouTube downloads")
+    sub.add_argument("--ignore-album-art", action="store_true", help="skip album art reuse")
+    sub.add_argument("--force-cover", action="store_true", help="re-upload cover art even if unchanged")
+    sub.add_argument(
+        "--print",
+        "--no-print",
+        dest="print_cover_flag",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="print cover art after sync",
+    )
+    sub.set_defaults(func=handle_sync)
+
+
+def handle_sync(args: argparse.Namespace) -> None:
     """Push local playlist state to Yoto."""
+    from rich.prompt import Confirm
+
+    from yoto_cli.main import require_path
+
+    require_path(args.path)
+    path: Path = args.path
+    dry_run: bool = args.dry_run
+    no_trim: bool = args.no_trim
+    ignore_album_art: bool = args.ignore_album_art
+    force_cover: bool = args.force_cover
+    print_cover_flag: bool | None = args.print_cover_flag
+
     logger.debug(
         "command: sync path=%s dry_run=%s no_trim=%s ignore_album_art=%s", path, dry_run, no_trim, ignore_album_art
     )
@@ -50,9 +64,7 @@ def sync(
     from yoto_cli.progress import error as _error
 
     if dry_run:
-        results = sync_path(
-            Path(path), dry_run=True, trim=trim, ignore_album_art=ignore_album_art, force_cover=force_cover
-        )
+        results = sync_path(path, dry_run=True, trim=trim, ignore_album_art=ignore_album_art, force_cover=force_cover)
         for result in results:
             icon_msg = f", {result.icons_uploaded} icons" if result.icons_uploaded else ""
             _console.print(f"[Dry run] Would upload {result.tracks_uploaded} tracks{icon_msg}")
@@ -63,7 +75,7 @@ def sync(
     from yoto_cli.progress import make_progress
     from yoto_lib.playlist import load_playlist as _load
 
-    playlist = _load(Path(path))
+    playlist = _load(path)
     total = len(playlist.track_files) * 2 + 2
 
     with make_progress() as progress:
@@ -86,7 +98,7 @@ def sync(
             progress.update(task, advance=1)
 
         results = sync_path(
-            Path(path),
+            path,
             dry_run=False,
             trim=trim,
             log=log,
@@ -120,7 +132,7 @@ def sync(
 
             should_print = print_cover_flag
             if should_print is None:
-                should_print = click.confirm("Cover was generated. Print it?", default=False)
+                should_print = Confirm.ask("Cover was generated. Print it?", default=False, console=_console)
             if should_print:
                 icc_profile = os.environ.get("YOTO_ICC_PROFILE")
                 if icc_profile and not Path(icc_profile).exists():

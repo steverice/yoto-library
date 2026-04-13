@@ -54,6 +54,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
 
     from yoto_cli.commands.billing import add_providers_command
+    from yoto_cli.commands.cover import add_cover_command, add_print_command
     from yoto_cli.commands.import_cmd import add_download_command, add_import_command
     from yoto_cli.commands.lyrics import add_lyrics_command
     from yoto_cli.commands.misc import (
@@ -65,7 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
         add_reorder_command,
     )
     from yoto_cli.commands.pull import add_pull_command
-    from yoto_cli.commands.sync import add_status_command
+    from yoto_cli.commands.sync import add_status_command, add_sync_command
 
     add_auth_command(subparsers)
     add_init_command(subparsers)
@@ -74,9 +75,12 @@ def build_parser() -> argparse.ArgumentParser:
     add_reorder_command(subparsers)
     add_export_command(subparsers)
     add_status_command(subparsers)
+    add_sync_command(subparsers)
     add_download_command(subparsers)
     add_import_command(subparsers)
     add_pull_command(subparsers)
+    add_cover_command(subparsers)
+    add_print_command(subparsers)
     add_lyrics_command(subparsers)
     add_completions_command(subparsers)
 
@@ -398,6 +402,4 @@ def cli(verbose: bool) -> None:
 # ── Register command modules ─────────────────────────────────────────────────
 # Importing these modules registers commands on the `cli` group via decorators.
 
-import yoto_cli.commands.cover  # noqa: E402
-import yoto_cli.commands.icons  # noqa: E402
-import yoto_cli.commands.sync  # noqa: F401, E402
+import yoto_cli.commands.icons  # noqa: E402, F401

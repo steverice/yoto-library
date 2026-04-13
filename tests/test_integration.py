@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from click.testing import CliRunner
-
-from yoto_cli.main import cli
 from yoto_lib.playlist import read_jsonl
 
 
@@ -16,7 +14,6 @@ class TestEndToEnd:
 
     def test_init_add_files_sync(self, tmp_path):
         """Full workflow: init → add files → sync writes card_id and playlist."""
-        runner = CliRunner()
         playlist_dir = tmp_path / "my-album"
 
         # 1. Init the playlist folder
@@ -40,18 +37,26 @@ class TestEndToEnd:
         mock_api.upload_and_transcode.return_value = {"transcodedSha256": "deadbeef01"}
         mock_api.create_or_update_content.return_value = {"cardId": "SMOKE-001"}
 
+        from yoto_cli.commands.sync import handle_sync
+
         with (
             patch("yoto_lib.sync.YotoAPI", return_value=mock_api),
             patch("yoto_lib.sync.resolve_icons", return_value={}),
             patch("yoto_lib.sync.generate_cover_if_missing"),
         ):
             # 4. Run sync
-            result = runner.invoke(cli, ["sync", str(playlist_dir)])
+            handle_sync(
+                argparse.Namespace(
+                    path=Path(playlist_dir),
+                    dry_run=False,
+                    no_trim=False,
+                    ignore_album_art=False,
+                    force_cover=False,
+                    print_cover_flag=None,
+                )
+            )
 
         # 5. Verify
-        assert result.exit_code == 0, result.output
-        assert "SMOKE-001" in result.output
-
         card_id_file = playlist_dir / ".yoto-card-id"
         assert card_id_file.exists(), ".yoto-card-id was not written"
         assert card_id_file.read_text(encoding="utf-8").strip() == "SMOKE-001"

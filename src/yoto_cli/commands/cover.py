@@ -9,12 +9,12 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import click
-
 if TYPE_CHECKING:
+    import argparse
+
     from rich.progress import TaskID
 
-from yoto_cli.main import _complete_dirs, _print_cost_summary, cli
+from yoto_cli.main import _print_cost_summary
 from yoto_lib.billing.costs import reset_tracker
 from yoto_lib.covers.cover import generate_cover_if_missing
 from yoto_lib.covers.printer import PrintError, print_cover
@@ -25,21 +25,34 @@ from yoto_lib.playlist import load_playlist
 logger = logging.getLogger(__name__)
 
 
-@cli.command()
-@click.argument("path", default=".", type=click.Path(exists=True), shell_complete=_complete_dirs)
-@click.option("--force", is_flag=True, help="Regenerate even if cover.png exists")
-@click.option("--backup", is_flag=True, help="Like --force, but rename existing cover.png first")
-@click.option("--ignore-album-art", is_flag=True, help="Skip album art reuse; generate cover purely from prompt")
-@click.option(
-    "--style",
-    type=click.Choice(sorted(CoverStyle.names()), case_sensitive=False),
-    default=None,
-    help="Visual art style for the cover",
-)
-def cover(path: str, force: bool, backup: bool, ignore_album_art: bool, style: str | None) -> None:
+def add_cover_command(subparsers: argparse._SubParsersAction) -> None:
+    sub = subparsers.add_parser("cover", help="generate cover art for a playlist folder")
+    sub.add_argument("path", nargs="?", default=".", type=Path, help="playlist folder")
+    mode = sub.add_mutually_exclusive_group()
+    mode.add_argument("--force", action="store_true", help="regenerate even if cover.png exists")
+    mode.add_argument("--backup", action="store_true", help="rename existing cover.png before generating")
+    sub.add_argument("--ignore-album-art", action="store_true", help="skip album art reuse")
+    sub.add_argument(
+        "--style",
+        type=str.lower,
+        choices=sorted(CoverStyle.names()),
+        default=None,
+        help="visual art style for the cover",
+    )
+    sub.set_defaults(func=handle_cover)
+
+
+def handle_cover(args: argparse.Namespace) -> None:
     """Generate cover art for a playlist folder."""
-    if force and backup:
-        raise click.UsageError("--force and --backup are mutually exclusive")
+    from yoto_cli.main import require_path
+
+    require_path(args.path)
+    path: Path = args.path
+    force: bool = args.force
+    backup: bool = args.backup
+    ignore_album_art: bool = args.ignore_album_art
+    style: str | None = args.style
+
     logger.debug("command: cover path=%s force=%s backup=%s ignore_album_art=%s", path, force, backup, ignore_album_art)
     reset_tracker()
     import tempfile
@@ -49,7 +62,7 @@ def cover(path: str, force: bool, backup: bool, ignore_album_art: bool, style: s
     from yoto_lib.covers.cover import add_title_to_illustration, build_cover_prompt, resize_cover, try_shared_album_art
     from yoto_lib.providers import get_provider
 
-    folder = Path(path)
+    folder = path
     playlist = load_playlist(folder)
     cover_path = playlist.cover_path
 
@@ -182,40 +195,55 @@ def cover(path: str, force: bool, backup: bool, ignore_album_art: bool, style: s
     _print_cost_summary()
 
 
-@cli.command(name="print")
-@click.argument("path", default=".", type=click.Path(exists=True), shell_complete=_complete_dirs)
-@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
-@click.option("--profile", type=click.Path(), default=None, help="ICC color profile for the printer")
-def print_cmd(path: str, yes: bool, profile: str | None) -> None:
+def add_print_command(subparsers: argparse._SubParsersAction) -> None:
+    sub = subparsers.add_parser("print", help="print cover art to a photo printer")
+    sub.add_argument("path", nargs="?", default=".", type=Path, help="playlist folder")
+    sub.add_argument("--yes", "-y", action="store_true", help="skip confirmation prompt")
+    sub.add_argument("--profile", default=None, type=Path, help="ICC color profile for the printer")
+    sub.set_defaults(func=handle_print)
+
+
+def handle_print(args: argparse.Namespace) -> None:
     """Print cover art to a photo printer."""
+    from rich.prompt import Confirm
+
+    from yoto_cli.main import require_path
+
+    require_path(args.path)
+    path: Path = args.path
+    yes: bool = args.yes
+    profile: Path | None = args.profile
+
     logger.debug("command: print path=%s yes=%s profile=%s", path, yes, profile)
     from yoto_cli.progress import _console
+    from yoto_cli.progress import error as _error
     from yoto_cli.progress import success as _success
     from yoto_cli.progress import warning as _warning
 
-    folder = Path(path)
+    folder = path
     playlist = load_playlist(folder)
     cover_path = playlist.cover_path
 
     if not cover_path.exists():
-        if not click.confirm("No cover found. Generate one?", default=False):
+        if not Confirm.ask("No cover found. Generate one?", default=False, console=_console):
             return
         generate_cover_if_missing(playlist, log=lambda msg: _console.print(msg))
         # Reload -- generation may have created cover.png
         if not cover_path.exists():
-            raise click.ClickException("Cover generation failed.")
+            _error("Cover generation failed.")
+            raise SystemExit(1)
 
     # Resolve ICC profile: --profile flag > env var > None (skip)
-    icc_profile = profile or os.environ.get("YOTO_ICC_PROFILE")
+    icc_profile: str | None = str(profile) if profile else os.environ.get("YOTO_ICC_PROFILE")
     if icc_profile and not Path(icc_profile).exists():
         _warning(f"ICC profile not found: {icc_profile}")
-        if not click.confirm("Continue without color management?", default=True):
+        if not Confirm.ask("Continue without color management?", default=True, console=_console):
             return
         icc_profile = None
 
     if not yes:
         title = playlist.title or folder.name
-        if not click.confirm(f"Print cover for '{title}'?", default=False):
+        if not Confirm.ask(f"Print cover for '{title}'?", default=False, console=_console):
             return
 
     try:
@@ -227,6 +255,7 @@ def print_cmd(path: str, yes: bool, profile: str | None) -> None:
                 on_status=lambda msg: status.update(f"Printing: {msg}"),
             )
     except PrintError as exc:
-        raise click.ClickException(str(exc)) from exc
+        _error(str(exc))
+        raise SystemExit(1) from exc
 
     _success("Print complete")
