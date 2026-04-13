@@ -10,12 +10,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v6
+      - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.13"
 
-      - name: Install dependencies
-        run: pip install -e ".[dev]"
+      - run: uv sync --dev
 
       - name: Run linters
         run: make lint
@@ -30,12 +29,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v6
+      - uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install dependencies
-        run: pip install -e ".[dev]"
+      - run: uv sync --dev
 
       - name: Run unit tests
         run: make test
@@ -55,12 +53,11 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-python@v6
+      - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.13"
 
-      - name: Install tools
-        run: pip install commitizen cz-conventional-gitmoji build
+      - run: uv sync --dev
 
       - name: Configure git
         run: |
@@ -70,8 +67,8 @@ jobs:
       - name: Bump version
         id: bump
         run: |
-          if cz bump --yes --changelog 2>&1; then
-            VERSION=$(cz version --project)
+          if uv run cz bump --yes --changelog 2>&1; then
+            VERSION=$(uv run cz version --project)
             echo "bumped=true" >> "$GITHUB_OUTPUT"
             echo "version=$VERSION" >> "$GITHUB_OUTPUT"
             echo "Bumped to $VERSION"
@@ -82,7 +79,7 @@ jobs:
 
       - name: Build sdist and wheel
         if: steps.bump.outputs.bumped == 'true'
-        run: python -m build
+        run: uv build
 
       - name: Push bump commit and tag
         if: steps.bump.outputs.bumped == 'true'

@@ -12,15 +12,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v6
+      - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.13"
 
-      - name: Install build tools
-        run: pip install build
-
       - name: Build sdist and wheel
-        run: python -m build
+        run: uv build
 
       - uses: actions/upload-artifact@v7
         with:
