@@ -91,7 +91,7 @@ def ensure_srgb() -> list | None:
 
     originals = []
 
-    async def _apply(connection):
+    async def _apply(connection: iterm2.Connection) -> None:  # type: ignore[name-defined]
         app = await iterm2.async_get_app(connection)
         if app is None or app.current_terminal_window is None:
             return
@@ -136,7 +136,7 @@ def ensure_srgb() -> list | None:
     except SystemExit:
         logger.debug("iterm_colors: could not connect to iTerm2 API")
         return None
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — iTerm2 API is optional; must degrade silently
         logger.debug("iterm_colors: unexpected error: %s", exc)
         return None
 
@@ -148,7 +148,7 @@ def restore_colors(originals: list) -> None:
     except ImportError:
         return
 
-    async def _restore(connection):
+    async def _restore(connection: iterm2.Connection) -> None:  # type: ignore[name-defined]
         app = await iterm2.async_get_app(connection)
         if app is None or app.current_terminal_window is None:
             return
@@ -176,7 +176,7 @@ def restore_colors(originals: list) -> None:
         finally:
             sys.stderr = old_stderr
         logger.debug("iterm_colors: restored original colors")
-    except (SystemExit, Exception) as exc:
+    except (SystemExit, Exception) as exc:  # noqa: BLE001 — iTerm2 API is optional; must degrade silently
         logger.debug("iterm_colors: restore failed: %s", exc)
 
 

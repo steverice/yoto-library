@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from PIL import Image
+from typing import TYPE_CHECKING
+
 from rich.console import Console
 from rich.progress import (
     BarColumn,
@@ -8,12 +9,16 @@ from rich.progress import (
     Progress,
     ProgressColumn,
     SpinnerColumn,
+    Task,
     TextColumn,
     TimeElapsedColumn,
 )
 from rich.style import Style
 from rich.table import Table
 from rich.text import Text
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 _console = Console(stderr=True)
 
@@ -23,7 +28,7 @@ class CostColumn(ProgressColumn):
 
     max_refresh = 0.5
 
-    def render(self, task):
+    def render(self, task: Task) -> Text:
         from yoto_lib.billing.costs import get_tracker
 
         total = get_tracker().total
@@ -230,12 +235,12 @@ def interactive_icon_select(
             _console.file.flush()
             _console.print(render_icon_panels(images, labels, scores, winner, selected))
             return str(selected + 1)
-        elif key == "r":
+        if key == "r":
             # Erase display
             _console.file.write(f"\033[{line_count}A\033[J")
             _console.file.flush()
             return "r"
-        elif key == "left":
+        if key == "left":
             selected = max(0, selected - 1)
         elif key == "right":
             selected = min(max_choice - 1, selected + 1)

@@ -154,7 +154,7 @@ def get_valid_token(interactive: bool = True) -> TokenSet:
             return new_tokens
         except httpx.HTTPStatusError:
             logger.debug("token refresh failed, will re-authenticate")
-            pass  # refresh failed, fall through to re-auth
+            # refresh failed, fall through to re-auth
 
     if not interactive:
         raise AuthError("Not authenticated. Run 'yoto auth' to log in.")
@@ -165,15 +165,15 @@ def get_valid_token(interactive: bool = True) -> TokenSet:
 def run_device_code_flow() -> TokenSet:
     logger.debug("starting device code flow")
     device = request_device_code()
-    print(f"\nOpen this URL in your browser: {device['verification_uri']}")
-    print(f"Enter code: {device['user_code']}\n")
-    print(f"Or open directly: {device['verification_uri_complete']}\n")
-    print("Waiting for authorization...")
+    print(f"\nOpen this URL in your browser: {device['verification_uri']}")  # noqa: T201 - user-facing auth flow
+    print(f"Enter code: {device['user_code']}\n")  # noqa: T201 - user-facing auth flow
+    print(f"Or open directly: {device['verification_uri_complete']}\n")  # noqa: T201 - user-facing auth flow
+    print("Waiting for authorization...")  # noqa: T201 - user-facing auth flow
 
     tokens = poll_for_token(
         device["device_code"],
         interval=device.get("interval", 5),
     )
     save_tokens(tokens)
-    print("Authenticated successfully!")
+    print("Authenticated successfully!")  # noqa: T201 - user-facing auth flow
     return tokens

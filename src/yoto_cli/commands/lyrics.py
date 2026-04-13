@@ -74,9 +74,9 @@ def lyrics(path: str | None, force: bool, show: bool, clear: bool, add_source_ur
             from yoto_cli.progress import make_progress
             from yoto_lib.lyrics.lyrics_source_wizard import run_wizard
 
-            _WIZARD_STEPS = 6
+            wizard_steps = 6
             with make_progress() as progress:
-                task = progress.add_task("Analyzing lyrics site", total=_WIZARD_STEPS, status="")
+                task = progress.add_task("Analyzing lyrics site", total=wizard_steps, status="")
 
                 def _on_step(msg: str) -> None:
                     progress.update(task, advance=1, status=msg)

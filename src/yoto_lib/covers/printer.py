@@ -9,8 +9,11 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from PIL import Image, ImageCms
 
@@ -25,8 +28,6 @@ DEFAULT_PRINTER = "Canon_SELPHY_CP1300"
 
 class PrintError(Exception):
     """Error during the print pipeline."""
-
-    pass
 
 
 def validate_cover(cover_path: Path) -> Image.Image:
@@ -64,11 +65,10 @@ def crop_for_print(img: Image.Image) -> Image.Image:
         new_w = round(h * PRINT_RATIO)
         left = (w - new_w) // 2
         return img.crop((left, 0, left + new_w, h))
-    else:
-        # Image is taller than target: crop top/bottom
-        new_h = round(w / PRINT_RATIO)
-        top = (h - new_h) // 2
-        return img.crop((0, top, w, top + new_h))
+    # Image is taller than target: crop top/bottom
+    new_h = round(w / PRINT_RATIO)
+    top = (h - new_h) // 2
+    return img.crop((0, top, w, top + new_h))
 
 
 def _check_platform() -> None:
@@ -100,9 +100,8 @@ def _icc_convert(img: Image.Image, icc_profile: str) -> Image.Image:
         if profile.profile.device_class == "link":
             transform = ImageCms.buildTransform(profile, profile, "RGB", "RGB")
             return ImageCms.applyTransform(img, transform)  # ty: ignore[invalid-return-type]
-        else:
-            srgb = ImageCms.createProfile("sRGB")
-            return ImageCms.profileToProfile(img, srgb, profile)  # ty: ignore[invalid-return-type]
+        srgb = ImageCms.createProfile("sRGB")
+        return ImageCms.profileToProfile(img, srgb, profile)  # ty: ignore[invalid-return-type]
     except (OSError, ImageCms.PyCMSError) as exc:
         raise PrintError(f"Color conversion failed: {exc}") from exc
 

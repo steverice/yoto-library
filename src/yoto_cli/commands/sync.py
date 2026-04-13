@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import click
+import httpx
 
 if TYPE_CHECKING:
     from rich.progress import TaskID
@@ -29,7 +30,14 @@ logger = logging.getLogger(__name__)
 @click.option("--ignore-album-art", is_flag=True, help="Skip album art reuse; generate cover purely from prompt")
 @click.option("--force-cover", is_flag=True, help="Re-upload cover art even if unchanged")
 @click.option("--print/--no-print", "print_cover_flag", default=None, help="Print cover art after sync")
-def sync(path, dry_run, no_trim, ignore_album_art, force_cover, print_cover_flag):
+def sync(
+    path: str,
+    dry_run: bool,
+    no_trim: bool,
+    ignore_album_art: bool,
+    force_cover: bool,
+    print_cover_flag: bool | None,
+) -> None:
     """Push local playlist state to Yoto."""
     logger.debug(
         "command: sync path=%s dry_run=%s no_trim=%s ignore_album_art=%s", path, dry_run, no_trim, ignore_album_art
@@ -131,7 +139,7 @@ def sync(path, dry_run, no_trim, ignore_album_art, force_cover, print_cover_flag
 
 @cli.command()
 @click.argument("path", default=".", type=click.Path(exists=True))
-def status(path):
+def status(path: str) -> None:
     """Show diff between local and remote state."""
     logger.debug("command: status path=%s", path)
     folder = Path(path)
@@ -150,7 +158,7 @@ def status(path):
             from yoto_lib.sync import _parse_remote_state
 
             remote_state = _parse_remote_state(remote_content)
-        except Exception as exc:
+        except (httpx.HTTPStatusError, httpx.HTTPError, KeyError, ValueError) as exc:
             _warning(f"could not fetch remote state: {exc}")
 
     diff = diff_playlists(playlist, remote_state)

@@ -6,13 +6,16 @@ import json
 import logging
 import os
 import subprocess
-from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
 
-from .costs import CostTracker
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from .costs import CostTracker
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +115,7 @@ def fetch_balances() -> dict[str, dict]:
             name = futures[future]
             try:
                 results[name] = {"balance": future.result()}
-            except Exception as exc:
+            except (httpx.HTTPError, OSError, KeyError, ValueError) as exc:
                 results[name] = {"error": str(exc)}
 
     return results

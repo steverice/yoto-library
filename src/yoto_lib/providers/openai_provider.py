@@ -74,12 +74,12 @@ class OpenAIProvider(StatusPageMixin, ImageProvider):
             "openai: editing %s quality=%s mask=%s prompt=%.80s...", size_str, quality, bool(mask_bytes), prompt
         )
 
-        kwargs: dict = dict(
-            model="gpt-image-1.5",
-            image=("image.png", _io.BytesIO(image_bytes), "image/png"),
-            prompt=prompt,
-            size=size_str,
-        )
+        kwargs: dict = {
+            "model": "gpt-image-1.5",
+            "image": ("image.png", _io.BytesIO(image_bytes), "image/png"),
+            "prompt": prompt,
+            "size": size_str,
+        }
         if mask_bytes:
             kwargs["mask"] = ("mask.png", _io.BytesIO(mask_bytes), "image/png")
         kwargs["quality"] = quality

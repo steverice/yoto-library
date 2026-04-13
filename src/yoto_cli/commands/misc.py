@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 import logging
 import os
+import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import click
+import httpx
 
 from yoto_cli.main import _complete_dirs, cli
 from yoto_lib.config import WORKERS
@@ -21,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 @cli.command()
-def auth():
+def auth() -> None:
     """Authenticate with Yoto (OAuth device code flow)."""
     logger.debug("command: auth")
     try:
@@ -32,7 +34,7 @@ def auth():
 
 @cli.command()
 @click.argument("playlist", default="playlist.jsonl", type=click.Path(exists=True))
-def reorder(playlist):
+def reorder(playlist: str) -> None:
     """Open playlist.jsonl in $EDITOR to reorder tracks."""
     logger.debug("command: reorder playlist=%s", playlist)
     playlist_path = Path(playlist)
@@ -67,7 +69,7 @@ def reorder(playlist):
 
 @cli.command()
 @click.argument("path", default=".", type=click.Path())
-def init(path):
+def init(path: str) -> None:
     """Scaffold a new playlist folder."""
     logger.debug("command: init path=%s", path)
     folder = Path(path)
@@ -93,7 +95,7 @@ def init(path):
     type=click.Path(),
     help="Output folder (defaults to <playlist>-exported/)",
 )
-def export(playlist, output):
+def export(playlist: str, output: str | None) -> None:
     """Export MKA tracks back to their original audio format."""
     from yoto_lib.mka import apply_source_patch, extract_audio
 
@@ -147,7 +149,7 @@ def export(playlist, output):
                 if progress and inner_task is not None:
                     progress.update(inner_task, advance=1)
                     progress.remove_task(inner_task)
-            except Exception as exc:
+            except (subprocess.CalledProcessError, OSError) as exc:
                 if progress and inner_task is not None:
                     progress.remove_task(inner_task)
                 _pcon(f"  [red]x[/red] Error exporting {mka.name}: {exc}")
@@ -159,14 +161,14 @@ def export(playlist, output):
             for future in as_completed(futures):
                 try:
                     future.result()
-                except Exception as exc:
+                except (subprocess.CalledProcessError, OSError) as exc:  # noqa: PERF203
                     _pcon(f"  [red]x[/red] Unexpected export error: {exc}")
 
     _success(f"Exported {len(mka_files)} tracks to {output_path}")
 
 
 @cli.command(name="list")
-def list_cmd():
+def list_cmd() -> None:
     """Show all MYO cards on your Yoto account."""
     logger.debug("command: list")
     api = YotoAPI()
@@ -192,7 +194,7 @@ def list_cmd():
             detail = api.get_content(card_id)
             chapters = detail.get("content", {}).get("chapters", [])
             num_tracks = str(len(chapters))
-        except Exception:
+        except (httpx.HTTPStatusError, httpx.HTTPError, KeyError):
             num_tracks = "?"
         table.add_row(card_id, title, num_tracks)
 
@@ -201,7 +203,7 @@ def list_cmd():
 
 @cli.command()
 @click.argument("shell", required=False, default=None, type=click.Choice(["zsh", "bash", "fish"]))
-def completions(shell):
+def completions(shell: str | None) -> None:
     """Install context-aware shell completions."""
     logger.debug("command: completions shell=%s", shell)
     if shell is None:
@@ -233,7 +235,7 @@ def completions(shell):
 
     # Append to config
     config.parent.mkdir(parents=True, exist_ok=True)
-    with open(config, "a", encoding="utf-8") as f:
+    with config.open("a", encoding="utf-8") as f:
         f.write(f"\n{marker}\n{line}\n")
 
     _success(f"Installed completions in {config}")

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -34,7 +36,7 @@ logger = logging.getLogger(__name__)
     default=None,
     help="Visual art style for the cover",
 )
-def cover(path, force, backup, ignore_album_art, style):
+def cover(path: str, force: bool, backup: bool, ignore_album_art: bool, style: str | None) -> None:
     """Generate cover art for a playlist folder."""
     if force and backup:
         raise click.UsageError("--force and --backup are mutually exclusive")
@@ -141,7 +143,7 @@ def cover(path, force, backup, ignore_album_art, style):
                 tags = mka.read_tags(track_path)
                 title = tags.get("title") or Path(filename).stem
                 artist = tags.get("artist", "")
-            except Exception:
+            except (subprocess.CalledProcessError, OSError, json.JSONDecodeError):
                 title = Path(filename).stem
                 artist = ""
             track_titles.append(title)
@@ -184,7 +186,7 @@ def cover(path, force, backup, ignore_album_art, style):
 @click.argument("path", default=".", type=click.Path(exists=True), shell_complete=_complete_dirs)
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
 @click.option("--profile", type=click.Path(), default=None, help="ICC color profile for the printer")
-def print_cmd(path, yes, profile):
+def print_cmd(path: str, yes: bool, profile: str | None) -> None:
     """Print cover art to a photo printer."""
     logger.debug("command: print path=%s yes=%s profile=%s", path, yes, profile)
     from yoto_cli.progress import _console

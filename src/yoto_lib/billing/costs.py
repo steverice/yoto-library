@@ -11,7 +11,7 @@ _COSTS_FILE = Path(__file__).parent / "costs.json"
 
 
 def _load_costs() -> dict[str, dict]:
-    with open(_COSTS_FILE, encoding="utf-8") as f:
+    with _COSTS_FILE.open(encoding="utf-8") as f:
         return json.load(f)
 
 

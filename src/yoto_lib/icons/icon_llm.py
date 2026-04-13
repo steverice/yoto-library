@@ -249,7 +249,7 @@ def log_icon_feedback(
 
     try:
         FEEDBACK_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with open(FEEDBACK_PATH, "a", encoding="utf-8") as f:
+        with FEEDBACK_PATH.open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
     except OSError:
         pass

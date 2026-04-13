@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import subprocess
 from pathlib import Path
 
 import click
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 @click.argument(
     "tracks", nargs=-1, required=True, type=click.Path(exists=True), shell_complete=_complete_mka_without_icon
 )
-def select_icon(tracks):
+def select_icon(tracks: tuple[str, ...]) -> None:
     """Generate 3 icon options per track, show best Yoto match, and attach the chosen one."""
     logger.debug("command: select-icon tracks=%s", tracks)
     from rich.rule import Rule
@@ -127,14 +128,13 @@ def select_icon(tracks):
                 marker = " *" if (j + 1) == round_result.winner else ""
                 score_labels.append(f"score: {score}{marker}")
 
-        raw = interactive_icon_select(
+        return interactive_icon_select(
             images,
             labels,
             score_labels,
             round_result.winner,
             len(candidates),
         )
-        return raw
 
     def _on_applied(track_path: Path) -> None:
         _success(f"Attached icon to {track_path.name}")
@@ -174,7 +174,7 @@ def select_icon(tracks):
 
 @cli.command(name="reset-icon")
 @click.argument("tracks", nargs=-1, required=True, type=click.Path(exists=True), shell_complete=_complete_mka_with_icon)
-def reset_icon(tracks):
+def reset_icon(tracks: tuple[str, ...]) -> None:
     """Remove the icon from one or more MKA tracks so sync regenerates them."""
     logger.debug("command: reset-icon tracks=%s", tracks)
     from yoto_cli.progress import error as _error
@@ -187,5 +187,5 @@ def reset_icon(tracks):
             remove_attachment(path, "icon")
             clear_macos_file_icon(path)
             _success(f"Cleared icon: {path.name}")
-        except Exception as exc:
+        except (subprocess.CalledProcessError, OSError) as exc:
             _error(f"Error ({path.name}): {exc}")

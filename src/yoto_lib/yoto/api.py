@@ -6,9 +6,12 @@ import hashlib
 import json
 import logging
 import time
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from .auth import get_valid_token
 

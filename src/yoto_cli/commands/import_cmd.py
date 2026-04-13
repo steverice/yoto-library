@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import subprocess
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -40,7 +41,7 @@ def _strip_track_number(stem: str) -> str:
 @cli.command()
 @click.argument("path", default=".", type=click.Path(exists=True), shell_complete=_complete_weblocs)
 @click.option("--no-trim", is_flag=True, help="Skip silence trimming on YouTube downloads")
-def download(path, no_trim):
+def download(path: str, no_trim: bool) -> None:
     """Download audio from .webloc URLs in a playlist folder."""
     logger.debug("command: download path=%s no_trim=%s", path, no_trim)
     trim = not no_trim
@@ -120,7 +121,7 @@ def download(path, no_trim):
     type=click.Path(),
     help="Output folder (defaults to source folder)",
 )
-def import_cmd(source, output):
+def import_cmd(source: str, output: str | None) -> None:
     """Bulk import: convert a folder of audio files into a playlist."""
     logger.debug("command: import source=%s output=%s", source, output)
     source_path = Path(source)
@@ -236,7 +237,7 @@ def import_cmd(source, output):
                 if progress and task is not None:
                     progress.update(task, advance=1, status=audio.name)
                 return mka_name
-            except Exception as exc:
+            except (subprocess.CalledProcessError, OSError) as exc:
                 if progress and inner_task is not None:
                     progress.remove_task(inner_task)
                 _pcon = progress.console.print if progress else _console.print
@@ -251,7 +252,7 @@ def import_cmd(source, output):
                 idx = future_to_idx[future]
                 try:
                     results_by_index[idx] = future.result()
-                except Exception as exc:
+                except (subprocess.CalledProcessError, OSError) as exc:
                     _console.print(f"  [red]x[/red] Unexpected error: {exc}")
                     results_by_index[idx] = None
 

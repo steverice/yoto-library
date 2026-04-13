@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from yoto_lib.providers.base import Provider
+    from yoto_lib.providers.openai_provider import OpenAIProvider
 
 
 def get_provider_classes() -> list[tuple[type[Provider], str | None]]:
@@ -35,7 +36,7 @@ def get_active_providers() -> list[type[Provider]]:
     return [cls for cls, env_var in get_provider_classes() if env_var is None or os.environ.get(env_var)]
 
 
-def get_provider():
+def get_provider() -> OpenAIProvider:
     """Return the OpenAI image provider for text-to-image cover generation."""
     from yoto_lib.providers.openai_provider import OpenAIProvider
 

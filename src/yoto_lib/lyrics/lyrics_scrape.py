@@ -168,7 +168,7 @@ def _fetch_index(source: LyricsSource) -> dict[str, str]:
     for item in raw:
         try:
             index[_normalize(item["title"])] = item["url"]
-        except (KeyError, TypeError) as exc:
+        except (KeyError, TypeError) as exc:  # noqa: PERF203
             logger.warning("lyrics_scrape: skipping malformed index item from %s: %s", source.name, exc)
 
     _index_cache[source.url] = index

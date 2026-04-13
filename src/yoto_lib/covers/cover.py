@@ -8,10 +8,12 @@ import json
 import logging
 import os
 import re
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import httpx
 import numpy as np
 from PIL import Image
 
@@ -188,7 +190,7 @@ def reframe_album_art(
 
         candidates.append(repaired)
 
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, httpx.HTTPError) as exc:
         logger.warning("reframe_album_art: recomposition failed: %s", exc)
 
     # Nothing passed — pick the best of what we have
@@ -366,7 +368,7 @@ def generate_cover_if_missing(
             tags = mka.read_tags(track_path)
             title = tags.get("title") or Path(filename).stem
             artist = tags.get("artist", "")
-        except Exception:
+        except (subprocess.CalledProcessError, OSError, json.JSONDecodeError):
             title = Path(filename).stem
             artist = ""
 
@@ -469,7 +471,7 @@ def describe_album_text(art_bytes: bytes) -> list[dict] | None:
                 result = json.loads(match.group())
                 logger.debug("describe_album_text: %s", result)
                 return result
-    except Exception as exc:
+    except (OSError, json.JSONDecodeError, KeyError, ValueError, subprocess.CalledProcessError) as exc:
         logger.warning("describe_album_text: failed: %s", exc)
     finally:
         Path(tmp).unlink(missing_ok=True)
@@ -526,13 +528,12 @@ def render_text_layer(original: bytes, text_descriptions: list[dict]) -> bytes |
     Returns PNG bytes or None on failure.
     """
     # Build rendering instructions from descriptions
-    instructions = []
-    for t in text_descriptions:
-        instructions.append(
-            f'- "{t["text"]}" in {t.get("color", "white")} {t.get("font", "")} font, '
-            f"{t.get('size', 'medium')} size, {t.get('position', 'center')}, "
-            f"{t.get('orientation', 'horizontal')}"
-        )
+    instructions = [
+        f'- "{t["text"]}" in {t.get("color", "white")} {t.get("font", "")} font, '
+        f"{t.get('size', 'medium')} size, {t.get('position', 'center')}, "
+        f"{t.get('orientation', 'horizontal')}"
+        for t in text_descriptions
+    ]
 
     if not instructions:
         return None
@@ -548,7 +549,7 @@ def render_text_layer(original: bytes, text_descriptions: list[dict]) -> bytes |
         from yoto_lib.providers.gemini_provider import GeminiProvider
 
         return GeminiProvider().generate(prompt, reference_image=original)
-    except Exception as exc:
+    except (ImportError, RuntimeError, OSError, httpx.HTTPError) as exc:
         logger.warning("render_text_layer: failed: %s", exc)
         return None
 

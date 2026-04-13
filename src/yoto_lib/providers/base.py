@@ -112,7 +112,7 @@ class StatusPageMixin:
                     message=f"{name}: {desc}",
                     url=host,
                 )
-        except Exception:
+        except (httpx.HTTPError, OSError, KeyError, ValueError):
             result = ProviderStatus(healthy=True)  # assume healthy if unreachable
 
         with _lock:
@@ -161,7 +161,7 @@ class BetterStackMixin:
                 message=None if healthy else f"{name}: {state}",
                 url=host,
             )
-        except Exception:
+        except (httpx.HTTPError, OSError, KeyError, ValueError):
             result = ProviderStatus(healthy=True, url=host)
 
         with _lock:
@@ -218,5 +218,5 @@ def _warn_unhealthy(provider_classes: tuple[type[Provider], ...]) -> None:
                 if status.url:
                     msg += f" ({status.url})"
                 logger.warning("%s", msg)
-        except Exception:  # noqa: S110
-            pass  # health check must never make things worse
+        except Exception:  # noqa: BLE001, S110 — health check must never make things worse
+            pass

@@ -30,9 +30,9 @@ class CoverStyle:
             raise ValueError(f"Duplicate style: {self.name!r}")
         self._registry[self.name] = self
         if self.is_default:
-            if type(self)._default is not None:
+            if type(self)._default is not None:  # noqa: SLF001 - accessing own class var in __post_init__
                 raise ValueError("Multiple default styles")
-            type(self)._default = self
+            type(self)._default = self  # noqa: SLF001 - accessing own class var in __post_init__
 
     @classmethod
     def get(cls, name: str) -> CoverStyle:

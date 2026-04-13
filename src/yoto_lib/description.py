@@ -140,8 +140,7 @@ def _build_prompt(playlist_title: str, metadata: dict[str, list[str]]) -> str:
 
     if metadata.get("track_titles"):
         parts.append("Tracks:")
-        for title in metadata["track_titles"]:
-            parts.append(f"- {title}")
+        parts.extend(f"- {title}" for title in metadata["track_titles"])
 
     return "\n".join(parts)
 

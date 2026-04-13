@@ -96,8 +96,7 @@ def _artwork_url(api_url: str, size: int = 1200) -> str:
 
     iTunes URLs end with e.g. '100x100bb.jpg'; replace with '{size}x{size}bb.jpg'.
     """
-    replaced = re.sub(r"/\d+x\d+bb\.jpg$", f"/{size}x{size}bb.jpg", api_url)
-    return replaced
+    return re.sub(r"/\d+x\d+bb\.jpg$", f"/{size}x{size}bb.jpg", api_url)
 
 
 def embed_album_art(mka_path: Path, image_bytes: bytes) -> bool:

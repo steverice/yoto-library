@@ -78,24 +78,51 @@ line-length = 120
 
 [tool.ruff.lint]
 select = [
-    "E",    # pycodestyle errors
-    "W",    # pycodestyle warnings
-    "F",    # pyflakes
-    "I",    # isort
-    "UP",   # pyupgrade
-    "B",    # bugbear
-    "SIM",  # simplify
-    "PT",   # pytest style
-    "RUF",  # ruff-specific
-    "S",    # bandit security
-    "FA",   # future annotations
+    "E", "W", "F",          # pycodestyle + pyflakes
+    "I", "TID", "TCH",      # imports: isort, tidy-imports, type-checking
+    "UP", "FA", "YTT",      # modernization: pyupgrade, future-annotations, 2020
+    "ANN",                   # type annotations
+    "B", "SIM", "C4",       # bugs: bugbear, simplify, comprehensions
+    "RSE", "PIE", "PERF",   # bugs: raise, pie, performance
+    "RET",                   # return style
+    "S",                     # security: bandit
+    "BLE",                   # blind except
+    "RUF", "PT",             # ruff-specific, pytest style
+    "ERA",                   # eradicate (no commented-out code)
+    "FLY", "ISC",            # f-strings, implicit string concat
+    "T10", "T20",            # no debugger, no print
+    "PTH",                   # pathlib over os.path
+    "A", "SLF", "N",        # no builtin shadowing, no private access, PEP 8 naming
+    "ASYNC",                 # async anti-patterns
+    "PGH",                   # no blanket noqa/type:ignore
+    "INP",                   # no implicit namespace packages
 ]
-# S101: assert is valid for type narrowing
-# S603/S607: subprocess calls are intentional (ffmpeg, mkvtoolnix, yt-dlp, osascript, claude CLI)
-ignore = ["S101", "S603", "S607"]
+
+ignore = [
+    "ANN204",   # __init__ return type is always None — obvious, no value
+    "ANN401",   # Any is sometimes the right type (dict values, kwargs, JSON)
+    # Project-specific:
+    "S101",     # assert is valid for type narrowing
+    "S603",     # subprocess calls are intentional (ffmpeg, mkvtoolnix, yt-dlp, osascript, claude CLI)
+    "S607",     # subprocess calls use known tool names
+]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S105", "S106", "S108"]  # fake secrets/paths in test fixtures
+"tests/**/*.py" = [
+    "S105", "S106", "S108",  # fake secrets/paths in test fixtures
+    "ANN",                    # test functions don't need type annotations
+    "SLF001",                 # tests legitimately access private members
+    "INP001",                 # test directories use pytest discovery, not __init__.py
+    "TC",                     # tests use runtime imports freely
+    "PTH",                    # tests can use open() directly
+    "BLE001",                 # tests may catch broadly for skip/xfail
+    "RET",                    # return style not important in tests
+    "PERF",                   # performance rules not important in tests
+]
+"validation/**/*.py" = [
+    "INP001",                 # standalone validation scripts, not a package
+    "T201",                   # validation scripts use print() for output
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["yoto_lib", "yoto_cli"]

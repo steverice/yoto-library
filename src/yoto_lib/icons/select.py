@@ -7,7 +7,9 @@ Yoto catalog matching, LLM comparison, and user selection via callbacks.
 from __future__ import annotations
 
 import io
+import json
 import logging
+import subprocess
 import tempfile
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
@@ -128,7 +130,7 @@ def _get_existing_icon(track_path: Path) -> Image.Image | None:
         existing_bytes = get_attachment(track_path, "icon")
         if existing_bytes:
             return Image.open(io.BytesIO(existing_bytes)).convert("RGBA").resize((16, 16), Image.NEAREST)  # ty: ignore[unresolved-attribute]
-    except Exception:  # noqa: S110
+    except (subprocess.CalledProcessError, OSError, json.JSONDecodeError):
         pass
     return None
 

@@ -50,7 +50,7 @@ def _check_all_status() -> dict[str, tuple[bool | None, str | None]]:
     default=None,
     help="Reset lifetime cost data. Optionally specify a provider group.",
 )
-def providers(reset_group):
+def providers(reset_group: str | None) -> None:
     """Show provider status, balances, and lifetime costs."""
     logger.debug("command: providers reset=%s", reset_group)
 

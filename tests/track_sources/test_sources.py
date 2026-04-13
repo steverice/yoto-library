@@ -189,19 +189,18 @@ class TestTrimSilence:
                 result.stderr = silence_stderr
                 call_count[0] += 1
                 return result
-            else:
-                # ffmpeg trim call — write a trimmed file
-                for i, arg in enumerate(cmd):
-                    if i > 0 and cmd[i - 1] == "-ss":
-                        assert arg == "0.5"  # start after first silence
-                for i, arg in enumerate(cmd):
-                    if i > 0 and cmd[i - 1] == "-to":
-                        assert arg == "1.5"  # end at start of last silence
-                # Find output path (last argument)
-                out = Path(cmd[-1])
-                _make_wav(out, duration_seconds=1.0)
-                result.returncode = 0
-                return result
+            # ffmpeg trim call — write a trimmed file
+            for i, arg in enumerate(cmd):
+                if i > 0 and cmd[i - 1] == "-ss":
+                    assert arg == "0.5"  # start after first silence
+            for i, arg in enumerate(cmd):
+                if i > 0 and cmd[i - 1] == "-to":
+                    assert arg == "1.5"  # end at start of last silence
+            # Find output path (last argument)
+            out = Path(cmd[-1])
+            _make_wav(out, duration_seconds=1.0)
+            result.returncode = 0
+            return result
 
         with patch("yoto_lib.track_sources.youtube.subprocess.run", side_effect=fake_run):
             trimmed = _trim_silence(audio)
@@ -363,7 +362,7 @@ class TestCleanTitle:
         """clean_title returns the original title when Claude raises."""
         raw = "Some Video Title"
         with patch("yoto_lib.track_sources._claude") as mock_claude:
-            mock_claude.call.side_effect = RuntimeError("network error")
+            mock_claude.call.side_effect = OSError("network error")
             result = clean_title(raw)
 
         assert result == raw

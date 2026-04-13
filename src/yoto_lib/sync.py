@@ -5,11 +5,13 @@ from __future__ import annotations
 import logging
 import re
 import subprocess
-from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 import httpx
 
@@ -400,19 +402,19 @@ def sync_path(
         subdirs = sorted(p for p in path.iterdir() if p.is_dir())
         playlist_dirs = [s for s in subdirs if _has_audio_files(s)]
         logger.debug("sync_path: %s contains %d playlist subdirs", path, len(playlist_dirs))
-        for subdir in playlist_dirs:
-            results.append(
-                sync_playlist(
-                    subdir,
-                    dry_run=dry_run,
-                    trim=trim,
-                    on_track_done=on_track_done,
-                    log=log,
-                    on_upload_start=on_upload_start,
-                    on_upload_done=on_upload_done,
-                    ignore_album_art=ignore_album_art,
-                    force_cover=force_cover,
-                )
+        results.extend(
+            sync_playlist(
+                subdir,
+                dry_run=dry_run,
+                trim=trim,
+                on_track_done=on_track_done,
+                log=log,
+                on_upload_start=on_upload_start,
+                on_upload_done=on_upload_done,
+                ignore_album_art=ignore_album_art,
+                force_cover=force_cover,
             )
+            for subdir in playlist_dirs
+        )
 
     return results

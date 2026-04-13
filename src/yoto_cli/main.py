@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
+import subprocess
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
 from click.shell_completion import CompletionItem
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 from dotenv import find_dotenv, load_dotenv
 
 load_dotenv(find_dotenv(usecwd=True))
@@ -21,7 +27,7 @@ from yoto_lib.billing.costs import get_tracker  # noqa: E402
 from yoto_lib.mka import read_tags  # noqa: E402
 
 
-def _print_cost_summary():
+def _print_cost_summary() -> None:
     from yoto_cli.progress import _console
 
     tracker = get_tracker()
@@ -121,13 +127,13 @@ def _has_custom_icon(path: Path) -> bool:
         )
         data = json.loads(result.stdout)
         return any(a.get("file_name") == "icon" for a in data.get("attachments", []))
-    except Exception:
+    except (subprocess.CalledProcessError, OSError, json.JSONDecodeError, ValueError):
         return False
 
 
-def _complete_path(incomplete: str, filter_fn):
+def _complete_path(incomplete: str, filter_fn: Callable[[Path], bool]) -> list[CompletionItem]:
     """Complete filesystem paths, yielding dirs (for navigation) and filtered files."""
-    inc_path = Path(incomplete) if incomplete else Path(".")
+    inc_path = Path(incomplete) if incomplete else Path()
 
     if inc_path.is_dir() and (not incomplete or incomplete.endswith("/")):
         search_dir = inc_path
@@ -155,17 +161,17 @@ def _complete_path(incomplete: str, filter_fn):
     return items
 
 
-def _complete_weblocs(ctx, param, incomplete):
+def _complete_weblocs(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
     """Complete .webloc file paths."""
     return _complete_path(incomplete, lambda p: p.suffix.lower() == ".webloc")
 
 
-def _complete_dirs(ctx, param, incomplete):
+def _complete_dirs(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
     """Complete directory paths only."""
     return _complete_path(incomplete, lambda _: False)
 
 
-def _complete_unimported_dirs(ctx, param, incomplete):
+def _complete_unimported_dirs(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
     """Complete directories that lack a playlist.jsonl, falling back to all dirs."""
     results = _complete_path(
         incomplete,
@@ -178,11 +184,11 @@ def _complete_unimported_dirs(ctx, param, incomplete):
     return filtered if any(item.value.endswith("/") for item in filtered) else results
 
 
-def _is_mka(p):
+def _is_mka(p: Path) -> bool:
     return p.suffix.lower() == ".mka"
 
 
-def _complete_mka_with_icon(ctx, param, incomplete):
+def _complete_mka_with_icon(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
     """Complete .mka files that have a custom icon, falling back to all .mka."""
     results = _complete_path(incomplete, lambda p: _is_mka(p) and _has_custom_icon(p))
     if not any(item.type == "plain" and not item.value.endswith("/") for item in results):
@@ -195,11 +201,11 @@ def _has_lyrics(path: Path) -> bool:
     try:
         tags = read_tags(path)
         return bool(tags.get("lyrics"))
-    except Exception:
+    except (subprocess.CalledProcessError, OSError, json.JSONDecodeError):
         return False
 
 
-def _complete_lyrics_path(ctx, param, incomplete):
+def _complete_lyrics_path(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
     """Complete dirs and .mka files for lyrics command.
 
     With --show: prefer tracks that have lyrics.
@@ -216,7 +222,7 @@ def _complete_lyrics_path(ctx, param, incomplete):
     return results
 
 
-def _complete_mka_without_icon(ctx, param, incomplete):
+def _complete_mka_without_icon(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[CompletionItem]:
     """Complete .mka files that lack a custom icon, falling back to all .mka."""
     results = _complete_path(incomplete, lambda p: _is_mka(p) and not _has_custom_icon(p))
     if not any(item.type == "plain" and not item.value.endswith("/") for item in results):
@@ -229,7 +235,7 @@ def _complete_mka_without_icon(ctx, param, incomplete):
 
 @click.group()
 @click.option("-v", "--verbose", is_flag=True, help="Enable verbose (DEBUG) console output")
-def cli(verbose):
+def cli(verbose: bool) -> None:
     """Manage Yoto CYO playlists as folders on disk."""
     _setup_logging(verbose)
 

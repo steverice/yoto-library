@@ -112,7 +112,7 @@ class ClaudeProvider(StatusPageMixin, Provider):
 
             get_tracker().record(f"claude_{model}", subscription=self.is_subscription)
             return text
-        except Exception as exc:
+        except (anthropic.APIError, OSError, ValueError, KeyError) as exc:
             logger.debug("claude_provider.call_sdk: failed with %s: %s", type(exc).__name__, exc)
             return None
 

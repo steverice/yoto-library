@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 @click.argument("path_or_card_id", default=".")
 @click.option("--dry-run", is_flag=True, help="Preview changes without executing")
 @click.option("--all", "pull_all", is_flag=True, help="Pull all playlists into subdirectories of cwd")
-def pull(path_or_card_id, dry_run, pull_all):
+def pull(path_or_card_id: str, dry_run: bool, pull_all: bool) -> None:
     """Pull remote playlist state to local."""
     logger.debug("command: pull path_or_card_id=%s dry_run=%s all=%s", path_or_card_id, dry_run, pull_all)
     if pull_all:
@@ -31,7 +31,7 @@ def pull(path_or_card_id, dry_run, pull_all):
         return
 
     if _is_card_id(path_or_card_id):
-        folder = Path(".")
+        folder = Path()
         card_id = path_or_card_id
     else:
         folder = Path(path_or_card_id)
@@ -116,6 +116,6 @@ def _pull_all(dry_run: bool = False) -> None:
         card_id = card.get("cardId", "")
         title = card.get("title", card_id)
         _console.print(f"Pulling {title}...")
-        folder = Path(".") / title
+        folder = Path(title)
         folder.mkdir(exist_ok=True)
         _pull_one(folder, card_id=card_id, dry_run=dry_run)

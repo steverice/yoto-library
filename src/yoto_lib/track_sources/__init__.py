@@ -5,10 +5,12 @@ from __future__ import annotations
 import logging
 import plistlib
 import subprocess
-from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
 
 from yoto_lib.config import WORKERS
 from yoto_lib.mka import wrap_in_mka, write_tags
@@ -46,7 +48,7 @@ def clean_title(raw_title: str) -> str:
             cleaned = result.strip()
             logger.debug("clean_title: %r -> %r", raw_title, cleaned)
             return cleaned
-    except Exception as exc:
+    except (subprocess.CalledProcessError, OSError, ValueError, RuntimeError) as exc:
         logger.debug("clean_title failed: %s", exc)
     return raw_title
 
@@ -207,7 +209,7 @@ def resolve_weblocs(
             idx = future_to_index[future]
             try:
                 mka_path = future.result()
-            except Exception as exc:
+            except (subprocess.CalledProcessError, OSError, ValueError) as exc:
                 logger.warning("resolve_weblocs: unexpected error for index %d: %s", idx, exc)
                 mka_path = None
             results_by_index[idx] = mka_path

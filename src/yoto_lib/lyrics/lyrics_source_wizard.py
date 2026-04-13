@@ -6,8 +6,11 @@ import json
 import logging
 import random
 import tempfile
-from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from yoto_lib.providers.claude_provider import ClaudeProvider
 
