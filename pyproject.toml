@@ -63,7 +63,7 @@ Source = "https://github.com/steverice/yoto-library"
 Issues = "https://github.com/steverice/yoto-library/issues"
 
 [project.scripts]
-yoto = "yoto_cli.main:cli"
+yoto = "yoto_cli.main:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/yoto_lib", "src/yoto_cli"]

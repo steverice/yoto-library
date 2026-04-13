@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
-import click
+if TYPE_CHECKING:
+    import argparse
 
-from yoto_cli.main import cli
 from yoto_lib.billing import (
     DASHBOARD_URLS,
     PROVIDER_GROUPS,
@@ -41,35 +42,41 @@ def _check_all_status() -> dict[str, tuple[bool | None, str | None]]:
     return results
 
 
-@cli.command("providers")
-@click.option(
-    "--reset",
-    "reset_group",
-    is_flag=False,
-    flag_value="__all__",
-    default=None,
-    help="Reset lifetime cost data. Optionally specify a provider group.",
-)
-def providers(reset_group: str | None) -> None:
-    """Show provider status, balances, and lifetime costs."""
-    logger.debug("command: providers reset=%s", reset_group)
+def add_providers_command(subparsers: argparse._SubParsersAction) -> None:
+    sub = subparsers.add_parser("providers", help="show provider status, balances, and lifetime costs")
+    sub.add_argument(
+        "--reset",
+        dest="reset_group",
+        nargs="?",
+        const="__all__",
+        default=None,
+        help="reset lifetime cost data; optionally specify a provider group",
+    )
+    sub.set_defaults(func=handle_providers)
 
-    # Handle --reset
-    if reset_group is not None:
-        if reset_group == "__all__":
-            if not click.confirm("This will reset all lifetime cost tracking. Continue?"):
+
+def handle_providers(args: argparse.Namespace) -> None:
+    from rich.prompt import Confirm
+
+    from yoto_cli.progress import _console, error
+
+    logger.debug("command: providers reset=%s", args.reset_group)
+
+    if args.reset_group is not None:
+        if args.reset_group == "__all__":
+            if not Confirm.ask("This will reset all lifetime cost tracking. Continue?", console=_console):
                 return
             reset_totals()
-            click.echo("Reset all lifetime billing data.")
+            _console.print("Reset all lifetime billing data.")
         else:
-            if reset_group not in PROVIDER_GROUPS:
+            if args.reset_group not in PROVIDER_GROUPS:
                 valid = ", ".join(sorted(PROVIDER_GROUPS))
-                raise click.UsageError(f"Unknown provider group '{reset_group}'. Valid: {valid}")
-            reset_totals(reset_group)
-            click.echo(f"Reset lifetime billing data for {reset_group}.")
+                error(f"Unknown provider group '{args.reset_group}'. Valid: {valid}")
+                raise SystemExit(2)
+            reset_totals(args.reset_group)
+            _console.print(f"Reset lifetime billing data for {args.reset_group}.")
         return
 
-    # Fetch live data in parallel
     from concurrent.futures import ThreadPoolExecutor
 
     with ThreadPoolExecutor(max_workers=3) as pool:
@@ -85,20 +92,16 @@ def providers(reset_group: str | None) -> None:
     balances = balance_future.result()
     subscription_usage = usage_future.result() if usage_future else None
 
-    # Section 1: Status
     _print_status(statuses)
-    click.echo()
+    _console.print()
 
-    # Section 2: Balances
     _print_balances(balances)
-    click.echo()
+    _console.print()
 
-    # Section 3: Subscription
     if subscription_usage:
         _print_subscription_usage(subscription_usage)
-        click.echo()
+        _console.print()
 
-    # Section 4: Lifetime spend
     _print_lifetime_spend()
 
 

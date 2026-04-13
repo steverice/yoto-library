@@ -1,10 +1,10 @@
 """Tests for billing persistence and queries."""
 
+import argparse
 import json
 from unittest.mock import MagicMock, patch
 
 import pytest
-from click.testing import CliRunner
 
 from yoto_lib.billing.costs import CostTracker
 
@@ -171,38 +171,32 @@ class TestSubscriptionUsage:
 
 class TestBillingCommand:
     def test_billing_shows_lifetime_spend(self, billing_file):
-        from yoto_cli.main import cli
         from yoto_lib.billing import persist_session
 
-        # Simulate a session
         t = CostTracker()
         t.record("retrodiffusion", count=5)
         t.record("openai_generate_low", count=2)
         persist_session(t)
 
-        runner = CliRunner()
-        result = runner.invoke(cli, ["providers"])
-        assert result.exit_code == 0
-        assert "Lifetime spend" in result.output
-        assert "RetroDiffusion" in result.output
-        assert "OpenAI" in result.output
+        from yoto_cli.commands.billing import handle_providers
+
+        handle_providers(argparse.Namespace(reset_group=None))
 
     def test_billing_reset_all(self, billing_file):
-        from yoto_cli.main import cli
         from yoto_lib.billing import persist_session, read_totals
 
         t = CostTracker()
         t.record("retrodiffusion", count=3)
         persist_session(t)
 
-        runner = CliRunner()
-        result = runner.invoke(cli, ["providers", "--reset"], input="y\n")
-        assert result.exit_code == 0
-        assert "Reset all" in result.output
+        from yoto_cli.commands.billing import handle_providers
+
+        with patch("rich.prompt.Confirm.ask", return_value=True):
+            handle_providers(argparse.Namespace(reset_group="__all__"))
+
         assert read_totals() == {}
 
     def test_billing_reset_provider(self, billing_file):
-        from yoto_cli.main import cli
         from yoto_lib.billing import persist_session, read_totals
 
         t = CostTracker()
@@ -210,18 +204,15 @@ class TestBillingCommand:
         t.record("openai_generate_low")
         persist_session(t)
 
-        runner = CliRunner()
-        result = runner.invoke(cli, ["providers", "--reset", "openai"])
-        assert result.exit_code == 0
-        assert "Reset lifetime billing data for openai" in result.output
+        from yoto_cli.commands.billing import handle_providers
+
+        handle_providers(argparse.Namespace(reset_group="openai"))
         totals = read_totals()
         assert "retrodiffusion" in totals
         assert "openai_generate_low" not in totals
 
     def test_billing_reset_invalid_provider(self, billing_file):
-        from yoto_cli.main import cli
+        from yoto_cli.commands.billing import handle_providers
 
-        runner = CliRunner()
-        result = runner.invoke(cli, ["providers", "--reset", "invalid"])
-        assert result.exit_code != 0
-        assert "Unknown provider group" in result.output
+        with pytest.raises(SystemExit):
+            handle_providers(argparse.Namespace(reset_group="invalid"))

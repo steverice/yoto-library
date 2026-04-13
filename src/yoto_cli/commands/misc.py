@@ -9,11 +9,15 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
 import httpx
 
 from yoto_cli.main import _complete_dirs, cli
+
+if TYPE_CHECKING:
+    import argparse
 from yoto_lib.config import WORKERS
 from yoto_lib.playlist import write_jsonl
 from yoto_lib.yoto.api import YotoAPI
@@ -22,14 +26,20 @@ from yoto_lib.yoto.auth import AuthError, run_device_code_flow
 logger = logging.getLogger(__name__)
 
 
-@cli.command()
-def auth() -> None:
-    """Authenticate with Yoto (OAuth device code flow)."""
+def add_auth_command(subparsers: argparse._SubParsersAction) -> None:
+    sub = subparsers.add_parser("auth", help="authenticate with Yoto (OAuth device code flow)")
+    sub.set_defaults(func=handle_auth)
+
+
+def handle_auth(args: argparse.Namespace) -> None:
     logger.debug("command: auth")
     try:
         run_device_code_flow()
     except AuthError as exc:
-        raise click.ClickException(str(exc)) from exc
+        from yoto_cli.progress import error
+
+        error(str(exc))
+        raise SystemExit(1) from exc
 
 
 @cli.command()
@@ -67,12 +77,15 @@ def reorder(playlist: str) -> None:
     _success(f"Saved {len(filenames)} tracks.")
 
 
-@cli.command()
-@click.argument("path", default=".", type=click.Path())
-def init(path: str) -> None:
-    """Scaffold a new playlist folder."""
-    logger.debug("command: init path=%s", path)
-    folder = Path(path)
+def add_init_command(subparsers: argparse._SubParsersAction) -> None:
+    sub = subparsers.add_parser("init", help="scaffold a new playlist folder")
+    sub.add_argument("path", nargs="?", default=".", type=Path, help="folder to create")
+    sub.set_defaults(func=handle_init)
+
+
+def handle_init(args: argparse.Namespace) -> None:
+    logger.debug("command: init path=%s", args.path)
+    folder = args.path
     from yoto_cli.progress import success as _success
     from yoto_cli.progress import warning as _warning
 
@@ -167,9 +180,12 @@ def export(playlist: str, output: str | None) -> None:
     _success(f"Exported {len(mka_files)} tracks to {output_path}")
 
 
-@cli.command(name="list")
-def list_cmd() -> None:
-    """Show all MYO cards on your Yoto account."""
+def add_list_command(subparsers: argparse._SubParsersAction) -> None:
+    sub = subparsers.add_parser("list", help="show all MYO cards on your Yoto account")
+    sub.set_defaults(func=handle_list)
+
+
+def handle_list(args: argparse.Namespace) -> None:
     logger.debug("command: list")
     api = YotoAPI()
     cards = api.get_my_content()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
@@ -19,8 +20,10 @@ class TestEndToEnd:
         playlist_dir = tmp_path / "my-album"
 
         # 1. Init the playlist folder
-        result = runner.invoke(cli, ["init", str(playlist_dir)])
-        assert result.exit_code == 0, result.output
+        from yoto_cli.commands.misc import handle_init
+
+        handle_init(argparse.Namespace(path=playlist_dir))
+        assert playlist_dir.exists()
 
         # 2. Write fake MKA files and description
         (playlist_dir / "song-one.mka").write_bytes(b"\x00" * 64)

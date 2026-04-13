@@ -52,9 +52,15 @@ def build_parser() -> argparse.ArgumentParser:
         allow_abbrev=False,
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose (DEBUG) console output")
-    subparsers = parser.add_subparsers(dest="command")  # noqa: F841
+    subparsers = parser.add_subparsers(dest="command")
 
-    # Commands will be registered here as they're migrated
+    from yoto_cli.commands.billing import add_providers_command
+    from yoto_cli.commands.misc import add_auth_command, add_init_command, add_list_command
+
+    add_auth_command(subparsers)
+    add_init_command(subparsers)
+    add_list_command(subparsers)
+    add_providers_command(subparsers)
 
     argcomplete.autocomplete(parser)
     return parser
@@ -66,14 +72,18 @@ def main() -> None:
 
     try:
         parser = build_parser()
-        args = parser.parse_args()
+        args, remaining = parser.parse_known_args()
         _setup_logging(getattr(args, "verbose", False))
-        if not hasattr(args, "func"):
-            parser.print_help()
-            raise SystemExit(0)
-        args.func(args)
+        if hasattr(args, "func"):
+            if remaining:
+                parser.error(f"unrecognized arguments: {' '.join(remaining)}")
+            args.func(args)
+        else:
+            cli(standalone_mode=True)
     except KeyboardInterrupt:
         pass
+    except SystemExit:
+        raise
     except Exception as exc:  # noqa: BLE001 — top-level CLI boundary
         error(str(exc))
         raise SystemExit(1) from None
@@ -311,7 +321,6 @@ def cli(verbose: bool) -> None:
 # ── Register command modules ─────────────────────────────────────────────────
 # Importing these modules registers commands on the `cli` group via decorators.
 
-import yoto_cli.commands.billing  # noqa: E402
 import yoto_cli.commands.cover  # noqa: E402
 import yoto_cli.commands.icons  # noqa: E402
 import yoto_cli.commands.import_cmd  # noqa: E402

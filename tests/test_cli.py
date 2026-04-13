@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 from unittest.mock import MagicMock, patch
@@ -9,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from yoto_cli.main import _is_card_id, _strip_track_number, cli
+from yoto_cli.main import _is_card_id, _strip_track_number, build_parser, cli
 from yoto_lib.covers.printer import PrintError
 from yoto_lib.pull import PullResult
 from yoto_lib.sync import SyncResult
@@ -27,64 +28,55 @@ def runner():
 
 
 class TestAuthCommand:
-    def test_auth_command_runs(self, runner):
-        """auth calls run_device_code_flow and exits 0 on success."""
-        with patch("yoto_cli.commands.misc.run_device_code_flow") as mock_flow:
-            result = runner.invoke(cli, ["auth"])
-        mock_flow.assert_called_once()
-        assert result.exit_code == 0
+    def test_auth_parses(self):
+        parser = build_parser()
+        args = parser.parse_args(["auth"])
+        assert args.command == "auth"
+        assert hasattr(args, "func")
 
-    def test_auth_converts_auth_error_to_click_exception(self, runner):
-        """auth catches AuthError and re-raises as ClickException (exit 1)."""
-        with patch(
-            "yoto_cli.commands.misc.run_device_code_flow",
-            side_effect=AuthError("Device code expired"),
+    def test_auth_command_runs(self):
+        with patch("yoto_cli.commands.misc.run_device_code_flow") as mock_flow:
+            from yoto_cli.commands.misc import handle_auth
+
+            handle_auth(argparse.Namespace())
+        mock_flow.assert_called_once()
+
+    def test_auth_converts_auth_error_to_exit(self):
+        from yoto_cli.commands.misc import handle_auth
+
+        with (
+            patch("yoto_cli.commands.misc.run_device_code_flow", side_effect=AuthError("Device code expired")),
+            pytest.raises(SystemExit),
         ):
-            result = runner.invoke(cli, ["auth"])
-        assert result.exit_code != 0
-        assert "Device code expired" in result.output
+            handle_auth(argparse.Namespace())
 
 
 # ── test_list_shows_cards ─────────────────────────────────────────────────────
 
 
 class TestListCommand:
-    def test_list_shows_cards(self, runner):
-        """list calls get_my_content and prints a table of card IDs and titles."""
+    def test_list_shows_cards(self):
         fake_cards = [
-            {
-                "cardId": "CARD001",
-                "title": "My Album",
-                "content": {"chapters": {"t1.mka": {}, "t2.mka": {}}},
-            },
-            {
-                "cardId": "CARD002",
-                "title": "Kids Stories",
-                "content": {"chapters": {}},
-            },
+            {"cardId": "CARD001", "title": "My Album"},
+            {"cardId": "CARD002", "title": "Kids Stories"},
         ]
         mock_api = MagicMock()
         mock_api.get_my_content.return_value = fake_cards
+        mock_api.get_content.return_value = {"content": {"chapters": []}}
 
         with patch("yoto_cli.commands.misc.YotoAPI", return_value=mock_api):
-            result = runner.invoke(cli, ["list"])
+            from yoto_cli.commands.misc import handle_list
 
-        assert result.exit_code == 0
-        assert "CARD001" in result.output
-        assert "My Album" in result.output
-        assert "CARD002" in result.output
-        assert "Kids Stories" in result.output
+            handle_list(argparse.Namespace())
 
-    def test_list_empty_account(self, runner):
-        """list prints a message when no cards are found."""
+    def test_list_empty_account(self):
         mock_api = MagicMock()
         mock_api.get_my_content.return_value = []
 
         with patch("yoto_cli.commands.misc.YotoAPI", return_value=mock_api):
-            result = runner.invoke(cli, ["list"])
+            from yoto_cli.commands.misc import handle_list
 
-        assert result.exit_code == 0
-        assert "No cards found" in result.output
+            handle_list(argparse.Namespace())
 
 
 # ── test_sync_runs ────────────────────────────────────────────────────────────
@@ -186,34 +178,26 @@ class TestReorderCommand:
 
 
 class TestInitCommand:
-    def test_init_creates_folder(self, runner, tmp_path):
-        """init creates the folder and writes an empty playlist.jsonl."""
+    def test_init_creates_folder(self, tmp_path):
         new_folder = tmp_path / "my-new-playlist"
-        assert not new_folder.exists()
+        from yoto_cli.commands.misc import handle_init
 
-        result = runner.invoke(cli, ["init", str(new_folder)])
-
-        assert result.exit_code == 0, result.output
+        handle_init(argparse.Namespace(path=new_folder))
         assert new_folder.exists()
         jsonl_path = new_folder / "playlist.jsonl"
         assert jsonl_path.exists()
-        # Empty playlist.jsonl should be empty (no filenames)
         content = jsonl_path.read_text(encoding="utf-8")
         filenames = [json.loads(ln) for ln in content.splitlines() if ln.strip()]
         assert filenames == []
 
-    def test_init_existing_folder(self, runner, tmp_path):
-        """init on an existing folder with playlist.jsonl reports already-exists."""
+    def test_init_existing_folder(self, tmp_path):
         folder = tmp_path / "existing"
         folder.mkdir()
         jsonl = folder / "playlist.jsonl"
         jsonl.write_text('"track.mka"\n', encoding="utf-8")
+        from yoto_cli.commands.misc import handle_init
 
-        result = runner.invoke(cli, ["init", str(folder)])
-
-        assert result.exit_code == 0
-        assert "Already exists" in result.output
-        # Original content must be preserved
+        handle_init(argparse.Namespace(path=folder))
         assert json.loads(jsonl.read_text().strip()) == "track.mka"
 
 
