@@ -8,9 +8,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from click.testing import CliRunner
 
-from yoto_cli.main import build_parser, cli
+from yoto_cli.main import build_parser
 
 
 def ffmpeg_available():
@@ -148,6 +147,8 @@ class TestSelectIconLyricsSummary:
         wrap_in_mka(wav, mka)
         write_tags(mka, {"title": "Old MacDonald", "lyrics": "Had a farm E-I-E-I-O"})
 
+        from yoto_cli.commands.icons import handle_select_icon
+
         with (
             patch(
                 "yoto_lib.icons.icon_llm.describe_icons_llm", return_value=["cow", "barn", "tractor"]
@@ -158,8 +159,7 @@ class TestSelectIconLyricsSummary:
             patch("yoto_lib.icons.icon_llm.match_icon_llm", return_value=(None, 0.0)),
             patch("yoto_lib.icons.generate_retrodiffusion_icons", return_value=None),
         ):
-            runner = CliRunner()
-            runner.invoke(cli, ["select-icon", str(mka)])
+            handle_select_icon(argparse.Namespace(tracks=[mka]))
 
         # Summary should have been generated
         mock_summarize.assert_called_once()
@@ -185,6 +185,8 @@ class TestSelectIconLyricsSummary:
             },
         )
 
+        from yoto_cli.commands.icons import handle_select_icon
+
         with (
             patch(
                 "yoto_lib.icons.icon_llm.describe_icons_llm", return_value=["cow", "barn", "tractor"]
@@ -193,8 +195,7 @@ class TestSelectIconLyricsSummary:
             patch("yoto_lib.icons.icon_llm.match_icon_llm", return_value=(None, 0.0)),
             patch("yoto_lib.icons.generate_retrodiffusion_icons", return_value=None),
         ):
-            runner = CliRunner()
-            runner.invoke(cli, ["select-icon", str(mka)])
+            handle_select_icon(argparse.Namespace(tracks=[mka]))
 
         # Should NOT have regenerated summary
         mock_summarize.assert_not_called()

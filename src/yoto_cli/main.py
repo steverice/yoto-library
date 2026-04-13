@@ -55,6 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     from yoto_cli.commands.billing import add_providers_command
     from yoto_cli.commands.cover import add_cover_command, add_print_command
+    from yoto_cli.commands.icons import add_reset_icon_command, add_select_icon_command
     from yoto_cli.commands.import_cmd import add_download_command, add_import_command
     from yoto_cli.commands.lyrics import add_lyrics_command
     from yoto_cli.commands.misc import (
@@ -81,6 +82,8 @@ def build_parser() -> argparse.ArgumentParser:
     add_pull_command(subparsers)
     add_cover_command(subparsers)
     add_print_command(subparsers)
+    add_select_icon_command(subparsers)
+    add_reset_icon_command(subparsers)
     add_lyrics_command(subparsers)
     add_completions_command(subparsers)
 
@@ -397,9 +400,3 @@ def _complete_lyrics_path(ctx: click.Context, param: click.Parameter, incomplete
 def cli(verbose: bool) -> None:
     """Manage Yoto CYO playlists as folders on disk."""
     _setup_logging(verbose)
-
-
-# ── Register command modules ─────────────────────────────────────────────────
-# Importing these modules registers commands on the `cli` group via decorators.
-
-import yoto_cli.commands.icons  # noqa: E402, F401

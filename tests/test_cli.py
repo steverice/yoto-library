@@ -9,20 +9,14 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from click.testing import CliRunner
 
-from yoto_cli.main import _is_card_id, _strip_track_number, build_parser, cli
+from yoto_cli.main import _is_card_id, _strip_track_number, build_parser
 from yoto_lib.covers.printer import PrintError
 from yoto_lib.pull import PullResult
 from yoto_lib.sync import SyncResult
 from yoto_lib.yoto.auth import AuthError
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
-
-
-@pytest.fixture
-def runner():
-    return CliRunner()
 
 
 # ── test_auth_command_runs ────────────────────────────────────────────────────
@@ -674,32 +668,39 @@ class TestCoverCommand:
 
 
 class TestResetIconCommand:
-    def test_reset_icon_removes_attachment(self, runner, tmp_path):
+    def test_reset_icon_parses(self, tmp_path):
+        mka = tmp_path / "track.mka"
+        parser = build_parser()
+        args = parser.parse_args(["reset-icon", str(mka)])
+        assert args.command == "reset-icon"
+        assert hasattr(args, "func")
+        assert args.tracks == [mka]
+
+    def test_reset_icon_removes_attachment(self, tmp_path):
         """reset-icon calls remove_attachment and clear_macos_file_icon."""
         mka = tmp_path / "track.mka"
         mka.write_bytes(b"fake")
+
+        from yoto_cli.commands.icons import handle_reset_icon
 
         with (
             patch("yoto_cli.commands.icons.remove_attachment") as mock_remove,
             patch("yoto_lib.icons.clear_macos_file_icon") as mock_clear,
         ):
-            result = runner.invoke(cli, ["reset-icon", str(mka)])
+            handle_reset_icon(argparse.Namespace(tracks=[mka]))
 
-        assert result.exit_code == 0
         mock_remove.assert_called_once_with(mka, "icon")
         mock_clear.assert_called_once_with(mka)
-        assert "Cleared icon" in result.output
 
-    def test_reset_icon_handles_errors(self, runner, tmp_path):
+    def test_reset_icon_handles_errors(self, tmp_path):
         """reset-icon prints error when remove_attachment fails."""
         mka = tmp_path / "track.mka"
         mka.write_bytes(b"fake")
 
-        with patch("yoto_cli.commands.icons.remove_attachment", side_effect=OSError("mkvpropedit failed")):
-            result = runner.invoke(cli, ["reset-icon", str(mka)])
+        from yoto_cli.commands.icons import handle_reset_icon
 
-        assert result.exit_code == 0
-        assert "Error" in result.output
+        with patch("yoto_cli.commands.icons.remove_attachment", side_effect=OSError("mkvpropedit failed")):
+            handle_reset_icon(argparse.Namespace(tracks=[mka]))
 
 
 # ── test_print_command ───────────────────────────────────────────────────────

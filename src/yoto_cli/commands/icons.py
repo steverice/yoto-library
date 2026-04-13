@@ -5,10 +5,11 @@ from __future__ import annotations
 import logging
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import click
+if TYPE_CHECKING:
+    import argparse
 
-from yoto_cli.main import _complete_mka_with_icon, _complete_mka_without_icon, _print_cost_summary, cli
 from yoto_lib.billing.costs import reset_tracker
 from yoto_lib.mka import remove_attachment
 from yoto_lib.yoto.api import YotoAPI
@@ -16,13 +17,25 @@ from yoto_lib.yoto.api import YotoAPI
 logger = logging.getLogger(__name__)
 
 
-@cli.command(name="select-icon")
-@click.argument(
-    "tracks", nargs=-1, required=True, type=click.Path(exists=True), shell_complete=_complete_mka_without_icon
-)
-def select_icon(tracks: tuple[str, ...]) -> None:
+def add_select_icon_command(subparsers: argparse._SubParsersAction) -> None:
+    """Register the select-icon subcommand."""
+    from yoto_cli.main import _MkaWithoutIconCompleter
+
+    sub = subparsers.add_parser("select-icon", help="interactive icon selection for tracks")
+    tracks_arg = sub.add_argument("tracks", nargs="+", type=Path, help="MKA track files")
+    tracks_arg.completer = _MkaWithoutIconCompleter()
+    sub.set_defaults(func=handle_select_icon)
+
+
+def handle_select_icon(args: argparse.Namespace) -> None:
     """Generate 3 icon options per track, show best Yoto match, and attach the chosen one."""
-    logger.debug("command: select-icon tracks=%s", tracks)
+    from yoto_cli.main import _print_cost_summary, require_path
+
+    track_paths: list[Path] = args.tracks
+    for p in track_paths:
+        require_path(p)
+
+    logger.debug("command: select-icon tracks=%s", track_paths)
     from rich.rule import Rule
 
     from yoto_cli.iterm_colors import ensure_srgb, restore_colors, show_hint_if_needed
@@ -34,7 +47,6 @@ def select_icon(tracks: tuple[str, ...]) -> None:
     reset_tracker()
 
     api = YotoAPI()
-    track_paths = [Path(t) for t in tracks]
 
     # -- Mutable state shared between callbacks --
     progress_ctx = [None]  # [Progress context manager]
@@ -172,20 +184,33 @@ def select_icon(tracks: tuple[str, ...]) -> None:
     _print_cost_summary()
 
 
-@cli.command(name="reset-icon")
-@click.argument("tracks", nargs=-1, required=True, type=click.Path(exists=True), shell_complete=_complete_mka_with_icon)
-def reset_icon(tracks: tuple[str, ...]) -> None:
+def add_reset_icon_command(subparsers: argparse._SubParsersAction) -> None:
+    """Register the reset-icon subcommand."""
+    from yoto_cli.main import _MkaWithIconCompleter
+
+    sub = subparsers.add_parser("reset-icon", help="remove icon from MKA tracks")
+    tracks_arg = sub.add_argument("tracks", nargs="+", type=Path, help="MKA track files")
+    tracks_arg.completer = _MkaWithIconCompleter()
+    sub.set_defaults(func=handle_reset_icon)
+
+
+def handle_reset_icon(args: argparse.Namespace) -> None:
     """Remove the icon from one or more MKA tracks so sync regenerates them."""
-    logger.debug("command: reset-icon tracks=%s", tracks)
+    from yoto_cli.main import require_path
     from yoto_cli.progress import error as _error
     from yoto_cli.progress import success as _success
     from yoto_lib.icons import clear_macos_file_icon
 
-    for track in tracks:
-        path = Path(track)
+    track_paths: list[Path] = args.tracks
+    for p in track_paths:
+        require_path(p)
+
+    logger.debug("command: reset-icon tracks=%s", track_paths)
+
+    for path in track_paths:
         try:
             remove_attachment(path, "icon")
             clear_macos_file_icon(path)
             _success(f"Cleared icon: {path.name}")
-        except (subprocess.CalledProcessError, OSError) as exc:
+        except (subprocess.CalledProcessError, OSError) as exc:  # noqa: PERF203
             _error(f"Error ({path.name}): {exc}")
