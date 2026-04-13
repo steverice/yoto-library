@@ -55,12 +55,22 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
 
     from yoto_cli.commands.billing import add_providers_command
-    from yoto_cli.commands.misc import add_auth_command, add_init_command, add_list_command
+    from yoto_cli.commands.misc import (
+        add_auth_command,
+        add_export_command,
+        add_init_command,
+        add_list_command,
+        add_reorder_command,
+    )
+    from yoto_cli.commands.sync import add_status_command
 
     add_auth_command(subparsers)
     add_init_command(subparsers)
     add_list_command(subparsers)
     add_providers_command(subparsers)
+    add_reorder_command(subparsers)
+    add_export_command(subparsers)
+    add_status_command(subparsers)
 
     argcomplete.autocomplete(parser)
     return parser

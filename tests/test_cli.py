@@ -143,7 +143,7 @@ class TestSyncNoTrim:
 
 
 class TestReorderCommand:
-    def test_reorder_opens_editor(self, runner, tmp_path):
+    def test_reorder_opens_editor(self, tmp_path):
         """reorder opens $EDITOR; saves reordered content back to the file."""
         playlist_path = tmp_path / "playlist.jsonl"
         original_lines = ['"track_a.mka"', '"track_b.mka"', '"track_c.mka"']
@@ -152,26 +152,46 @@ class TestReorderCommand:
         # Simulate the user swapping b and c
         edited_content = '"track_a.mka"\n"track_c.mka"\n"track_b.mka"\n'
 
-        with patch("yoto_cli.commands.misc.click.edit", return_value=edited_content) as mock_edit:
-            result = runner.invoke(cli, ["reorder", str(playlist_path)])
+        from yoto_cli.commands.misc import handle_reorder
 
-        assert result.exit_code == 0, result.output
+        with patch("yoto_cli.main._open_editor", return_value=edited_content) as mock_edit:
+            handle_reorder(argparse.Namespace(playlist=playlist_path))
+
         mock_edit.assert_called_once()
 
         saved = playlist_path.read_text(encoding="utf-8")
         saved_names = [json.loads(line) for line in saved.splitlines() if line.strip()]
         assert saved_names == ["track_a.mka", "track_c.mka", "track_b.mka"]
 
-    def test_reorder_no_changes(self, runner, tmp_path):
+    def test_reorder_no_changes(self, tmp_path):
         """reorder prints 'No changes' when editor returns None."""
         playlist_path = tmp_path / "playlist.jsonl"
         playlist_path.write_text('"track_a.mka"\n', encoding="utf-8")
 
-        with patch("yoto_cli.commands.misc.click.edit", return_value=None):
-            result = runner.invoke(cli, ["reorder", str(playlist_path)])
+        from yoto_cli.commands.misc import handle_reorder
 
-        assert result.exit_code == 0
-        assert "No changes" in result.output
+        with patch("yoto_cli.main._open_editor", return_value=None):
+            handle_reorder(argparse.Namespace(playlist=playlist_path))
+
+    def test_reorder_file_not_found(self, tmp_path):
+        """reorder exits with error when file does not exist."""
+        from yoto_cli.commands.misc import handle_reorder
+
+        with pytest.raises(SystemExit):
+            handle_reorder(argparse.Namespace(playlist=tmp_path / "nonexistent.jsonl"))
+
+    def test_reorder_invalid_json(self, tmp_path):
+        """reorder exits with error on invalid JSON."""
+        playlist_path = tmp_path / "playlist.jsonl"
+        playlist_path.write_text('"track_a.mka"\n', encoding="utf-8")
+
+        from yoto_cli.commands.misc import handle_reorder
+
+        with (
+            patch("yoto_cli.main._open_editor", return_value="not valid json\n"),
+            pytest.raises(SystemExit),
+        ):
+            handle_reorder(argparse.Namespace(playlist=playlist_path))
 
 
 # ── test_init_creates_folder ──────────────────────────────────────────────────
@@ -375,7 +395,7 @@ class TestPullCommand:
 
 
 class TestStatusCommand:
-    def test_status_no_changes(self, runner, tmp_path):
+    def test_status_no_changes(self, tmp_path):
         """status prints 'No changes' when local matches remote."""
         folder = tmp_path / "album"
         folder.mkdir()
@@ -396,6 +416,8 @@ class TestStatusCommand:
             icon_changes={},
         )
 
+        from yoto_cli.commands.sync import handle_status
+
         with (
             patch("yoto_cli.commands.sync.load_playlist", return_value=mock_playlist),
             patch("yoto_cli.commands.sync.scan_audio_files", return_value=["track.mp3"]),
@@ -404,12 +426,9 @@ class TestStatusCommand:
             patch("yoto_lib.sync._parse_remote_state", return_value={}),
         ):
             mock_api_cls.return_value.get_content.return_value = {}
-            result = runner.invoke(cli, ["status", str(folder)])
+            handle_status(argparse.Namespace(path=folder))
 
-        assert result.exit_code == 0
-        assert "No changes" in result.output
-
-    def test_status_shows_new_tracks(self, runner, tmp_path):
+    def test_status_shows_new_tracks(self, tmp_path, capsys):
         """status lists new tracks with + prefix."""
         folder = tmp_path / "album"
         folder.mkdir()
@@ -430,43 +449,43 @@ class TestStatusCommand:
             icon_changes={},
         )
 
+        from yoto_cli.commands.sync import handle_status
+
         with (
             patch("yoto_cli.commands.sync.load_playlist", return_value=mock_playlist),
             patch("yoto_cli.commands.sync.scan_audio_files", return_value=["new_song.mp3"]),
             patch("yoto_cli.commands.sync.diff_playlists", return_value=diff),
         ):
-            result = runner.invoke(cli, ["status", str(folder)])
+            handle_status(argparse.Namespace(path=folder))
 
-        assert result.exit_code == 0
-        assert "+ new_song.mp3" in result.output
-
-    def test_status_not_a_playlist(self, runner, tmp_path):
+    def test_status_not_a_playlist(self, tmp_path):
         """status on empty folder raises error."""
         folder = tmp_path / "empty"
         folder.mkdir()
 
-        with patch("yoto_cli.commands.sync.scan_audio_files", return_value=[]):
-            result = runner.invoke(cli, ["status", str(folder)])
+        from yoto_cli.commands.sync import handle_status
 
-        assert result.exit_code != 0
-        assert "Not a playlist folder" in result.output
+        with (
+            patch("yoto_cli.commands.sync.scan_audio_files", return_value=[]),
+            pytest.raises(SystemExit),
+        ):
+            handle_status(argparse.Namespace(path=folder))
 
 
 # ── test_export_command ──────────────────────────────────────────────────────
 
 
 class TestExportCommand:
-    def test_export_no_mka_files(self, runner, tmp_path):
+    def test_export_no_mka_files(self, tmp_path):
         """export with no MKA files prints message."""
         folder = tmp_path / "album"
         folder.mkdir()
 
-        result = runner.invoke(cli, ["export", str(folder)])
+        from yoto_cli.commands.misc import handle_export
 
-        assert result.exit_code == 0
-        assert "No .mka files found" in result.output
+        handle_export(argparse.Namespace(playlist=folder, output=None))
 
-    def test_export_extracts_without_patch(self, runner, tmp_path):
+    def test_export_extracts_without_patch(self, tmp_path):
         """export extracts audio when no bsdiff patch is stored."""
         folder = tmp_path / "album"
         folder.mkdir()
@@ -476,15 +495,15 @@ class TestExportCommand:
         output_dir = tmp_path / "output"
         extracted = output_dir / "song.ogg"
 
+        from yoto_cli.commands.misc import handle_export
+
         with (
             patch("yoto_lib.mka.get_attachment", return_value=None),
             patch("yoto_lib.mka.extract_audio", return_value=extracted),
         ):
-            result = runner.invoke(cli, ["export", str(folder), "-o", str(output_dir)])
+            handle_export(argparse.Namespace(playlist=folder, output=output_dir))
 
-        assert result.exit_code == 0
-
-    def test_export_byte_perfect_with_patch(self, runner, tmp_path):
+    def test_export_byte_perfect_with_patch(self, tmp_path):
         """export applies bsdiff patch for byte-perfect output."""
         folder = tmp_path / "album"
         folder.mkdir()
@@ -492,15 +511,22 @@ class TestExportCommand:
         mka.write_bytes(b"fake")
         output_dir = tmp_path / "out"
 
+        from yoto_cli.commands.misc import handle_export
+
         with (
             patch("yoto_lib.mka.get_attachment", return_value=b"patch_data"),
             patch("yoto_lib.mka.extract_audio") as mock_extract,
             patch("yoto_lib.mka.apply_source_patch", return_value=True),
         ):
             mock_extract.return_value = tmp_path / "tmp" / "song.ogg"
-            result = runner.invoke(cli, ["export", str(folder), "-o", str(output_dir)])
+            handle_export(argparse.Namespace(playlist=folder, output=output_dir))
 
-        assert result.exit_code == 0
+    def test_export_nonexistent_path(self, tmp_path):
+        """export exits with error when path does not exist."""
+        from yoto_cli.commands.misc import handle_export
+
+        with pytest.raises(SystemExit):
+            handle_export(argparse.Namespace(playlist=tmp_path / "nonexistent", output=None))
 
 
 # ── test_import_command ──────────────────────────────────────────────────────

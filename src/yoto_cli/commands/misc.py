@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 import click
 import httpx
 
-from yoto_cli.main import _complete_dirs, cli
+from yoto_cli.main import cli
 
 if TYPE_CHECKING:
     import argparse
@@ -42,25 +42,34 @@ def handle_auth(args: argparse.Namespace) -> None:
         raise SystemExit(1) from exc
 
 
-@cli.command()
-@click.argument("playlist", default="playlist.jsonl", type=click.Path(exists=True))
-def reorder(playlist: str) -> None:
-    """Open playlist.jsonl in $EDITOR to reorder tracks."""
-    logger.debug("command: reorder playlist=%s", playlist)
-    playlist_path = Path(playlist)
-    original = playlist_path.read_text(encoding="utf-8")
+def add_reorder_command(subparsers: argparse._SubParsersAction) -> None:
+    sub = subparsers.add_parser("reorder", help="open playlist.jsonl in $EDITOR to reorder tracks")
+    sub.add_argument("playlist", nargs="?", default="playlist.jsonl", type=Path, help="path to playlist.jsonl")
+    sub.set_defaults(func=handle_reorder)
 
-    edited = click.edit(original)
+
+def handle_reorder(args: argparse.Namespace) -> None:
+    logger.debug("command: reorder playlist=%s", args.playlist)
+    from yoto_cli.main import _open_editor
+
+    playlist_path: Path = args.playlist
+    if not playlist_path.exists():
+        from yoto_cli.progress import error
+
+        error(f"File not found: {playlist_path}")
+        raise SystemExit(1)
+    original = playlist_path.read_text(encoding="utf-8")
+    edited = _open_editor(original)
 
     from yoto_cli.progress import _console
     from yoto_cli.progress import success as _success
 
-    if edited is None or edited == original:
+    if edited is None:
         _console.print("[dim]No changes made.[/dim]")
         return
 
     # Validate the edited content is valid JSONL
-    filenames = []
+    filenames: list[str] = []
     for i, line in enumerate(edited.splitlines(), start=1):
         line = line.strip()
         if not line:
@@ -68,9 +77,15 @@ def reorder(playlist: str) -> None:
         try:
             value = json.loads(line)
         except json.JSONDecodeError as exc:
-            raise click.ClickException(f"Invalid JSON on line {i}: {exc}") from exc
+            from yoto_cli.progress import error
+
+            error(f"Invalid JSON on line {i}: {exc}")
+            raise SystemExit(1) from exc
         if not isinstance(value, str):
-            raise click.ClickException(f"Line {i}: expected a JSON string, got {type(value).__name__}")
+            from yoto_cli.progress import error
+
+            error(f"Line {i}: expected a JSON string, got {type(value).__name__}")
+            raise SystemExit(1)
         filenames.append(value)
 
     write_jsonl(playlist_path, filenames)
@@ -99,22 +114,22 @@ def handle_init(args: argparse.Namespace) -> None:
     _success(f"Initialized playlist folder: {folder}")
 
 
-@cli.command()
-@click.argument("playlist", type=click.Path(exists=True), shell_complete=_complete_dirs)
-@click.option(
-    "--output",
-    "-o",
-    default=None,
-    type=click.Path(),
-    help="Output folder (defaults to <playlist>-exported/)",
-)
-def export(playlist: str, output: str | None) -> None:
+def add_export_command(subparsers: argparse._SubParsersAction) -> None:
+    sub = subparsers.add_parser("export", help="export MKA tracks back to their original audio format")
+    sub.add_argument("playlist", type=Path, help="playlist folder")
+    sub.add_argument("--output", "-o", default=None, type=Path, help="output folder (defaults to <playlist>-exported/)")
+    sub.set_defaults(func=handle_export)
+
+
+def handle_export(args: argparse.Namespace) -> None:
     """Export MKA tracks back to their original audio format."""
+    from yoto_cli.main import require_path
     from yoto_lib.mka import apply_source_patch, extract_audio
 
-    logger.debug("command: export playlist=%s output=%s", playlist, output)
-    playlist_path = Path(playlist)
-    output_path = Path(output) if output else playlist_path.parent / f"{playlist_path.name}-exported"
+    logger.debug("command: export playlist=%s output=%s", args.playlist, args.output)
+    require_path(args.playlist)
+    playlist_path: Path = args.playlist
+    output_path = args.output if args.output else playlist_path.parent / f"{playlist_path.name}-exported"
     output_path.mkdir(parents=True, exist_ok=True)
 
     from yoto_cli.progress import _console

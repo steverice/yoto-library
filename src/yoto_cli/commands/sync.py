@@ -11,6 +11,8 @@ import click
 import httpx
 
 if TYPE_CHECKING:
+    import argparse
+
     from rich.progress import TaskID
 
 from yoto_cli.main import _print_cost_summary, cli
@@ -137,14 +139,23 @@ def sync(
                     _warning(f"Print failed: {exc}")
 
 
-@cli.command()
-@click.argument("path", default=".", type=click.Path(exists=True))
-def status(path: str) -> None:
+def add_status_command(subparsers: argparse._SubParsersAction) -> None:
+    sub = subparsers.add_parser("status", help="show diff between local and remote state")
+    sub.add_argument("path", nargs="?", default=".", type=Path, help="playlist folder")
+    sub.set_defaults(func=handle_status)
+
+
+def handle_status(args: argparse.Namespace) -> None:
     """Show diff between local and remote state."""
-    logger.debug("command: status path=%s", path)
-    folder = Path(path)
+    from yoto_cli.main import require_path
+    from yoto_cli.progress import error
+
+    logger.debug("command: status path=%s", args.path)
+    require_path(args.path)
+    folder: Path = args.path
     if not (folder / "playlist.jsonl").exists() and not scan_audio_files(folder):
-        raise click.ClickException("Not a playlist folder (no playlist.jsonl or audio files)")
+        error("Not a playlist folder (no playlist.jsonl or audio files)")
+        raise SystemExit(1)
     playlist = load_playlist(folder)
 
     from yoto_cli.progress import _console

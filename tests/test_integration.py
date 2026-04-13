@@ -66,7 +66,6 @@ class TestEndToEnd:
 
     def test_reorder_changes_track_order(self, tmp_path):
         """reorder command with mocked editor writes reversed track order."""
-        runner = CliRunner()
         playlist_dir = tmp_path / "reorder-album"
         playlist_dir.mkdir()
 
@@ -78,15 +77,15 @@ class TestEndToEnd:
         original_lines = '"a.mka"\n"b.mka"\n"c.mka"\n'
         jsonl_path.write_text(original_lines, encoding="utf-8")
 
-        # 2. Mock click.edit to return reversed order
+        # 2. Mock _open_editor to return reversed order
         reversed_content = '"c.mka"\n"b.mka"\n"a.mka"\n'
 
-        with patch("yoto_cli.commands.misc.click.edit", return_value=reversed_content):
+        from yoto_cli.commands.misc import handle_reorder
+
+        with patch("yoto_cli.main._open_editor", return_value=reversed_content):
             # 3. Run reorder
-            result = runner.invoke(cli, ["reorder", str(jsonl_path)])
+            handle_reorder(argparse.Namespace(playlist=jsonl_path))
 
         # 4. Verify
-        assert result.exit_code == 0, result.output
-
         new_tracks = read_jsonl(jsonl_path)
         assert new_tracks == ["c.mka", "b.mka", "a.mka"]
