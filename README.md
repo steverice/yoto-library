@@ -49,7 +49,7 @@ pip install yoto-library
 
 This installs the `yoto` command.
 
-To install from source:
+To install from source (requires [uv](https://docs.astral.sh/uv/)):
 
 ```
 git clone https://github.com/steverice/yoto-library.git

@@ -2,12 +2,22 @@
 
 ## Development setup
 
+Requires [uv](https://docs.astral.sh/uv/) for dependency management. Install it if you haven't:
+
+```
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Then clone and set up:
+
 ```
 git clone https://github.com/steverice/yoto-library.git
 cd yoto-library
 uv sync
 uv run pre-commit install --hook-type commit-msg --hook-type pre-commit
 ```
+
+`uv sync` installs the package in editable mode with all dev dependencies into a local `.venv`. Use `uv run <command>` to execute tools (pytest, ruff, etc.) in that environment, or activate the venv with `source .venv/bin/activate`.
 
 ## Commit conventions
 
