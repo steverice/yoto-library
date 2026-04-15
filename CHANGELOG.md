@@ -1,3 +1,31 @@
+## v0.3.1 (2026-04-15)
+
+### ♻️ Refactorings
+
+- migrate `select-icon`, `reset-icon` to argparse
+- migrate sync, cover, print to argparse
+- migrate lyrics, import to argparse
+- migrate download, pull, completions to argparse; port completers
+- migrate reorder, export, status to argparse
+- migrate auth, init, list, providers to argparse
+
+### 💚👷 CI & Build
+
+- remove dead `release: published` trigger from PyPI workflow; add tag input for manual dispatch
+- update workflows to use uv; add `__main__.py` entry point
+
+### 📝💡 Documentation
+
+- document uv installation prerequisite for development setup
+- update setup instructions for uv workflow
+
+### 🧹 chore
+
+- remove Click dependency; migration to argparse complete
+- scaffold argparse skeleton alongside Click group
+- switch to uv for dependency management
+- expand ruff rule set and fix all lint violations
+
 ## v0.3.0 (2026-04-13)
 
 ### ✨ Features
