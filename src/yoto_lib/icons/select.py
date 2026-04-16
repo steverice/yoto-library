@@ -153,11 +153,7 @@ def _generate_round(
     generation failed entirely.
     """
     from yoto_lib.icons import download_icon, generate_retrodiffusion_icons
-    from yoto_lib.icons.icon_llm import (
-        compare_icons_llm,
-        describe_icons_llm,
-        match_icon_llm,
-    )
+    from yoto_lib.icons.icon_llm import describe_icons_llm, match_icon_llm
 
     _step = on_step or (lambda s: None)
     _inner = on_inner or (lambda label, key: None)
@@ -210,34 +206,19 @@ def _generate_round(
     if not batch:
         return None
 
-    # Evaluate icons via LLM
-    raw_bytes_list = [rb for rb, _ in batch]
-    _inner("Evaluating icons", "evaluate")
-    winner, scores = compare_icons_llm(
-        title,
-        raw_bytes_list,
-        yoto_icon=yoto_bytes if yoto_img is not None else None,
-        descriptions=descriptions,
-        album_description=album_desc,
-    )
-    _inner(None, "evaluate")
-
-    # Build candidate list
+    # Build candidate list (no scores yet — eval runs separately)
     icons_16 = [processed for _, processed in batch]
     candidates: list[IconCandidate] = []
 
     for i, img in enumerate(icons_16):
-        score = scores[i] if i < len(scores) else None
         label = descriptions[i] if i < len(descriptions) else "AI"
-        candidates.append(IconCandidate(image=img, label=label, score=score))
+        candidates.append(IconCandidate(image=img, label=label))
 
     if yoto_img is not None:
-        yoto_score = scores[len(icons_16)] if len(icons_16) < len(scores) else None
         candidates.append(
             IconCandidate(
                 image=yoto_img,
                 label=f'"{yoto_title}"',
-                score=yoto_score,
                 is_yoto=True,
                 yoto_media_id=yoto_media_id,
             )
@@ -254,12 +235,43 @@ def _generate_round(
 
     return IconSelectionRound(
         candidates=candidates,
-        winner=winner,
-        scores=scores,
+        winner=0,
+        scores=[],
         descriptions=descriptions,
         batch=batch,
         yoto_bytes=yoto_bytes,
     )
+
+
+def _start_eval(
+    round_result: IconSelectionRound,
+    title: str,
+    album_desc: str | None,
+) -> Future[tuple[int, list[float]]]:
+    """Run compare_icons_llm in a background thread and return its Future.
+
+    The caller should not block on this future inside the UI loop; instead poll
+    it with Future.done() so the terminal stays responsive.
+    """
+    from yoto_lib.icons.icon_llm import compare_icons_llm
+
+    executor = ThreadPoolExecutor(max_workers=1)
+    raw_bytes_list = [rb for rb, _ in round_result.batch]
+    yoto_bytes = round_result.yoto_bytes
+    descriptions = round_result.descriptions
+
+    def _run() -> tuple[int, list[float]]:
+        return compare_icons_llm(
+            title,
+            raw_bytes_list,
+            yoto_icon=yoto_bytes,
+            descriptions=descriptions,
+            album_description=album_desc,
+        )
+
+    future: Future = executor.submit(_run)
+    executor.shutdown(wait=False)
+    return future
 
 
 def _apply_chosen_icon(
@@ -297,11 +309,10 @@ def select_icons_for_tracks(
     on_icon_gen_done: Callable[[int], None] | None = None,
     on_warn: Callable[[str], None] | None = None,
     on_error: Callable[[str], None] | None = None,
-    choose_icon: Callable[[IconSelectionRound], str] | None = None,
+    choose_icon: Callable[[IconSelectionRound, Future | None], str] | None = None,
     on_track_start: Callable[[int, int, Path], None] | None = None,
     on_round_ready: Callable[[], None] | None = None,
     on_round_cleanup: Callable[[], None] | None = None,
-    on_scores_missing: Callable[[], None] | None = None,
     on_applied: Callable[[Path], None] | None = None,
     on_skipped: Callable[[Path], None] | None = None,
 ) -> None:
@@ -324,15 +335,16 @@ def select_icons_for_tracks(
         on_icon_gen_done: Called with index when an icon generation completes.
         on_warn: Called with a warning message string.
         on_error: Called with an error message string.
-        choose_icon: Called with an IconSelectionRound. Must return "r" to
-            regenerate, or a 1-based string index of the chosen candidate.
+        choose_icon: Called with (IconSelectionRound, eval_future). The future
+            resolves to (winner, scores) when AI evaluation completes. Must
+            return "r" to regenerate, or a 1-based string index of the chosen
+            candidate.
         on_track_start: Called with (track_index, total_tracks, track_path)
             before each track.
         on_round_ready: Called after generation completes but before user
             selection begins (e.g. to close a progress bar).
         on_round_cleanup: Called after user selection ends (e.g. to restore
             terminal state).
-        on_scores_missing: Called when LLM evaluation timed out.
         on_applied: Called with the track path after an icon is attached.
         on_skipped: Called with the track path when an icon is skipped.
     """
@@ -341,7 +353,14 @@ def select_icons_for_tracks(
 
     _warn = on_warn or (lambda m: None)
     _error_fn = on_error or (lambda m: None)
-    _choose = choose_icon or (lambda r: str(r.winner))
+
+    def _default_choose(r: IconSelectionRound, f: Future | None) -> str:
+        if f is not None:
+            winner, _ = f.result()
+            return str(winner) if winner > 0 else "1"
+        return "1"
+
+    _choose = choose_icon or _default_choose
 
     catalog = get_catalog(api)
 
@@ -373,8 +392,8 @@ def select_icons_for_tracks(
                 on_skipped(track_path)
             continue
 
-        if not round_result.scores and on_scores_missing:
-            on_scores_missing()
+        # Start AI evaluation in background — UI is shown immediately
+        eval_future: Future = _start_eval(round_result, title, album_desc)
 
         if on_round_ready:
             on_round_ready()
@@ -382,10 +401,10 @@ def select_icons_for_tracks(
         # Selection loop: user picks or regenerates
         skipped = False
         while True:
-            raw = _choose(round_result)
+            raw = _choose(round_result, eval_future)
 
             if raw == "r":
-                # Regenerate
+                # Abandon in-flight eval (it finishes harmlessly) and regenerate
                 round_result = _generate_round(
                     title=title,
                     album_desc=album_desc,
@@ -402,8 +421,7 @@ def select_icons_for_tracks(
                     _error_fn(f"Icon generation failed for {track_path.name}")
                     skipped = True
                     break
-                if not round_result.scores and on_scores_missing:
-                    on_scores_missing()
+                eval_future = _start_eval(round_result, title, album_desc)
                 continue
 
             try:
@@ -421,11 +439,20 @@ def select_icons_for_tracks(
                 skipped = True
                 break
 
+            # Resolve eval results for feedback logging (non-blocking if already done)
+            llm_winner = round_result.winner
+            llm_scores = round_result.scores
+            if eval_future.done():
+                import contextlib
+
+                with contextlib.suppress(Exception):
+                    llm_winner, llm_scores = eval_future.result()
+
             # Log feedback for tuning
             log_icon_feedback(
                 track_title=title,
-                llm_winner=round_result.winner,
-                llm_scores=round_result.scores,
+                llm_winner=llm_winner,
+                llm_scores=llm_scores,
                 user_choice=choice,
                 descriptions=round_result.descriptions,
                 album=track_path.resolve().parent.name,

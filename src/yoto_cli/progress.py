@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from rich.console import Console
 from rich.progress import (
@@ -145,7 +145,7 @@ def render_icon_panels(
     table = Table(box=box.SIMPLE, show_header=True, padding=(0, 2), expand=False, show_edge=False)
 
     for i, label in enumerate(labels):
-        marker = " ★" if (i + 1) == winner else ""
+        marker = " ★" if winner > 0 and (i + 1) == winner else ""
         is_sel = i == selected
         table.add_column(
             f"{label}{marker}",
@@ -175,7 +175,37 @@ def _read_key() -> str:
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
     try:
-        tty.setraw(fd)
+        tty.setcbreak(fd)
+        ch = sys.stdin.read(1)
+        if ch == "\x1b":
+            ch2 = sys.stdin.read(1)
+            ch3 = sys.stdin.read(1)
+            if ch2 == "[":
+                if ch3 == "D":
+                    return "left"
+                if ch3 == "C":
+                    return "right"
+            return "escape"
+        if ch in ("\r", "\n"):
+            return "enter"
+        return ch
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+
+def _try_read_key(timeout: float = 0.1) -> str | None:
+    """Non-blocking keypress read in raw mode. Returns None if no input arrives within timeout."""
+    import select
+    import sys
+    import termios
+    import tty
+
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        if not select.select([sys.stdin], [], [], timeout)[0]:
+            return None
         ch = sys.stdin.read(1)
         if ch == "\x1b":
             ch2 = sys.stdin.read(1)
@@ -199,22 +229,33 @@ def interactive_icon_select(
     scores: list[str],
     winner: int,
     max_choice: int,
+    scores_future: Any | None = None,
 ) -> str:
     """Interactive icon selector with arrow keys.
 
     Prints icons via _console.print() (static, no Live). On arrow key,
     erases output with ANSI cursor-up + clear-to-end, then reprints.
+
+    If scores_future is provided, polls it every 0.1 s. When it resolves,
+    updates score labels and winner; if the user has not pressed any arrow
+    key yet, auto-jumps the cursor to the winning icon.
+
     Returns "1"-"N" for a choice, or "r" for regenerate.
     """
     import sys
 
-    selected = winner - 1
+    # scores is a mutable list so we can update it in-place when eval arrives
+    cur_scores = list(scores)
+    cur_winner = winner
+    selected = 0
+    user_has_moved = False
+    scores_applied = False
+
     hint = "[dim]← → to move, Enter to select, r to regenerate[/dim]"
 
     def _print_and_count() -> int:
-        """Print the icon display and hint, return number of lines printed."""
         with _console.capture() as cap:
-            _console.print(render_icon_panels(images, labels, scores, winner, selected))
+            _console.print(render_icon_panels(images, labels, cur_scores, cur_winner, selected))
             _console.print(hint)
         rendered = cap.get()
         _console.file.write(rendered)
@@ -222,32 +263,85 @@ def interactive_icon_select(
         return rendered.count("\n")
 
     if not sys.stdin.isatty():
-        _console.print(render_icon_panels(images, labels, scores, winner, selected))
-        return str(winner)
+        # Non-interactive: block on eval result before displaying
+        if scores_future is not None:
+            _apply_scores(cur_scores, cur_winner, scores_future, max_choice)
+        _console.print(render_icon_panels(images, labels, cur_scores, cur_winner, 0))
+        return str(cur_winner) if cur_winner > 0 else "1"
 
     line_count = _print_and_count()
 
     while True:
-        key = _read_key()
+        # Poll for a keypress with a short timeout so we can check the future
+        key = _try_read_key(0.1)
+
+        if key is None:
+            # No keypress — check whether eval has finished
+            if not scores_applied and scores_future is not None and scores_future.done():
+                new_winner, new_scores = scores_future.result()
+                scores_applied = True
+                if new_scores:
+                    _fill_scores(cur_scores, new_scores, new_winner, max_choice)
+                    cur_winner = new_winner
+                    if not user_has_moved and new_winner > 0:
+                        selected = new_winner - 1
+                else:
+                    # Eval timed out — replace placeholders with "?"
+                    for i in range(len(cur_scores)):
+                        if cur_scores[i] == "scoring\u2026":
+                            cur_scores[i] = "?"
+                _console.file.write(f"\033[{line_count}A\033[J")
+                _console.file.flush()
+                line_count = _print_and_count()
+            continue
+
         if key == "enter":
-            # Erase and reprint final state (without hint)
             _console.file.write(f"\033[{line_count}A\033[J")
             _console.file.flush()
-            _console.print(render_icon_panels(images, labels, scores, winner, selected))
+            _console.print(render_icon_panels(images, labels, cur_scores, cur_winner, selected))
             return str(selected + 1)
         if key == "r":
-            # Erase display
             _console.file.write(f"\033[{line_count}A\033[J")
             _console.file.flush()
             return "r"
         if key == "left":
+            user_has_moved = True
             selected = max(0, selected - 1)
         elif key == "right":
+            user_has_moved = True
             selected = min(max_choice - 1, selected + 1)
         else:
             continue
 
-        # Erase and reprint with new selection
         _console.file.write(f"\033[{line_count}A\033[J")
         _console.file.flush()
         line_count = _print_and_count()
+
+
+def _fill_scores(
+    cur_scores: list[str],
+    new_scores: list[float],
+    winner: int,
+    max_choice: int,
+) -> None:
+    """Update cur_scores in-place with formatted score strings."""
+    for i in range(min(len(cur_scores), len(new_scores))):
+        marker = " *" if (i + 1) == winner else ""
+        cur_scores[i] = f"score: {new_scores[i]:.1f}{marker}"
+
+
+def _apply_scores(
+    cur_scores: list[str],
+    cur_winner: int,
+    scores_future: Any,
+    max_choice: int,
+) -> int:
+    """Block on scores_future and update cur_scores. Returns the winner index."""
+    new_winner, new_scores = scores_future.result()
+    if new_scores:
+        _fill_scores(cur_scores, new_scores, new_winner, max_choice)
+        return new_winner
+    for i in range(len(cur_scores)):
+        if cur_scores[i] == "scoring\u2026":
+            cur_scores[i] = "?"
+    return cur_winner

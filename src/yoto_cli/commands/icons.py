@@ -61,7 +61,7 @@ def handle_select_icon(args: argparse.Namespace) -> None:
         ctx = make_progress()
         progress_ref[0] = ctx.__enter__(None, None, None) if False else ctx.__enter__()
         progress_ctx[0] = ctx
-        task_ref[0] = progress_ref[0].add_task(title, total=6, status="matching Yoto icon")
+        task_ref[0] = progress_ref[0].add_task(title, total=5, status="matching Yoto icon")
 
     def _close_progress() -> None:
         if progress_ctx[0] is not None:
@@ -97,11 +97,8 @@ def handle_select_icon(args: argparse.Namespace) -> None:
     def _on_generation_progress(done_n: int) -> None:
         p = progress_ref[0]
         t = task_ref[0]
-        if p is not None and t is not None:
-            if done_n < 3:
-                p.update(t, advance=1, status=f"generating icon {done_n + 1}/3")
-            else:
-                p.update(t, advance=1, status="evaluating icons")
+        if p is not None and t is not None and done_n < 3:
+            p.update(t, advance=1, status=f"generating icon {done_n + 1}/3")
 
     def _on_icon_gen_start(i: int, desc: str) -> None:
         p = progress_ref[0]
@@ -112,9 +109,6 @@ def handle_select_icon(args: argparse.Namespace) -> None:
         p = progress_ref[0]
         if p is not None and i in icon_tasks:
             p.remove_task(icon_tasks.pop(i))
-
-    def _on_scores_missing() -> None:
-        _warning("Icon evaluation timed out, scores unavailable")
 
     def _on_round_ready() -> None:
         _close_progress()
@@ -127,25 +121,20 @@ def handle_select_icon(args: argparse.Namespace) -> None:
         elif iterm_hint_needed[0]:
             show_hint_if_needed()
 
-    def _choose_icon(round_result: IconSelectionRound) -> str:
+    def _choose_icon(round_result: IconSelectionRound, eval_future: object) -> str:
         candidates = round_result.candidates
         images = [c.image for c in candidates]
         labels = [f"[{j + 1}] {c.label}" for j, c in enumerate(candidates)]
-        score_labels = []
-        for j, c in enumerate(candidates):
-            if c.is_existing:
-                score_labels.append("")
-            else:
-                score = f"{c.score:.1f}" if c.score is not None else "?"
-                marker = " *" if (j + 1) == round_result.winner else ""
-                score_labels.append(f"score: {score}{marker}")
+        # Scores arrive asynchronously; show placeholder until eval completes
+        score_labels = ["" if c.is_existing else "scoring\u2026" for c in candidates]
 
         return interactive_icon_select(
             images,
             labels,
             score_labels,
-            round_result.winner,
-            len(candidates),
+            winner=0,
+            max_choice=len(candidates),
+            scores_future=eval_future,
         )
 
     def _on_applied(track_path: Path) -> None:
@@ -176,7 +165,6 @@ def handle_select_icon(args: argparse.Namespace) -> None:
         on_track_start=_on_track_start,
         on_round_ready=_on_round_ready,
         on_round_cleanup=_on_round_cleanup,
-        on_scores_missing=_on_scores_missing,
         on_applied=_on_applied,
         on_skipped=_on_skipped,
     )
