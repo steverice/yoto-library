@@ -76,7 +76,7 @@ def handle_sync(args: argparse.Namespace) -> None:
     from yoto_lib.playlist import load_playlist as _load
 
     playlist = _load(path)
-    total = len(playlist.track_files) * 2 + 2
+    total = len(playlist.track_files) + 2
 
     with make_progress() as progress:
         task = progress.add_task(playlist.title, total=total, status="starting")
@@ -85,6 +85,9 @@ def handle_sync(args: argparse.Namespace) -> None:
         def log(msg: str) -> None:
             progress.update(task, advance=1, status=msg)
             progress.console.print(msg)
+
+        def on_uploads_known(count: int) -> None:
+            progress.update(task, total=(progress.tasks[task].total or 0) + count * 2)
 
         def on_upload_start(filename: str) -> None:
             stem = Path(filename).stem
@@ -104,10 +107,11 @@ def handle_sync(args: argparse.Namespace) -> None:
             log=log,
             on_upload_start=on_upload_start,
             on_upload_done=on_upload_done,
+            on_uploads_known=on_uploads_known,
             ignore_album_art=ignore_album_art,
             force_cover=force_cover,
         )
-        progress.update(task, completed=total)
+        progress.update(task, completed=progress.tasks[task].total)
 
     from yoto_cli.progress import error as _error
     from yoto_cli.progress import success as _success

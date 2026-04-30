@@ -136,6 +136,7 @@ def sync_playlist(
     log: Callable[[str], None] | None = None,
     on_upload_start: Callable[[str], None] | None = None,
     on_upload_done: Callable[[str], None] | None = None,
+    on_uploads_known: Callable[[int], None] | None = None,
     ignore_album_art: bool = False,
     force_cover: bool = False,
 ) -> SyncResult:
@@ -262,6 +263,8 @@ def sync_playlist(
                 tracks_to_upload.append(filename)
 
     result.tracks_uploaded = len(tracks_to_upload)
+    if on_uploads_known:
+        on_uploads_known(len(tracks_to_upload))
     logger.debug(
         "sync: uploading %d tracks (%d reused from remote)",
         len(tracks_to_upload),
@@ -371,6 +374,7 @@ def sync_path(
     log: Callable[[str], None] | None = None,
     on_upload_start: Callable[[str], None] | None = None,
     on_upload_done: Callable[[str], None] | None = None,
+    on_uploads_known: Callable[[int], None] | None = None,
     ignore_album_art: bool = False,
     force_cover: bool = False,
 ) -> list[SyncResult]:
@@ -394,6 +398,7 @@ def sync_path(
                 log=log,
                 on_upload_start=on_upload_start,
                 on_upload_done=on_upload_done,
+                on_uploads_known=on_uploads_known,
                 ignore_album_art=ignore_album_art,
                 force_cover=force_cover,
             )
@@ -411,6 +416,7 @@ def sync_path(
                 log=log,
                 on_upload_start=on_upload_start,
                 on_upload_done=on_upload_done,
+                on_uploads_known=on_uploads_known,
                 ignore_album_art=ignore_album_art,
                 force_cover=force_cover,
             )
