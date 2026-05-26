@@ -702,6 +702,71 @@ class TestResetIconCommand:
         with patch("yoto_cli.commands.icons.remove_attachment", side_effect=OSError("mkvpropedit failed")):
             handle_reset_icon(argparse.Namespace(tracks=[mka]))
 
+    def test_reset_icon_ignores_non_mka_files(self, tmp_path):
+        """reset-icon silently drops non-.mka files from a glob (e.g. description.txt)."""
+        mka = tmp_path / "track.mka"
+        mka.write_bytes(b"fake")
+        txt = tmp_path / "description.txt"
+        txt.write_text("not audio")
+
+        from yoto_cli.commands.icons import handle_reset_icon
+
+        with (
+            patch("yoto_cli.commands.icons.remove_attachment") as mock_remove,
+            patch("yoto_lib.icons.clear_macos_file_icon"),
+        ):
+            handle_reset_icon(argparse.Namespace(tracks=[mka, txt]))
+
+        mock_remove.assert_called_once_with(mka, "icon")
+
+    def test_reset_icon_skips_work_when_no_mka_files(self, tmp_path):
+        """reset-icon does nothing when no .mka files are given."""
+        txt = tmp_path / "description.txt"
+        txt.write_text("not audio")
+
+        from yoto_cli.commands.icons import handle_reset_icon
+
+        with patch("yoto_cli.commands.icons.remove_attachment") as mock_remove:
+            handle_reset_icon(argparse.Namespace(tracks=[txt]))
+
+        mock_remove.assert_not_called()
+
+
+class TestSelectIconCommand:
+    def test_select_icon_ignores_non_mka_files(self, tmp_path):
+        """select-icon silently drops non-.mka files from a glob (e.g. description.txt)."""
+        mka = tmp_path / "track.mka"
+        mka.write_bytes(b"fake")
+        txt = tmp_path / "description.txt"
+        txt.write_text("not audio")
+
+        from yoto_cli.commands.icons import handle_select_icon
+
+        with (
+            patch("yoto_cli.commands.icons.YotoAPI"),
+            patch("yoto_lib.icons.select.select_icons_for_tracks") as mock_select,
+        ):
+            handle_select_icon(argparse.Namespace(tracks=[mka, txt]))
+
+        passed_tracks = mock_select.call_args.args[0]
+        assert passed_tracks == [mka]
+
+    def test_select_icon_skips_work_when_no_mka_files(self, tmp_path):
+        """select-icon does nothing (no API call) when no .mka files are given."""
+        txt = tmp_path / "description.txt"
+        txt.write_text("not audio")
+
+        from yoto_cli.commands.icons import handle_select_icon
+
+        with (
+            patch("yoto_cli.commands.icons.YotoAPI") as mock_api,
+            patch("yoto_lib.icons.select.select_icons_for_tracks") as mock_select,
+        ):
+            handle_select_icon(argparse.Namespace(tracks=[txt]))
+
+        mock_select.assert_not_called()
+        mock_api.assert_not_called()
+
 
 # ── test_print_command ───────────────────────────────────────────────────────
 

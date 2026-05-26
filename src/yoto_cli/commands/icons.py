@@ -31,9 +31,15 @@ def handle_select_icon(args: argparse.Namespace) -> None:
     """Generate 3 icon options per track, show best Yoto match, and attach the chosen one."""
     from yoto_cli.main import _print_cost_summary, require_path
 
-    track_paths: list[Path] = args.tracks
+    track_paths: list[Path] = [p for p in args.tracks if p.suffix.lower() == ".mka"]
     for p in track_paths:
         require_path(p)
+
+    if not track_paths:
+        from yoto_cli.progress import warning as _warning
+
+        _warning("No MKA tracks to process")
+        return
 
     logger.debug("command: select-icon tracks=%s", track_paths)
     from rich.rule import Rule
@@ -189,9 +195,15 @@ def handle_reset_icon(args: argparse.Namespace) -> None:
     from yoto_cli.progress import success as _success
     from yoto_lib.icons import clear_macos_file_icon
 
-    track_paths: list[Path] = args.tracks
+    track_paths: list[Path] = [p for p in args.tracks if p.suffix.lower() == ".mka"]
     for p in track_paths:
         require_path(p)
+
+    if not track_paths:
+        from yoto_cli.progress import warning as _warning
+
+        _warning("No MKA tracks to process")
+        return
 
     logger.debug("command: reset-icon tracks=%s", track_paths)
 
