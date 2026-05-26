@@ -35,6 +35,18 @@ GRID_SIZE = 8
 TILE_SIZE = 128  # 1024 / 8
 CANVAS_SIZE = 1024
 
+# Default img2img strength: high so the prompt drives the result and the
+# reference image is only a loose influence (0 = reference preserved, 1 = ignored).
+DEFAULT_REFERENCE_STRENGTH = 0.75
+
+
+def _prepare_reference(raw: bytes, size: int) -> bytes:
+    """Normalize an arbitrary reference image to a square RGB PNG of the given size for img2img."""
+    img = Image.open(io.BytesIO(raw)).convert("RGB").resize((size, size), Image.LANCZOS)  # ty: ignore[unresolved-attribute]
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
 
 # ── Prompts ──────────────────────────────────────────────────────────────────
 
@@ -158,6 +170,8 @@ def generate_retrodiffusion_icons(
     on_progress: Callable[[int], None] | None = None,
     on_icon_start: Callable[[int, str], None] | None = None,
     on_icon_done: Callable[[int], None] | None = None,
+    reference_image: bytes | None = None,
+    strength: float = DEFAULT_REFERENCE_STRENGTH,
 ) -> list[tuple[bytes, Image.Image]]:
     """Generate one 16x16 icon per visual description via Retro Diffusion.
 
@@ -168,6 +182,10 @@ def generate_retrodiffusion_icons(
     on_icon_start(i, description) is called before each icon's API call.
     on_icon_done(i) is called after each icon's API call completes.
     on_progress(done_count) is called after each icon completes (for backwards compat).
+
+    When reference_image (arbitrary image bytes) is supplied, every candidate is
+    generated img2img from that reference; strength controls how much the prompt
+    overrides it (see DEFAULT_REFERENCE_STRENGTH).
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -179,12 +197,16 @@ def generate_retrodiffusion_icons(
     except (OSError, ValueError):
         return []
 
+    prepared_ref = _prepare_reference(reference_image, ICON_SIZE) if reference_image else None
+
     def _generate_one(idx: int, desc: str) -> tuple[int, tuple[bytes, Image.Image] | None]:
         if on_icon_start:
             on_icon_start(idx, desc)
         prompt = _build_pixelart_prompt(desc)
         try:
-            raw_bytes = provider.generate(prompt, ICON_SIZE, ICON_SIZE)
+            raw_bytes = provider.generate_batch(
+                prompt, ICON_SIZE, ICON_SIZE, input_image=prepared_ref, strength=strength
+            )[0]
         except (OSError, httpx.HTTPError):
             if on_icon_done:
                 on_icon_done(idx)

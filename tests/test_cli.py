@@ -746,7 +746,7 @@ class TestSelectIconCommand:
             patch("yoto_cli.commands.icons.YotoAPI"),
             patch("yoto_lib.icons.select.select_icons_for_tracks") as mock_select,
         ):
-            handle_select_icon(argparse.Namespace(tracks=[mka, txt]))
+            handle_select_icon(argparse.Namespace(tracks=[mka, txt], reference=None, strength=None))
 
         passed_tracks = mock_select.call_args.args[0]
         assert passed_tracks == [mka]
@@ -762,10 +762,116 @@ class TestSelectIconCommand:
             patch("yoto_cli.commands.icons.YotoAPI") as mock_api,
             patch("yoto_lib.icons.select.select_icons_for_tracks") as mock_select,
         ):
-            handle_select_icon(argparse.Namespace(tracks=[txt]))
+            handle_select_icon(argparse.Namespace(tracks=[txt], reference=None, strength=None))
 
         mock_select.assert_not_called()
         mock_api.assert_not_called()
+
+    def test_select_icon_parses_reference_and_strength(self, tmp_path):
+        parser = build_parser()
+        args = parser.parse_args(
+            ["select-icon", str(tmp_path / "t.mka"), "--reference", str(tmp_path / "r.png"), "--strength", "0.4"]
+        )
+        assert args.reference == tmp_path / "r.png"
+        assert args.strength == 0.4
+
+    def test_select_icon_passes_reference_bytes_and_strength(self, tmp_path):
+        """A valid reference is read and forwarded with the given strength."""
+        mka = tmp_path / "track.mka"
+        mka.write_bytes(b"fake")
+        ref = tmp_path / "ref.png"
+        from PIL import Image
+
+        Image.new("RGB", (32, 32), "blue").save(ref)
+
+        from yoto_cli.commands.icons import handle_select_icon
+
+        with (
+            patch("yoto_cli.commands.icons.YotoAPI"),
+            patch("yoto_lib.icons.select.select_icons_for_tracks") as mock_select,
+        ):
+            handle_select_icon(argparse.Namespace(tracks=[mka], reference=ref, strength=0.5))
+
+        kwargs = mock_select.call_args.kwargs
+        assert kwargs["reference_image"] == ref.read_bytes()
+        assert kwargs["strength"] == 0.5
+
+    def test_select_icon_reference_defaults_strength(self, tmp_path):
+        """When --strength is omitted, the default reference strength is used."""
+        from yoto_lib.icons.generate import DEFAULT_REFERENCE_STRENGTH
+
+        mka = tmp_path / "track.mka"
+        mka.write_bytes(b"fake")
+        ref = tmp_path / "ref.png"
+        from PIL import Image
+
+        Image.new("RGB", (32, 32), "blue").save(ref)
+
+        from yoto_cli.commands.icons import handle_select_icon
+
+        with (
+            patch("yoto_cli.commands.icons.YotoAPI"),
+            patch("yoto_lib.icons.select.select_icons_for_tracks") as mock_select,
+        ):
+            handle_select_icon(argparse.Namespace(tracks=[mka], reference=ref, strength=None))
+
+        assert mock_select.call_args.kwargs["strength"] == DEFAULT_REFERENCE_STRENGTH
+
+    def test_select_icon_reference_rejects_multiple_tracks(self, tmp_path):
+        """--reference with more than one track is an error and runs no work."""
+        mka1 = tmp_path / "a.mka"
+        mka1.write_bytes(b"fake")
+        mka2 = tmp_path / "b.mka"
+        mka2.write_bytes(b"fake")
+        ref = tmp_path / "ref.png"
+        from PIL import Image
+
+        Image.new("RGB", (32, 32), "blue").save(ref)
+
+        from yoto_cli.commands.icons import handle_select_icon
+
+        with (
+            patch("yoto_cli.commands.icons.YotoAPI"),
+            patch("yoto_lib.icons.select.select_icons_for_tracks") as mock_select,
+            pytest.raises(SystemExit),
+        ):
+            handle_select_icon(argparse.Namespace(tracks=[mka1, mka2], reference=ref, strength=None))
+
+        mock_select.assert_not_called()
+
+    def test_select_icon_strength_requires_reference(self, tmp_path):
+        """--strength without --reference is an error."""
+        mka = tmp_path / "track.mka"
+        mka.write_bytes(b"fake")
+
+        from yoto_cli.commands.icons import handle_select_icon
+
+        with (
+            patch("yoto_cli.commands.icons.YotoAPI"),
+            patch("yoto_lib.icons.select.select_icons_for_tracks") as mock_select,
+            pytest.raises(SystemExit),
+        ):
+            handle_select_icon(argparse.Namespace(tracks=[mka], reference=None, strength=0.5))
+
+        mock_select.assert_not_called()
+
+    def test_select_icon_rejects_invalid_reference_image(self, tmp_path):
+        """A reference path that is not a valid image is an error before any API work."""
+        mka = tmp_path / "track.mka"
+        mka.write_bytes(b"fake")
+        ref = tmp_path / "notimage.png"
+        ref.write_text("this is not an image")
+
+        from yoto_cli.commands.icons import handle_select_icon
+
+        with (
+            patch("yoto_cli.commands.icons.YotoAPI"),
+            patch("yoto_lib.icons.select.select_icons_for_tracks") as mock_select,
+            pytest.raises(SystemExit),
+        ):
+            handle_select_icon(argparse.Namespace(tracks=[mka], reference=ref, strength=None))
+
+        mock_select.assert_not_called()
 
 
 # ── test_print_command ───────────────────────────────────────────────────────

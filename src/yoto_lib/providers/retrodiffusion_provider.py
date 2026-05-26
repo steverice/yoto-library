@@ -34,19 +34,32 @@ class RetroDiffusionProvider(ImageProvider):
         width: int,
         height: int,
         count: int = 1,
+        *,
+        input_image: bytes | None = None,
+        strength: float = 0.75,
     ) -> list[bytes]:
-        """Generate multiple pixel art images. Returns list of PNG bytes."""
+        """Generate multiple pixel art images. Returns list of PNG bytes.
+
+        When ``input_image`` (already PNG-encoded RGB bytes) is supplied, the
+        request runs as img2img: the reference loosely informs the result while
+        ``strength`` controls how much the prompt overrides it (0 = reference
+        preserved, 1 = reference ignored).
+        """
         logger.debug("retrodiffusion: generating %dx%d x%d, prompt=%.80s...", width, height, count, prompt)
+        payload = {
+            "prompt": prompt,
+            "width": width,
+            "height": height,
+            "num_images": count,
+            "prompt_style": self._style,
+        }
+        if input_image is not None:
+            payload["input_image"] = base64.b64encode(input_image).decode("utf-8")
+            payload["strength"] = strength
         response = httpx.post(
             "https://api.retrodiffusion.ai/v1/inferences",
             headers={"X-RD-Token": self._api_key},  # ty: ignore[invalid-argument-type]
-            json={
-                "prompt": prompt,
-                "width": width,
-                "height": height,
-                "num_images": count,
-                "prompt_style": self._style,
-            },
+            json=payload,
             timeout=60,
         )
         response.raise_for_status()

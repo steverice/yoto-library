@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 
 from PIL import Image
 
+from yoto_lib.icons.generate import DEFAULT_REFERENCE_STRENGTH
 from yoto_lib.mka import read_tags, write_tags
 
 logger = logging.getLogger(__name__)
@@ -146,6 +147,8 @@ def _generate_round(
     on_generation_progress: Callable[[int], None] | None = None,
     on_icon_gen_start: Callable[[int, str], None] | None = None,
     on_icon_gen_done: Callable[[int], None] | None = None,
+    reference_image: bytes | None = None,
+    strength: float = DEFAULT_REFERENCE_STRENGTH,
 ) -> IconSelectionRound | None:
     """Run one round of icon generation and evaluation.
 
@@ -184,6 +187,8 @@ def _generate_round(
         on_progress=on_generation_progress,
         on_icon_start=on_icon_gen_start,
         on_icon_done=on_icon_gen_done,
+        reference_image=reference_image,
+        strength=strength,
     )
 
     # Collect Yoto result
@@ -315,6 +320,8 @@ def select_icons_for_tracks(
     on_round_cleanup: Callable[[], None] | None = None,
     on_applied: Callable[[Path], None] | None = None,
     on_skipped: Callable[[Path], None] | None = None,
+    reference_image: bytes | None = None,
+    strength: float = DEFAULT_REFERENCE_STRENGTH,
 ) -> None:
     """Run the interactive icon selection workflow for one or more tracks.
 
@@ -347,6 +354,10 @@ def select_icons_for_tracks(
             terminal state).
         on_applied: Called with the track path after an icon is attached.
         on_skipped: Called with the track path when an icon is skipped.
+        reference_image: Optional image bytes used as an img2img reference for
+            every generated candidate.
+        strength: img2img strength when reference_image is set (see
+            DEFAULT_REFERENCE_STRENGTH).
     """
     from yoto_lib.icons.icon_catalog import get_catalog
     from yoto_lib.icons.icon_llm import log_icon_feedback
@@ -384,6 +395,8 @@ def select_icons_for_tracks(
             on_generation_progress=on_generation_progress,
             on_icon_gen_start=on_icon_gen_start,
             on_icon_gen_done=on_icon_gen_done,
+            reference_image=reference_image,
+            strength=strength,
         )
 
         if round_result is None:
@@ -416,6 +429,8 @@ def select_icons_for_tracks(
                     on_generation_progress=on_generation_progress,
                     on_icon_gen_start=on_icon_gen_start,
                     on_icon_gen_done=on_icon_gen_done,
+                    reference_image=reference_image,
+                    strength=strength,
                 )
                 if round_result is None:
                     _error_fn(f"Icon generation failed for {track_path.name}")

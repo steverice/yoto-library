@@ -190,7 +190,7 @@ class TestGenerateRetrodiffusionIcons:
         fake_png_bytes = buf.getvalue()
 
         mock_provider = MagicMock()
-        mock_provider.generate.return_value = fake_png_bytes
+        mock_provider.generate_batch.return_value = [fake_png_bytes]
 
         with patch(
             "yoto_lib.icons.generate.RetroDiffusionProvider",
@@ -212,6 +212,44 @@ class TestGenerateRetrodiffusionIcons:
             results = generate_retrodiffusion_icons(["desc"])
 
         assert results == []
+
+    def test_passes_reference_image_to_provider(self):
+        """A reference image is preprocessed to a 16x16 RGB PNG and forwarded with strength."""
+        out = Image.new("RGB", (16, 16), "black")
+        buf = io.BytesIO()
+        out.save(buf, format="PNG")
+        out_bytes = buf.getvalue()
+
+        ref = Image.new("RGBA", (64, 64), (0, 255, 0, 128))
+        ref_buf = io.BytesIO()
+        ref.save(ref_buf, format="PNG")
+        ref_bytes = ref_buf.getvalue()
+
+        mock_provider = MagicMock()
+        mock_provider.generate_batch.return_value = [out_bytes]
+
+        with patch("yoto_lib.icons.generate.RetroDiffusionProvider", return_value=mock_provider):
+            generate_retrodiffusion_icons(["desc"], reference_image=ref_bytes, strength=0.6)
+
+        kwargs = mock_provider.generate_batch.call_args.kwargs
+        assert kwargs["strength"] == 0.6
+        sent = Image.open(io.BytesIO(kwargs["input_image"]))
+        assert sent.size == (16, 16)
+        assert sent.mode == "RGB"
+
+    def test_no_reference_sends_none_input_image(self):
+        """Without a reference, the provider receives input_image=None (regression)."""
+        out = Image.new("RGB", (16, 16), "black")
+        buf = io.BytesIO()
+        out.save(buf, format="PNG")
+
+        mock_provider = MagicMock()
+        mock_provider.generate_batch.return_value = [buf.getvalue()]
+
+        with patch("yoto_lib.icons.generate.RetroDiffusionProvider", return_value=mock_provider):
+            generate_retrodiffusion_icons(["desc"])
+
+        assert mock_provider.generate_batch.call_args.kwargs["input_image"] is None
 
 
 class TestResolveIconsZones:

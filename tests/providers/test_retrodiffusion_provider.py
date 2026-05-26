@@ -65,3 +65,34 @@ class TestGenerateBatch:
         call_kwargs = mock_post.call_args
         payload = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
         assert payload["num_images"] == 3
+
+
+class TestImg2Img:
+    def test_sends_input_image_and_strength_when_provided(self):
+        """When input_image bytes are given, payload carries base64 image + strength."""
+        from yoto_lib.providers.retrodiffusion_provider import RetroDiffusionProvider
+
+        with patch.dict("os.environ", {"RETRODIFFUSION_API_KEY": "test-key"}):
+            provider = RetroDiffusionProvider()
+
+        ref_bytes = b"fake-png-bytes"
+        with patch("httpx.post", return_value=_fake_response(1)) as mock_post:
+            provider.generate_batch("test prompt", 16, 16, input_image=ref_bytes, strength=0.6)
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert payload["input_image"] == base64.b64encode(ref_bytes).decode()
+        assert payload["strength"] == 0.6
+
+    def test_omits_input_image_and_strength_when_none(self):
+        """Without a reference image, payload must not include img2img fields (regression)."""
+        from yoto_lib.providers.retrodiffusion_provider import RetroDiffusionProvider
+
+        with patch.dict("os.environ", {"RETRODIFFUSION_API_KEY": "test-key"}):
+            provider = RetroDiffusionProvider()
+
+        with patch("httpx.post", return_value=_fake_response(1)) as mock_post:
+            provider.generate_batch("test prompt", 16, 16)
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert "input_image" not in payload
+        assert "strength" not in payload

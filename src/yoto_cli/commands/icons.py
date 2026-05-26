@@ -24,6 +24,18 @@ def add_select_icon_command(subparsers: argparse._SubParsersAction) -> None:
     sub = subparsers.add_parser("select-icon", help="interactive icon selection for tracks")
     tracks_arg = sub.add_argument("tracks", nargs="+", type=Path, help="MKA track files")
     tracks_arg.completer = _MkaWithoutIconCompleter()
+    sub.add_argument(
+        "--reference",
+        type=Path,
+        default=None,
+        help="image to use as an img2img reference (single track only)",
+    )
+    sub.add_argument(
+        "--strength",
+        type=float,
+        default=None,
+        help="img2img strength 0-1; lower keeps the reference, higher favors the prompt (requires --reference)",
+    )
     sub.set_defaults(func=handle_select_icon)
 
 
@@ -35,13 +47,27 @@ def handle_select_icon(args: argparse.Namespace) -> None:
     for p in track_paths:
         require_path(p)
 
+    reference: Path | None = getattr(args, "reference", None)
+    strength: float | None = getattr(args, "strength", None)
+
+    if strength is not None and reference is None:
+        from yoto_cli.progress import error as _error
+
+        _error("--strength can only be used with --reference")
+        raise SystemExit(2)
+
     if not track_paths:
         from yoto_cli.progress import warning as _warning
 
         _warning("No MKA tracks to process")
         return
 
-    logger.debug("command: select-icon tracks=%s", track_paths)
+    reference_image = _load_reference_image(reference, track_paths)
+    from yoto_lib.icons.generate import DEFAULT_REFERENCE_STRENGTH
+
+    resolved_strength = strength if strength is not None else DEFAULT_REFERENCE_STRENGTH
+
+    logger.debug("command: select-icon tracks=%s reference=%s", track_paths, reference)
     from rich.rule import Rule
 
     from yoto_cli.iterm_colors import ensure_srgb, restore_colors, show_hint_if_needed
@@ -173,9 +199,42 @@ def handle_select_icon(args: argparse.Namespace) -> None:
         on_round_cleanup=_on_round_cleanup,
         on_applied=_on_applied,
         on_skipped=_on_skipped,
+        reference_image=reference_image,
+        strength=resolved_strength,
     )
 
     _print_cost_summary()
+
+
+def _load_reference_image(reference: Path | None, track_paths: list[Path]) -> bytes | None:
+    """Validate and read an img2img reference image, or return None when unused.
+
+    Errors out (SystemExit) if used with multiple tracks or if the file is not a
+    readable image — before any API work happens.
+    """
+    if reference is None:
+        return None
+
+    from yoto_cli.main import require_path
+    from yoto_cli.progress import error as _error
+
+    if len(track_paths) > 1:
+        _error("--reference can only be used with a single track")
+        raise SystemExit(2)
+
+    require_path(reference)
+
+    import io
+
+    from PIL import Image
+
+    try:
+        data = reference.read_bytes()
+        Image.open(io.BytesIO(data)).verify()
+    except OSError:  # includes PIL.UnidentifiedImageError
+        _error(f"Not a valid image: {reference}")
+        raise SystemExit(2) from None
+    return data
 
 
 def add_reset_icon_command(subparsers: argparse._SubParsersAction) -> None:
