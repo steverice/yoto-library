@@ -224,6 +224,14 @@ Open `playlist.jsonl` in `$EDITOR` to reorder tracks. Validates JSON on save. De
 
 Interactive icon selection for a single track (or multiple tracks in sequence). Generates three pixel art icon options, finds the best match from Yoto's icon catalog, scores all candidates with an LLM, and displays them in bordered panels for selection. Pick one or press `r` to regenerate.
 
+```
+yoto select-icon track.mka                          # generate options for one track
+yoto select-icon track.mka --reference art.png      # use an image as an img2img reference
+yoto select-icon track.mka --reference art.png --strength 0.5
+```
+
+`--reference` (single track only) seeds generation from an existing image; `--strength` (0–1, default `0.75`) controls how much the prompt overrides the reference — lower keeps more of the reference, higher favors the prompt.
+
 ### `yoto reset-icon <tracks...>`
 
 Remove icon attachments from one or more MKA files. The next `yoto sync` will regenerate icons for those tracks.
