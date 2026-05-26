@@ -637,6 +637,12 @@ class TestImportCommand:
 
 
 class TestCoverCommand:
+    @pytest.fixture(autouse=True)
+    def _no_provider_keys(self, monkeypatch):
+        """Strip provider API keys so cover tests never hit a real API via leaked env."""
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
     def test_cover_parses(self):
         parser = build_parser()
         args = parser.parse_args(["cover", "/some/path"])
@@ -665,6 +671,8 @@ class TestCoverCommand:
                     backup=False,
                     ignore_album_art=False,
                     style=None,
+                    model=None,
+                    reference=None,
                 )
             )
 
@@ -673,6 +681,78 @@ class TestCoverCommand:
         parser = build_parser()
         with pytest.raises(SystemExit):
             parser.parse_args(["cover", "--force", "--backup", "/some/path"])
+
+    def test_cover_parses_model_and_reference(self, tmp_path):
+        parser = build_parser()
+        args = parser.parse_args(
+            ["cover", str(tmp_path), "--model", "gemini", "--reference", str(tmp_path / "r.png")]
+        )
+        assert args.model == "gemini"
+        assert args.reference == tmp_path / "r.png"
+
+    def _cover_playlist(self, folder, title=""):
+        playlist = MagicMock()
+        playlist.cover_path = folder / "cover.png"
+        playlist.description_path.exists.return_value = True
+        playlist.track_files = []
+        playlist.title = title
+        playlist.style = "storybook"
+        return playlist
+
+    def test_cover_openai_with_reference_errors(self, tmp_path, monkeypatch):
+        """--model openai with --reference is rejected before any generation."""
+        monkeypatch.setenv("OPENAI_API_KEY", "k")
+        folder = tmp_path / "album"
+        folder.mkdir()
+        ref = tmp_path / "r.png"
+        from PIL import Image
+
+        Image.new("RGB", (32, 32), "blue").save(ref)
+
+        from yoto_cli.commands.cover import handle_cover
+
+        with (
+            patch("yoto_cli.commands.cover.load_playlist", return_value=self._cover_playlist(folder)),
+            patch("yoto_lib.covers.cover.generate_cover_illustration") as mock_gen,
+            pytest.raises(SystemExit),
+        ):
+            handle_cover(
+                argparse.Namespace(
+                    path=folder, force=False, backup=False, ignore_album_art=True, style=None,
+                    model="openai", reference=ref,
+                )
+            )
+
+        mock_gen.assert_not_called()
+
+    def test_cover_reference_routes_to_gemini(self, tmp_path, monkeypatch):
+        """A reference image routes step 1 to Gemini and forwards the bytes."""
+        monkeypatch.setenv("GEMINI_API_KEY", "k")
+        folder = tmp_path / "album"
+        folder.mkdir()
+        ref = tmp_path / "r.png"
+        from PIL import Image
+
+        Image.new("RGB", (32, 32), "blue").save(ref)
+
+        from yoto_cli.commands.cover import handle_cover
+
+        with (
+            patch("yoto_cli.commands.cover.load_playlist", return_value=self._cover_playlist(folder)),
+            patch("yoto_lib.covers.cover.build_cover_prompt", return_value="a prompt"),
+            patch("yoto_lib.covers.cover.generate_cover_illustration", return_value=b"img") as mock_gen,
+            patch("yoto_lib.covers.cover.resize_cover"),
+        ):
+            handle_cover(
+                argparse.Namespace(
+                    path=folder, force=False, backup=False, ignore_album_art=True, style=None,
+                    model=None, reference=ref,
+                )
+            )
+
+        kwargs = mock_gen.call_args.kwargs
+        assert kwargs["model"] == "gemini"
+        assert kwargs["reference_image"] == ref.read_bytes()
 
 
 # ── test_reset_icon_command ──────────────────────────────────────────────────

@@ -168,10 +168,10 @@ Each AI-powered feature uses a hardcoded provider chosen for best results at tha
 
 All Claude CLI calls in the cover pipeline use Sonnet for better visual judgment and OCR accuracy.
 
-**Text-to-image cover generation** (when no shared album art exists): A two-step pipeline using OpenAI `gpt-image-1.5`:
+**Text-to-image cover generation** (when no shared album art exists): A two-step pipeline:
 
-1. **Generate illustration** — creates a cover illustration from track metadata with no text in the image. The prompt explicitly requests clear space in the upper portion for a title.
-2. **Add title via edit** — a separate edit call adds the playlist title as a decorative banner. This is a deliberate two-step process because single-pass generation frequently crops title text at image boundaries.
+1. **Generate illustration** — creates a cover illustration from track metadata with no text in the image, at a portrait 2:3 aspect ratio. The prompt explicitly requests clear space in the upper portion for a title. The provider is selected by `resolve_cover_model`: **OpenAI `gpt-image-1.5`** by default, or **Gemini 2.5 Flash Image** when a reference image is supplied (only Gemini takes a reference as inspiration; OpenAI's edit endpoint preserves rather than reinterprets it). `yoto cover --model {gemini,openai}` overrides the default; an explicitly chosen provider whose API key is missing — or a reference with no `GEMINI_API_KEY` — is a hard error, and the default falls back to whichever single provider is available.
+2. **Add title via edit** — **OpenAI `gpt-image-1.5`** adds the playlist title as a decorative banner via a separate edit call. This is a deliberate two-step process because single-pass generation frequently crops title text at image boundaries. When step 1 used Gemini, the edit runs with `input_fidelity="high"` to preserve the Gemini illustration. Because the title step is OpenAI-only, generating a titled cover requires `OPENAI_API_KEY` regardless of the step-1 provider.
 
 Both steps accept an optional `CoverStyle` that modifies the generation and title prompts to produce a specific visual art direction (cartoon, watercolor, gouache, etc.). Style is resolved from the playlist's `.yoto-style` file.
 

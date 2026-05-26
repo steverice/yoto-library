@@ -15,12 +15,13 @@ class GeminiProvider(Provider):
     display_name = "Gemini"
     MODEL = "gemini-2.5-flash-image"
 
-    def generate(self, prompt: str, reference_image: bytes | None = None) -> bytes:
+    def generate(self, prompt: str, reference_image: bytes | None = None, aspect_ratio: str | None = None) -> bytes:
         """Generate an image from a text prompt.
 
         Args:
             prompt: Text describing the image to generate.
             reference_image: Optional PNG bytes shown to the model as context.
+            aspect_ratio: Optional output aspect ratio (e.g. "2:3"); omitted when None.
 
         Returns PNG bytes. Raises RuntimeError if the model returns no image.
         """
@@ -33,13 +34,15 @@ class GeminiProvider(Provider):
         if reference_image is not None:
             contents.append(types.Part.from_bytes(data=reference_image, mime_type="image/png"))
 
-        logger.debug("gemini: generating, model=%s, prompt=%.80s...", self.MODEL, prompt)
+        logger.debug("gemini: generating, model=%s, aspect=%s, prompt=%.80s...", self.MODEL, aspect_ratio, prompt)
 
+        image_config = types.ImageConfig(aspect_ratio=aspect_ratio) if aspect_ratio else None
         response = client.models.generate_content(
             model=self.MODEL,
             contents=contents,
             config=types.GenerateContentConfig(
                 response_modalities=["IMAGE"],
+                image_config=image_config,
             ),
         )
 

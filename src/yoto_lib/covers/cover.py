@@ -19,7 +19,6 @@ from PIL import Image
 
 from yoto_lib import mka
 from yoto_lib.covers.styles import CoverStyle
-from yoto_lib.providers import get_provider
 from yoto_lib.providers.base import check_status_on_error
 from yoto_lib.providers.claude_provider import ClaudeProvider
 
@@ -245,8 +244,66 @@ def build_cover_prompt(
     return " ".join(parts)
 
 
+def resolve_cover_model(model: str | None, has_reference: bool) -> str:
+    """Pick the step-1 illustration provider ("gemini" or "openai").
+
+    Rules: OpenAI cannot take a reference image (it edits rather than draws fresh), so
+    openai+reference is rejected. An explicitly chosen provider whose key is missing is
+    an error. With no choice, the default is gemini when a reference is given, else
+    openai — falling back to whichever single provider is actually available.
+    Raises ValueError with a user-facing message on any unsatisfiable request.
+    """
+    gemini_available = bool(os.environ.get("GEMINI_API_KEY"))
+    openai_available = bool(os.environ.get("OPENAI_API_KEY"))
+
+    if model is not None:
+        if model == "openai" and has_reference:
+            raise ValueError(
+                "--model openai does not support a reference image; use --model gemini or drop --reference"
+            )
+        if model == "gemini" and not gemini_available:
+            raise ValueError("--model gemini requires GEMINI_API_KEY")
+        if model == "openai" and not openai_available:
+            raise ValueError("--model openai requires OPENAI_API_KEY")
+        return model
+
+    if has_reference:
+        if not gemini_available:
+            raise ValueError("a reference image requires GEMINI_API_KEY (only Gemini supports reference covers)")
+        return "gemini"
+
+    if openai_available:
+        return "openai"
+    if gemini_available:
+        return "gemini"
+    raise ValueError("no image provider available; set OPENAI_API_KEY or GEMINI_API_KEY")
+
+
+def generate_cover_illustration(prompt: str, model: str, reference_image: bytes | None = None) -> bytes:
+    """Generate the cover illustration (no title) with the chosen provider.
+
+    Gemini draws at a portrait 2:3 ratio (matching the downstream title-edit size of
+    1024x1536 and the final crop) and can take an optional reference image as
+    inspiration. OpenAI uses its text-to-image path. The prompt is expected to reserve
+    clear space at the top for the title that add_title_to_illustration adds later.
+    """
+    if model == "gemini":
+        from yoto_lib.providers.gemini_provider import GeminiProvider
+
+        return GeminiProvider().generate(prompt, reference_image=reference_image, aspect_ratio="2:3")
+
+    from yoto_lib.providers.openai_provider import OpenAIProvider
+
+    return OpenAIProvider().generate(prompt, 1024, 1536, quality="low")
+
+
 def add_title_to_illustration(
-    image_bytes: bytes, title: str, width: int, height: int, style: CoverStyle | None = None
+    image_bytes: bytes,
+    title: str,
+    width: int,
+    height: int,
+    style: CoverStyle | None = None,
+    high_fidelity: bool = False,
 ) -> bytes:
     """Add a title to an illustration using OpenAI image editing.
 
@@ -278,7 +335,9 @@ def add_title_to_illustration(
 
     provider = OpenAIProvider()
     # No mask — the model places the title naturally without painting outside the canvas.
-    result = provider.edit(img_buf.getvalue(), b"", prompt, width, height)
+    # High input fidelity preserves a cross-provider (e.g. Gemini) illustration through the edit.
+    edit_kwargs = {"input_fidelity": "high"} if high_fidelity else {}
+    result = provider.edit(img_buf.getvalue(), b"", prompt, width, height, **edit_kwargs)
     logger.debug("add_title_to_illustration: got %d bytes", len(result))
     return result
 
@@ -379,17 +438,20 @@ def generate_cover_if_missing(
     prompt = build_cover_prompt(playlist.description, track_titles, artists, playlist.title, style=style)
     logger.debug("generate_cover prompt: %s", prompt)
 
-    provider = get_provider()
-    logger.debug("generate_cover: using provider %s", type(provider).__name__)
-    # Request 1024x1536 (2:3, ~0.667) — maps exactly to that OpenAI size,
-    # only ~28px cropped per side to reach our 638:1011 (~0.631) target.
-    image_bytes = provider.generate(prompt, 1024, 1536, quality="low")
-    logger.debug("generate_cover: generated %d bytes", len(image_bytes))
+    # Step 1: generate the illustration. Default provider is OpenAI (no reference here);
+    # 2:3 portrait maps to 1024x1536, ~28px cropped per side to reach 638:1011.
+    model = resolve_cover_model(None, has_reference=False)
+    if playlist.title and not os.environ.get("OPENAI_API_KEY"):
+        raise ValueError("adding a cover title requires OPENAI_API_KEY")
+    image_bytes = generate_cover_illustration(prompt, model=model)
+    logger.debug("generate_cover: generated %d bytes via %s", len(image_bytes), model)
 
     # Add title via AI inpainting before resize (edit API needs supported dimensions).
     if playlist.title:
         logger.debug("generate_cover: adding title '%s' via inpainting", playlist.title)
-        image_bytes = add_title_to_illustration(image_bytes, playlist.title, 1024, 1536, style=style)
+        image_bytes = add_title_to_illustration(
+            image_bytes, playlist.title, 1024, 1536, style=style, high_fidelity=(model == "gemini")
+        )
 
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp.write(image_bytes)

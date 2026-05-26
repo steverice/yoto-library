@@ -63,15 +63,31 @@ class OpenAIProvider(StatusPageMixin, ImageProvider):
         return result
 
     def edit(
-        self, image_bytes: bytes, mask_bytes: bytes, prompt: str, width: int, height: int, quality: str = "medium"
+        self,
+        image_bytes: bytes,
+        mask_bytes: bytes,
+        prompt: str,
+        width: int,
+        height: int,
+        quality: str = "medium",
+        input_fidelity: str | None = None,
     ) -> bytes:
-        """Edit an image. Pass empty mask_bytes to let the model edit freely. Returns PNG bytes."""
+        """Edit an image. Pass empty mask_bytes to let the model edit freely. Returns PNG bytes.
+
+        input_fidelity ("high"/"low") controls how faithfully the input image's style and
+        features are preserved; omitted (API default) when None.
+        """
         import io as _io
 
         nearest_w, nearest_h = _nearest_size(width, height)
         size_str = f"{nearest_w}x{nearest_h}"
         logger.debug(
-            "openai: editing %s quality=%s mask=%s prompt=%.80s...", size_str, quality, bool(mask_bytes), prompt
+            "openai: editing %s quality=%s fidelity=%s mask=%s prompt=%.80s...",
+            size_str,
+            quality,
+            input_fidelity,
+            bool(mask_bytes),
+            prompt,
         )
 
         kwargs: dict = {
@@ -82,6 +98,8 @@ class OpenAIProvider(StatusPageMixin, ImageProvider):
         }
         if mask_bytes:
             kwargs["mask"] = ("mask.png", _io.BytesIO(mask_bytes), "image/png")
+        if input_fidelity is not None:
+            kwargs["input_fidelity"] = input_fidelity
         kwargs["quality"] = quality
 
         response = self._client.images.edit(**kwargs)

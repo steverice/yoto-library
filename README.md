@@ -212,9 +212,13 @@ yoto cover --style cartoon          # generate with a specific art style
 yoto cover --force                  # regenerate even if cover.png exists
 yoto cover --backup                 # rename existing cover.png before generating
 yoto cover --ignore-album-art       # skip album art reuse, generate from prompt
+yoto cover --reference art.png      # use an image as inspiration (Gemini)
+yoto cover --model gemini           # choose the illustration model
 ```
 
 Available styles: `cartoon`, `cel`, `chalk`, `crayon`, `gouache`, `papercraft`, `storybook` (default), `watercolor`. The chosen style is saved to `.yoto-style` in the playlist folder and reused on future regenerations.
+
+The illustration step uses OpenAI by default, or Gemini when `--reference` is given (only Gemini takes a reference image as inspiration; OpenAI would edit it instead). `--model {gemini,openai}` overrides the default. The title banner is always added by OpenAI, so generating a titled cover requires `OPENAI_API_KEY` even when the illustration uses Gemini.
 
 ### `yoto reorder [playlist]`
 

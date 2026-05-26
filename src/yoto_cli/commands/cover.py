@@ -39,7 +39,39 @@ def add_cover_command(subparsers: argparse._SubParsersAction) -> None:
         default=None,
         help="visual art style for the cover",
     )
+    sub.add_argument(
+        "--model",
+        type=str.lower,
+        choices=["gemini", "openai"],
+        default=None,
+        help="image model for the illustration (default: gemini with --reference, else openai)",
+    )
+    sub.add_argument(
+        "--reference",
+        type=Path,
+        default=None,
+        help="image to use as inspiration for the illustration (requires the Gemini model)",
+    )
     sub.set_defaults(func=handle_cover)
+
+
+def _read_reference_image(reference: Path) -> bytes:
+    """Validate that reference is a readable image and return its bytes, or exit."""
+    import io
+
+    from PIL import Image
+
+    from yoto_cli.main import require_path
+    from yoto_cli.progress import error as _error
+
+    require_path(reference)
+    try:
+        data = reference.read_bytes()
+        Image.open(io.BytesIO(data)).verify()
+    except OSError:  # includes PIL.UnidentifiedImageError
+        _error(f"Not a valid image: {reference}")
+        raise SystemExit(2) from None
+    return data
 
 
 def handle_cover(args: argparse.Namespace) -> None:
@@ -52,15 +84,24 @@ def handle_cover(args: argparse.Namespace) -> None:
     backup: bool = args.backup
     ignore_album_art: bool = args.ignore_album_art
     style: str | None = args.style
+    model: str | None = getattr(args, "model", None)
+    reference: Path | None = getattr(args, "reference", None)
 
     logger.debug("command: cover path=%s force=%s backup=%s ignore_album_art=%s", path, force, backup, ignore_album_art)
     reset_tracker()
     import tempfile
 
     from yoto_cli.progress import _console as rich_console
+    from yoto_cli.progress import error as _error
     from yoto_lib import mka
-    from yoto_lib.covers.cover import add_title_to_illustration, build_cover_prompt, resize_cover, try_shared_album_art
-    from yoto_lib.providers import get_provider
+    from yoto_lib.covers.cover import (
+        add_title_to_illustration,
+        build_cover_prompt,
+        generate_cover_illustration,
+        resize_cover,
+        resolve_cover_model,
+        try_shared_album_art,
+    )
 
     folder = path
     playlist = load_playlist(folder)
@@ -93,6 +134,17 @@ def handle_cover(args: argparse.Namespace) -> None:
         playlist.style_path.write_text(style + "\n", encoding="utf-8")
         rich_console.print(f"Style set to: {style}")
     resolved_style = CoverStyle.get(playlist.style)
+
+    # Validate reference image and resolve the illustration provider up front, so any
+    # configuration error is reported before generation work starts.
+    reference_bytes = _read_reference_image(reference) if reference is not None else None
+    try:
+        cover_model = resolve_cover_model(model, has_reference=reference_bytes is not None)
+        if playlist.title and not os.environ.get("OPENAI_API_KEY"):
+            raise ValueError("adding a cover title requires OPENAI_API_KEY")
+    except ValueError as exc:
+        _error(str(exc))
+        raise SystemExit(2) from None
 
     from yoto_cli.progress import make_progress
     from yoto_cli.progress import success as _success
@@ -165,18 +217,18 @@ def handle_cover(args: argparse.Namespace) -> None:
 
         prompt = build_cover_prompt(playlist.description, track_titles, artists, playlist.title, style=resolved_style)
 
-        provider = get_provider()
-        # Request 1024x1536 -- maps exactly to that OpenAI size (~0.667),
-        # only ~28px cropped per side to reach 638:1011 (~0.631) target.
-        inner = progress.add_task("Generating cover art", total=None, status="")
-        image_bytes = provider.generate(prompt, 1024, 1536, quality="low")
+        # Step 1 at 1024x1536 (~0.667) -- only ~28px cropped per side to reach 638:1011.
+        inner = progress.add_task(f"Generating cover art ({cover_model})", total=None, status="")
+        image_bytes = generate_cover_illustration(prompt, model=cover_model, reference_image=reference_bytes)
         progress.remove_task(inner)
         progress.update(task, advance=1, status="generated cover art")
 
         if playlist.title:
             progress.update(task, advance=1, status="adding title")
             inner = progress.add_task("Adding title", total=None, status="")
-            image_bytes = add_title_to_illustration(image_bytes, playlist.title, 1024, 1536, style=resolved_style)
+            image_bytes = add_title_to_illustration(
+                image_bytes, playlist.title, 1024, 1536, style=resolved_style, high_fidelity=(cover_model == "gemini")
+            )
             progress.remove_task(inner)
             progress.update(task, status="title added")
 

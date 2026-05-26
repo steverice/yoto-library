@@ -22,6 +22,17 @@ from yoto_lib.covers.cover import (
 )
 from yoto_lib.covers.styles import CoverStyle
 
+
+@pytest.fixture(autouse=True)
+def _no_provider_keys(monkeypatch):
+    """Strip provider API keys so cover tests never hit a real API via leaked env.
+
+    Tests that exercise a specific provider opt in by setting the key they need.
+    """
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -146,14 +157,16 @@ class TestGenerateCoverIfMissing:
         playlist = MagicMock()
         playlist.has_cover = True
 
-        with patch("yoto_lib.covers.cover.get_provider") as mock_get_provider:
+        with patch("yoto_lib.covers.cover.generate_cover_illustration") as mock_illustration:
             generate_cover_if_missing(playlist)
 
-        mock_get_provider.assert_not_called()
+        mock_illustration.assert_not_called()
 
-    def test_generates_when_missing(self, tmp_path):
+    def test_generates_when_missing(self, tmp_path, monkeypatch):
         """Generates and saves cover.png with correct dimensions when missing."""
         import io
+
+        monkeypatch.setenv("OPENAI_API_KEY", "k")
 
         # Create a real PNG in memory to use as fake provider output
         fake_img = Image.new("RGB", (COVER_WIDTH, COVER_HEIGHT), color="red")
@@ -171,12 +184,10 @@ class TestGenerateCoverIfMissing:
         playlist.track_files = ["track01.mka", "track02.mka"]
         playlist.style = "storybook"
 
-        # Mock provider
-        mock_provider = MagicMock()
-        mock_provider.generate.return_value = fake_png_bytes
-
         with (
-            patch("yoto_lib.covers.cover.get_provider", return_value=mock_provider),
+            patch(
+                "yoto_lib.covers.cover.generate_cover_illustration", return_value=fake_png_bytes
+            ) as mock_illustration,
             patch("yoto_lib.covers.cover.build_cover_prompt", return_value="test prompt") as mock_prompt,
             patch("yoto_lib.covers.cover.add_title_to_illustration", return_value=fake_png_bytes),
             patch("yoto_lib.covers.cover.mka.read_tags") as mock_read_tags,
@@ -198,12 +209,14 @@ class TestGenerateCoverIfMissing:
         # prompt builder was called
         mock_prompt.assert_called_once()
 
-        # provider.generate was called with the prompt at the tall portrait size
-        mock_provider.generate.assert_called_once_with("test prompt", 1024, 1536, quality="low")
+        # the illustration step was called with the built prompt
+        assert mock_illustration.call_args.args[0] == "test prompt"
 
-    def test_passes_style_to_prompt_builder(self, tmp_path):
+    def test_passes_style_to_prompt_builder(self, tmp_path, monkeypatch):
         """generate_cover_if_missing resolves style from playlist and passes it."""
         import io
+
+        monkeypatch.setenv("OPENAI_API_KEY", "k")
 
         fake_img = Image.new("RGB", (COVER_WIDTH, COVER_HEIGHT), color="red")
         buf = io.BytesIO()
@@ -220,11 +233,8 @@ class TestGenerateCoverIfMissing:
         playlist.title = None
         playlist.style = "cartoon"
 
-        mock_provider = MagicMock()
-        mock_provider.generate.return_value = fake_png_bytes
-
         with (
-            patch("yoto_lib.covers.cover.get_provider", return_value=mock_provider),
+            patch("yoto_lib.covers.cover.generate_cover_illustration", return_value=fake_png_bytes),
             patch("yoto_lib.covers.cover.build_cover_prompt", return_value="test prompt") as mock_prompt,
             patch("yoto_lib.covers.cover.mka.read_tags", return_value={"title": "Ch1", "artist": "Jane"}),
         ):
@@ -235,6 +245,121 @@ class TestGenerateCoverIfMissing:
         style_arg = call_kwargs.kwargs.get("style") or call_kwargs[1].get("style")
         assert style_arg is not None
         assert style_arg.name == "cartoon"
+
+
+class TestResolveCoverModel:
+    """The cover step-1 provider selection matrix."""
+
+    def test_explicit_openai_with_reference_errors(self, monkeypatch):
+        from yoto_lib.covers.cover import resolve_cover_model
+
+        monkeypatch.setenv("OPENAI_API_KEY", "k")
+        with pytest.raises(ValueError, match="reference"):
+            resolve_cover_model("openai", has_reference=True)
+
+    def test_explicit_gemini_without_key_errors(self, monkeypatch):
+        from yoto_lib.covers.cover import resolve_cover_model
+
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        with pytest.raises(ValueError, match="GEMINI_API_KEY"):
+            resolve_cover_model("gemini", has_reference=False)
+
+    def test_explicit_openai_without_key_errors(self, monkeypatch):
+        from yoto_lib.covers.cover import resolve_cover_model
+
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        with pytest.raises(ValueError, match="OPENAI_API_KEY"):
+            resolve_cover_model("openai", has_reference=False)
+
+    def test_explicit_gemini_available(self, monkeypatch):
+        from yoto_lib.covers.cover import resolve_cover_model
+
+        monkeypatch.setenv("GEMINI_API_KEY", "k")
+        assert resolve_cover_model("gemini", has_reference=False) == "gemini"
+
+    def test_default_with_reference_uses_gemini(self, monkeypatch):
+        from yoto_lib.covers.cover import resolve_cover_model
+
+        monkeypatch.setenv("GEMINI_API_KEY", "k")
+        monkeypatch.setenv("OPENAI_API_KEY", "k")
+        assert resolve_cover_model(None, has_reference=True) == "gemini"
+
+    def test_default_with_reference_no_gemini_errors(self, monkeypatch):
+        from yoto_lib.covers.cover import resolve_cover_model
+
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.setenv("OPENAI_API_KEY", "k")
+        with pytest.raises(ValueError, match="GEMINI_API_KEY"):
+            resolve_cover_model(None, has_reference=True)
+
+    def test_default_no_reference_prefers_openai(self, monkeypatch):
+        from yoto_lib.covers.cover import resolve_cover_model
+
+        monkeypatch.setenv("OPENAI_API_KEY", "k")
+        monkeypatch.setenv("GEMINI_API_KEY", "k")
+        assert resolve_cover_model(None, has_reference=False) == "openai"
+
+    def test_default_no_reference_falls_back_to_gemini(self, monkeypatch):
+        from yoto_lib.covers.cover import resolve_cover_model
+
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.setenv("GEMINI_API_KEY", "k")
+        assert resolve_cover_model(None, has_reference=False) == "gemini"
+
+    def test_default_no_provider_available_errors(self, monkeypatch):
+        from yoto_lib.covers.cover import resolve_cover_model
+
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        with pytest.raises(ValueError, match=r"OPENAI_API_KEY|GEMINI_API_KEY"):
+            resolve_cover_model(None, has_reference=False)
+
+
+def test_generate_cover_illustration_gemini_portrait_with_reference():
+    """model='gemini' generates at 2:3 and forwards the reference image."""
+    from yoto_lib.covers.cover import generate_cover_illustration
+
+    mock_gemini = MagicMock()
+    mock_gemini.generate.return_value = b"png-bytes"
+    with patch("yoto_lib.providers.gemini_provider.GeminiProvider", return_value=mock_gemini):
+        result = generate_cover_illustration("a cover prompt", model="gemini", reference_image=b"ref")
+
+    assert result == b"png-bytes"
+    args, kwargs = mock_gemini.generate.call_args
+    assert args[0] == "a cover prompt"
+    assert kwargs.get("aspect_ratio") == "2:3"
+    assert kwargs.get("reference_image") == b"ref"
+
+
+def test_generate_cover_illustration_openai():
+    """model='openai' generates via the OpenAI text-to-image path at portrait size."""
+    from yoto_lib.covers.cover import generate_cover_illustration
+
+    mock_openai = MagicMock()
+    mock_openai.generate.return_value = b"png-bytes"
+    with patch("yoto_lib.providers.openai_provider.OpenAIProvider", return_value=mock_openai):
+        result = generate_cover_illustration("a cover prompt", model="openai")
+
+    assert result == b"png-bytes"
+    mock_openai.generate.assert_called_once_with("a cover prompt", 1024, 1536, quality="low")
+
+
+def test_add_title_high_fidelity_flag():
+    """add_title_to_illustration sends input_fidelity=high only when high_fidelity=True."""
+    from yoto_lib.covers.cover import add_title_to_illustration
+
+    img_bytes = _make_png_bytes(100, 150, "red")
+    mock_provider = MagicMock()
+    mock_provider.edit.return_value = b"titled"
+    with patch("yoto_lib.providers.openai_provider.OpenAIProvider", return_value=mock_provider):
+        add_title_to_illustration(img_bytes, "My Title", 1024, 1536, high_fidelity=True)
+        high_kwargs = mock_provider.edit.call_args.kwargs
+
+        add_title_to_illustration(img_bytes, "My Title", 1024, 1536)
+        default_kwargs = mock_provider.edit.call_args.kwargs
+
+    assert high_kwargs.get("input_fidelity") == "high"
+    assert "input_fidelity" not in default_kwargs
 
 
 # ── TestTrySharedAlbumArt ────────────────────────────────────────────────────
@@ -321,12 +446,12 @@ class TestTrySharedAlbumArt:
 
         with (
             patch("yoto_lib.covers.cover.try_shared_album_art", return_value=True) as mock_shared,
-            patch("yoto_lib.covers.cover.get_provider") as mock_provider,
+            patch("yoto_lib.covers.cover.generate_cover_illustration") as mock_illustration,
         ):
             generate_cover_if_missing(playlist)
 
         mock_shared.assert_called_once_with(playlist, log=None)
-        mock_provider.assert_not_called()
+        mock_illustration.assert_not_called()
 
 
 # ── TestPadToCover ────────────────────────────────────────────────────────────

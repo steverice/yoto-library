@@ -90,6 +90,64 @@ def test_openai_edit_passes_quality(mock_openai_client):
     assert call_kwargs.get("size") == "1024x1024"
 
 
+def test_openai_edit_passes_input_fidelity(mock_openai_client):
+    """OpenAIProvider.edit() forwards input_fidelity when given, and omits it by default."""
+    from yoto_lib.providers.openai_provider import OpenAIProvider
+
+    fake_image = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
+
+    with patch("yoto_lib.providers.openai_provider.OpenAI", return_value=mock_openai_client):
+        provider = OpenAIProvider()
+        provider.edit(fake_image, b"", "test prompt", 1024, 1024, input_fidelity="high")
+        high_kwargs = mock_openai_client.images.edit.call_args[1]
+
+        provider.edit(fake_image, b"", "test prompt", 1024, 1024)
+        default_kwargs = mock_openai_client.images.edit.call_args[1]
+
+    assert high_kwargs.get("input_fidelity") == "high"
+    assert "input_fidelity" not in default_kwargs
+
+
+class TestGeminiProvider:
+    @staticmethod
+    def _mock_client_returning_png():
+        png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
+        part = MagicMock()
+        part.inline_data.data = png
+        candidate = MagicMock()
+        candidate.finish_reason = "STOP"
+        candidate.content.parts = [part]
+        response = MagicMock()
+        response.candidates = [candidate]
+        client = MagicMock()
+        client.models.generate_content.return_value = response
+        return client, png
+
+    def test_generate_forwards_aspect_ratio(self):
+        """aspect_ratio is passed through image_config to the Gemini API."""
+        client, png = self._mock_client_returning_png()
+        with patch("google.genai.Client", return_value=client):
+            from yoto_lib.providers.gemini_provider import GeminiProvider
+
+            result = GeminiProvider().generate("a cover", aspect_ratio="2:3")
+
+        assert result == png
+        config = client.models.generate_content.call_args.kwargs["config"]
+        assert config.image_config is not None
+        assert config.image_config.aspect_ratio == "2:3"
+
+    def test_generate_without_aspect_ratio_omits_image_config(self):
+        """Default generation sends no image_config (regression for existing callers)."""
+        client, _ = self._mock_client_returning_png()
+        with patch("google.genai.Client", return_value=client):
+            from yoto_lib.providers.gemini_provider import GeminiProvider
+
+            GeminiProvider().generate("a cover")
+
+        config = client.models.generate_content.call_args.kwargs["config"]
+        assert config.image_config is None
+
+
 class TestTogetherAIProvider:
     def test_recompose_uploads_and_returns_bytes(self):
         """recompose() uploads padded image and returns FLUX result."""
