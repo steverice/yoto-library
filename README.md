@@ -236,6 +236,15 @@ yoto select-icon track.mka --reference art.png --strength 0.5
 
 Remove icon attachments from one or more MKA files. The next `yoto sync` will regenerate icons for those tracks.
 
+### `yoto copy-icon <source> <dests...>`
+
+Copy the icon from one MKA file onto one or more others. Errors if the source has no icon; existing icons on destinations are replaced. Non-`.mka` arguments (e.g. from a glob) are ignored.
+
+```
+yoto copy-icon good.mka other.mka            # copy one icon to another track
+yoto copy-icon good.mka *.mka                # copy to every track in the folder
+```
+
 ### `yoto print [path]`
 
 Print cover art to a photo printer via macOS CUPS. Optionally applies an ICC color profile for accurate color reproduction.

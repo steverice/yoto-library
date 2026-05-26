@@ -1,9 +1,11 @@
-"""select-icon and reset-icon commands."""
+"""select-icon, reset-icon, and copy-icon commands."""
 
 from __future__ import annotations
 
+import io
 import logging
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -11,7 +13,7 @@ if TYPE_CHECKING:
     import argparse
 
 from yoto_lib.billing.costs import reset_tracker
-from yoto_lib.mka import remove_attachment
+from yoto_lib.mka import get_attachment, remove_attachment, set_attachment
 from yoto_lib.yoto.api import YotoAPI
 
 logger = logging.getLogger(__name__)
@@ -273,3 +275,63 @@ def handle_reset_icon(args: argparse.Namespace) -> None:
             _success(f"Cleared icon: {path.name}")
         except (subprocess.CalledProcessError, OSError) as exc:  # noqa: PERF203
             _error(f"Error ({path.name}): {exc}")
+
+
+def add_copy_icon_command(subparsers: argparse._SubParsersAction) -> None:
+    """Register the copy-icon subcommand."""
+    from yoto_cli.main import _MkaCompleter, _MkaWithIconCompleter
+
+    sub = subparsers.add_parser("copy-icon", help="copy an icon from one MKA track to others")
+    source_arg = sub.add_argument("source", type=Path, help="MKA file to copy the icon from")
+    source_arg.completer = _MkaWithIconCompleter()
+    dests_arg = sub.add_argument("dests", nargs="+", type=Path, help="MKA files to copy the icon to")
+    dests_arg.completer = _MkaCompleter()
+    sub.set_defaults(func=handle_copy_icon)
+
+
+def handle_copy_icon(args: argparse.Namespace) -> None:
+    """Copy the icon attachment from one MKA track onto one or more others."""
+    from PIL import Image
+
+    from yoto_cli.main import require_path
+    from yoto_cli.progress import error as _error
+    from yoto_cli.progress import success as _success
+    from yoto_cli.progress import warning as _warning
+    from yoto_lib.icons import set_macos_file_icon
+
+    source: Path = args.source
+    require_path(source)
+
+    if source.suffix.lower() != ".mka":
+        _error(f"Not an MKA file: {source.name}")
+        raise SystemExit(2)
+
+    icon_bytes = get_attachment(source, "icon")
+    if icon_bytes is None:
+        _error(f"No icon to copy from: {source.name}")
+        raise SystemExit(1)
+
+    dest_paths: list[Path] = [p for p in args.dests if p.suffix.lower() == ".mka"]
+    for p in dest_paths:
+        require_path(p)
+
+    if not dest_paths:
+        _warning("No MKA tracks to process")
+        return
+
+    logger.debug("command: copy-icon source=%s dests=%s", source, dest_paths)
+
+    tmpdir = Path(tempfile.mkdtemp(prefix="yoto-icon-"))
+    icon_tmp = tmpdir / "icon.png"
+    try:
+        icon_tmp.write_bytes(icon_bytes)
+        for dest in dest_paths:
+            try:
+                set_attachment(dest, icon_tmp, "icon", "image/png")
+                set_macos_file_icon(dest, Image.open(io.BytesIO(icon_bytes)))
+                _success(f"Copied icon to {dest.name}")
+            except (subprocess.CalledProcessError, OSError) as exc:  # noqa: PERF203
+                _error(f"Error ({dest.name}): {exc}")
+    finally:
+        icon_tmp.unlink(missing_ok=True)
+        tmpdir.rmdir()

@@ -54,7 +54,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     from yoto_cli.commands.billing import add_providers_command
     from yoto_cli.commands.cover import add_cover_command, add_print_command
-    from yoto_cli.commands.icons import add_reset_icon_command, add_select_icon_command
+    from yoto_cli.commands.icons import add_copy_icon_command, add_reset_icon_command, add_select_icon_command
     from yoto_cli.commands.import_cmd import add_download_command, add_import_command
     from yoto_cli.commands.lyrics import add_lyrics_command
     from yoto_cli.commands.misc import (
@@ -83,6 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_print_command(subparsers)
     add_select_icon_command(subparsers)
     add_reset_icon_command(subparsers)
+    add_copy_icon_command(subparsers)
     add_lyrics_command(subparsers)
     add_completions_command(subparsers)
 

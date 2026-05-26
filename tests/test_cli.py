@@ -19,6 +19,17 @@ from yoto_lib.yoto.auth import AuthError
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 
+def _png_bytes() -> bytes:
+    """A small valid PNG, for tests that need real image bytes."""
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (16, 16), "red").save(buf, format="PNG")
+    return buf.getvalue()
+
+
 # ── test_auth_command_runs ────────────────────────────────────────────────────
 
 
@@ -872,6 +883,130 @@ class TestSelectIconCommand:
             handle_select_icon(argparse.Namespace(tracks=[mka], reference=ref, strength=None))
 
         mock_select.assert_not_called()
+
+
+class TestCopyIconCommand:
+    def test_copy_icon_parses(self, tmp_path):
+        parser = build_parser()
+        args = parser.parse_args(
+            ["copy-icon", str(tmp_path / "src.mka"), str(tmp_path / "a.mka"), str(tmp_path / "b.mka")]
+        )
+        assert args.command == "copy-icon"
+        assert hasattr(args, "func")
+        assert args.source == tmp_path / "src.mka"
+        assert args.dests == [tmp_path / "a.mka", tmp_path / "b.mka"]
+
+    def test_copy_icon_copies_to_multiple_dests(self, tmp_path):
+        """Reads the source icon once and writes it to every .mka destination."""
+        src = tmp_path / "src.mka"
+        src.write_bytes(b"fake")
+        dest1 = tmp_path / "d1.mka"
+        dest1.write_bytes(b"fake")
+        dest2 = tmp_path / "d2.mka"
+        dest2.write_bytes(b"fake")
+
+        icon_png = _png_bytes()
+
+        from yoto_cli.commands.icons import handle_copy_icon
+
+        with (
+            patch("yoto_cli.commands.icons.get_attachment", return_value=icon_png) as mock_get,
+            patch("yoto_cli.commands.icons.set_attachment") as mock_set,
+            patch("yoto_lib.icons.set_macos_file_icon") as mock_macos,
+        ):
+            handle_copy_icon(argparse.Namespace(source=src, dests=[dest1, dest2]))
+
+        mock_get.assert_called_once_with(src, "icon")
+        set_targets = {call.args[0] for call in mock_set.call_args_list}
+        assert set_targets == {dest1, dest2}
+        for call in mock_set.call_args_list:
+            assert call.args[2] == "icon"
+            assert call.args[3] == "image/png"
+        macos_targets = {call.args[0] for call in mock_macos.call_args_list}
+        assert macos_targets == {dest1, dest2}
+
+    def test_copy_icon_rejects_non_mka_source(self, tmp_path):
+        """A non-.mka source errors cleanly without invoking mkvtoolnix."""
+        txt = tmp_path / "description.txt"
+        txt.write_text("not audio")
+        dest = tmp_path / "d.mka"
+        dest.write_bytes(b"fake")
+
+        from yoto_cli.commands.icons import handle_copy_icon
+
+        with (
+            patch("yoto_cli.commands.icons.get_attachment") as mock_get,
+            patch("yoto_cli.commands.icons.set_attachment") as mock_set,
+            pytest.raises(SystemExit),
+        ):
+            handle_copy_icon(argparse.Namespace(source=txt, dests=[dest]))
+
+        mock_get.assert_not_called()
+        mock_set.assert_not_called()
+
+    def test_copy_icon_errors_when_source_has_no_icon(self, tmp_path):
+        """When the source lacks an icon, exit and touch no destinations."""
+        src = tmp_path / "src.mka"
+        src.write_bytes(b"fake")
+        dest = tmp_path / "d.mka"
+        dest.write_bytes(b"fake")
+
+        from yoto_cli.commands.icons import handle_copy_icon
+
+        with (
+            patch("yoto_cli.commands.icons.get_attachment", return_value=None),
+            patch("yoto_cli.commands.icons.set_attachment") as mock_set,
+            pytest.raises(SystemExit),
+        ):
+            handle_copy_icon(argparse.Namespace(source=src, dests=[dest]))
+
+        mock_set.assert_not_called()
+
+    def test_copy_icon_drops_non_mka_dests(self, tmp_path):
+        """Non-.mka destinations from a glob are silently ignored."""
+        src = tmp_path / "src.mka"
+        src.write_bytes(b"fake")
+        dest = tmp_path / "d.mka"
+        dest.write_bytes(b"fake")
+        txt = tmp_path / "description.txt"
+        txt.write_text("not audio")
+
+        from yoto_cli.commands.icons import handle_copy_icon
+
+        with (
+            patch("yoto_cli.commands.icons.get_attachment", return_value=_png_bytes()),
+            patch("yoto_cli.commands.icons.set_attachment") as mock_set,
+            patch("yoto_lib.icons.set_macos_file_icon"),
+        ):
+            handle_copy_icon(argparse.Namespace(source=src, dests=[dest, txt]))
+
+        set_targets = {call.args[0] for call in mock_set.call_args_list}
+        assert set_targets == {dest}
+
+    def test_copy_icon_continues_after_dest_error(self, tmp_path):
+        """An error on one destination does not stop the others."""
+        src = tmp_path / "src.mka"
+        src.write_bytes(b"fake")
+        dest1 = tmp_path / "d1.mka"
+        dest1.write_bytes(b"fake")
+        dest2 = tmp_path / "d2.mka"
+        dest2.write_bytes(b"fake")
+
+        from yoto_cli.commands.icons import handle_copy_icon
+
+        def _set(path, *_args, **_kwargs):
+            if path == dest1:
+                raise OSError("mkvpropedit failed")
+
+        with (
+            patch("yoto_cli.commands.icons.get_attachment", return_value=_png_bytes()),
+            patch("yoto_cli.commands.icons.set_attachment", side_effect=_set) as mock_set,
+            patch("yoto_lib.icons.set_macos_file_icon"),
+        ):
+            handle_copy_icon(argparse.Namespace(source=src, dests=[dest1, dest2]))
+
+        set_targets = {call.args[0] for call in mock_set.call_args_list}
+        assert set_targets == {dest1, dest2}
 
 
 # ── test_print_command ───────────────────────────────────────────────────────
