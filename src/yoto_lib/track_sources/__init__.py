@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 from yoto_lib.config import WORKERS
 from yoto_lib.mka import wrap_in_mka, write_tags
 from yoto_lib.providers.claude_provider import ClaudeProvider
+from yoto_lib.track_sources._trim import trim_audio
 
 logger = logging.getLogger(__name__)
 
@@ -122,9 +123,10 @@ def _resolve_one_webloc(
         audio_path, metadata = provider.download(
             url,
             playlist_dir,
-            trim=trim,
             on_progress=_on_dl_progress if on_download_progress else None,
         )
+        if trim:
+            audio_path = trim_audio(audio_path)
         logger.debug("resolve_weblocs: downloaded %s -> %s", webloc.name, audio_path.name)
     except (RuntimeError, subprocess.CalledProcessError, OSError) as exc:
         logger.warning("Download failed for %s: %s", webloc.name, exc)

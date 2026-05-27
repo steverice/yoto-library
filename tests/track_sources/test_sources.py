@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from yoto_lib.track_sources import clean_title, parse_webloc, resolve_weblocs
-from yoto_lib.track_sources.youtube import YouTubeProvider, _parse_silence_ranges, _trim_silence
+from yoto_lib.track_sources.youtube import YouTubeProvider
 
 
 class TestParseWebloc:
@@ -117,7 +117,7 @@ class TestYouTubeDownload:
             patch("yoto_lib.track_sources.youtube.subprocess.run", side_effect=fake_run),
             patch("yoto_lib.track_sources.youtube.subprocess.Popen", side_effect=fake_popen),
         ):
-            audio_path, metadata = provider.download(url, tmp_path, trim=False)
+            audio_path, metadata = provider.download(url, tmp_path)
 
         assert audio_path.exists()
         assert metadata["title"] == "My Cool Song"
@@ -134,100 +134,7 @@ class TestYouTubeDownload:
             ),
             pytest.raises(RuntimeError, match="yt-dlp is required"),
         ):
-            provider.download("https://youtu.be/abc", tmp_path, trim=False)
-
-
-class TestSilenceDetection:
-    def test_parse_silence_ranges_from_ffmpeg_output(self):
-        """_parse_silence_ranges extracts (start, end) pairs from ffmpeg stderr."""
-        stderr = (
-            "[silencedetect @ 0x1234] silence_start: 0\n"
-            "[silencedetect @ 0x1234] silence_end: 1.5 | silence_duration: 1.5\n"
-            "[silencedetect @ 0x1234] silence_start: 30.2\n"
-            "[silencedetect @ 0x1234] silence_end: 31.0 | silence_duration: 0.8\n"
-            "[silencedetect @ 0x1234] silence_start: 65.0\n"
-            "[silencedetect @ 0x1234] silence_end: 66.5 | silence_duration: 1.5\n"
-        )
-        ranges = _parse_silence_ranges(stderr)
-        assert ranges == [(0.0, 1.5), (30.2, 31.0), (65.0, 66.5)]
-
-    def test_parse_silence_ranges_empty(self):
-        """_parse_silence_ranges returns empty list when no silence found."""
-        assert _parse_silence_ranges("some random output\n") == []
-
-    def test_parse_silence_ranges_unterminated(self):
-        """A silence_start without a matching silence_end is ignored."""
-        stderr = (
-            "[silencedetect @ 0x1234] silence_start: 0\n"
-            "[silencedetect @ 0x1234] silence_end: 1.5 | silence_duration: 1.5\n"
-            "[silencedetect @ 0x1234] silence_start: 60.0\n"
-        )
-        ranges = _parse_silence_ranges(stderr)
-        assert ranges == [(0.0, 1.5)]
-
-
-class TestTrimSilence:
-    def test_trim_with_two_gaps_extracts_middle(self, tmp_path):
-        """When >=2 silence gaps, trim extracts audio between first and last gap."""
-        audio = tmp_path / "song.wav"
-        _make_wav(audio, duration_seconds=2.0)
-
-        silence_stderr = (
-            "[silencedetect @ 0x1234] silence_start: 0\n"
-            "[silencedetect @ 0x1234] silence_end: 0.5 | silence_duration: 0.5\n"
-            "[silencedetect @ 0x1234] silence_start: 1.5\n"
-            "[silencedetect @ 0x1234] silence_end: 2.0 | silence_duration: 0.5\n"
-        )
-
-        call_count = [0]
-
-        def fake_run(cmd, **kwargs):
-            result = MagicMock()
-            result.returncode = 0
-            if call_count[0] == 0:
-                # silencedetect call
-                result.stderr = silence_stderr
-                call_count[0] += 1
-                return result
-            # ffmpeg trim call — write a trimmed file
-            for i, arg in enumerate(cmd):
-                if i > 0 and cmd[i - 1] == "-ss":
-                    assert arg == "0.5"  # start after first silence
-            for i, arg in enumerate(cmd):
-                if i > 0 and cmd[i - 1] == "-to":
-                    assert arg == "1.5"  # end at start of last silence
-            # Find output path (last argument)
-            out = Path(cmd[-1])
-            _make_wav(out, duration_seconds=1.0)
-            result.returncode = 0
-            return result
-
-        with patch("yoto_lib.track_sources.youtube.subprocess.run", side_effect=fake_run):
-            trimmed = _trim_silence(audio)
-
-        assert trimmed == audio  # same path, file replaced in-place
-        assert trimmed.exists()
-
-    def test_trim_with_fewer_than_two_gaps_returns_original(self, tmp_path):
-        """When <2 silence gaps, return original file untouched."""
-        audio = tmp_path / "clean.wav"
-        _make_wav(audio, duration_seconds=2.0)
-
-        silence_stderr = (
-            "[silencedetect @ 0x1234] silence_start: 0\n"
-            "[silencedetect @ 0x1234] silence_end: 0.3 | silence_duration: 0.3\n"
-        )
-
-        def fake_run(cmd, **kwargs):
-            result = MagicMock()
-            result.returncode = 0
-            result.stderr = silence_stderr
-            return result
-
-        with patch("yoto_lib.track_sources.youtube.subprocess.run", side_effect=fake_run):
-            trimmed = _trim_silence(audio)
-
-        assert trimmed == audio  # unchanged
+            provider.download("https://youtu.be/abc", tmp_path)
 
 
 class TestResolveWeblocs:
@@ -249,6 +156,7 @@ class TestResolveWeblocs:
 
         with (
             patch("yoto_lib.track_sources._get_providers", return_value=[mock_provider]),
+            patch("yoto_lib.track_sources.trim_audio", side_effect=lambda p: p),
             patch("yoto_lib.track_sources.wrap_in_mka") as mock_wrap,
             patch("yoto_lib.track_sources.write_tags") as mock_tags,
             patch("yoto_lib.track_sources.clean_title", side_effect=lambda t: t),
@@ -323,6 +231,7 @@ class TestResolveWeblocs:
 
         with (
             patch("yoto_lib.track_sources._get_providers", return_value=[mock_provider]),
+            patch("yoto_lib.track_sources.trim_audio", side_effect=lambda p: p),
             patch("yoto_lib.track_sources.wrap_in_mka") as mock_wrap,
             patch("yoto_lib.track_sources.write_tags"),
             patch("yoto_lib.track_sources.clean_title", side_effect=lambda t: t),
@@ -337,6 +246,70 @@ class TestResolveWeblocs:
 
         assert len(results) == 1
         assert results[0].name == "My Song 2.mka"
+
+    def test_resolver_calls_trim_audio_when_trim_true(self, tmp_path):
+        """When trim=True, resolver calls trim_audio on the downloaded file."""
+        playlist_dir = tmp_path / "My Playlist"
+        playlist_dir.mkdir()
+
+        url = "https://youtu.be/abc"
+        webloc = playlist_dir / "song.webloc"
+        webloc.write_bytes(plistlib.dumps({"URL": url}))
+
+        fake_audio = tmp_path / "audio.opus"
+        _make_wav(fake_audio)
+
+        mock_provider = MagicMock()
+        mock_provider.can_handle.return_value = True
+        mock_provider.download.return_value = (fake_audio, {"title": "My Song", "source_url": url})
+
+        with (
+            patch("yoto_lib.track_sources._get_providers", return_value=[mock_provider]),
+            patch("yoto_lib.track_sources.trim_audio", side_effect=lambda p: p) as mock_trim,
+            patch("yoto_lib.track_sources.wrap_in_mka") as mock_wrap,
+            patch("yoto_lib.track_sources.write_tags"),
+            patch("yoto_lib.track_sources.clean_title", side_effect=lambda t: t),
+        ):
+
+            def fake_wrap(src, dst):
+                dst.write_bytes(b"fake mka")
+
+            mock_wrap.side_effect = fake_wrap
+            resolve_weblocs(playlist_dir, trim=True)
+
+        mock_trim.assert_called_once_with(fake_audio)
+
+    def test_resolver_skips_trim_audio_when_trim_false(self, tmp_path):
+        """When trim=False, resolver does not call trim_audio."""
+        playlist_dir = tmp_path / "My Playlist"
+        playlist_dir.mkdir()
+
+        url = "https://youtu.be/abc"
+        webloc = playlist_dir / "song.webloc"
+        webloc.write_bytes(plistlib.dumps({"URL": url}))
+
+        fake_audio = tmp_path / "audio.opus"
+        _make_wav(fake_audio)
+
+        mock_provider = MagicMock()
+        mock_provider.can_handle.return_value = True
+        mock_provider.download.return_value = (fake_audio, {"title": "My Song", "source_url": url})
+
+        with (
+            patch("yoto_lib.track_sources._get_providers", return_value=[mock_provider]),
+            patch("yoto_lib.track_sources.trim_audio", side_effect=lambda p: p) as mock_trim,
+            patch("yoto_lib.track_sources.wrap_in_mka") as mock_wrap,
+            patch("yoto_lib.track_sources.write_tags"),
+            patch("yoto_lib.track_sources.clean_title", side_effect=lambda t: t),
+        ):
+
+            def fake_wrap(src, dst):
+                dst.write_bytes(b"fake mka")
+
+            mock_wrap.side_effect = fake_wrap
+            resolve_weblocs(playlist_dir, trim=False)
+
+        mock_trim.assert_not_called()
 
 
 class TestCleanTitle:
@@ -389,26 +362,16 @@ class TestYouTubeIntegration:
             pytest.skip("yt-dlp not installed")
 
     def test_download_real_video(self, tmp_path):
-        """Download a real YouTube video's audio."""
+        """Download a real YouTube video's audio (untrimmed)."""
         provider = YouTubeProvider()
         url = "https://www.youtube.com/watch?v=GxtknJ9KFKY"
 
-        audio_path, metadata = provider.download(url, tmp_path, trim=False)
+        audio_path, metadata = provider.download(url, tmp_path)
 
         assert audio_path.exists()
         assert audio_path.stat().st_size > 1000  # non-trivial file
         assert metadata["source_url"] == url
         assert len(metadata["title"]) > 0
-
-    def test_download_and_trim_real_video(self, tmp_path):
-        """Download and trim a real YouTube video."""
-        provider = YouTubeProvider()
-        url = "https://www.youtube.com/watch?v=GxtknJ9KFKY"
-
-        audio_path, _metadata = provider.download(url, tmp_path, trim=True)
-
-        assert audio_path.exists()
-        assert audio_path.stat().st_size > 1000
 
     def test_full_webloc_resolve(self, tmp_path):
         """Full pipeline: .webloc → download → trim → .mka."""
