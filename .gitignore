@@ -36,3 +36,6 @@ htmlcov/
 # Data
 data
 .claude/worktrees/
+
+# Trim tuning corpus (audio files not committed)
+tests/fixtures/trim_corpus/
