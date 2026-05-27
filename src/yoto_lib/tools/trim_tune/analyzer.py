@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 def detect_ffmpeg_version() -> str:
-    out = subprocess.run(["ffmpeg", "--version"], capture_output=True, text=True, check=True)
+    out = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True, check=True)
     return out.stdout.splitlines()[0]
 
 
