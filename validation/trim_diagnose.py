@@ -1,9 +1,11 @@
 """Phase 0 diagnostic: bucket the trim over-aggression failure modes.
 
-Throwaway. Imports CURRENT (pre-refactor) gap logic from youtube.py.
+Imports `_parse_silence_ranges` from `yoto_lib.track_sources._trim` (the
+refactored home of gap logic). `download()` is now always untrimmed (fetch-only);
+no `trim=` kwarg is accepted.
 Usage:
     python validation/trim_diagnose.py <url> [<url> ...]
-Downloads each URL UNTRIMMED, runs silencedetect, prints the boundaries the
+Downloads each URL (untrimmed), runs silencedetect, prints the boundaries the
 current algorithm WOULD choose, then prompts the human to record where the song
 actually starts/ends and categorize the failure: (a) threshold, (b) wrong-gap,
 (c) no-gap, or clean.
@@ -16,7 +18,8 @@ import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from yoto_lib.track_sources.youtube import YouTubeProvider, _parse_silence_ranges
+from yoto_lib.track_sources._trim import _parse_silence_ranges
+from yoto_lib.track_sources.youtube import YouTubeProvider
 
 
 def current_boundaries(ranges: list[tuple[float, float]]) -> tuple[float, float] | None:
@@ -40,7 +43,7 @@ def main(urls: list[str]) -> None:
     provider = YouTubeProvider()
     for url in urls:
         with TemporaryDirectory() as tmp:
-            audio, meta = provider.download(url, Path(tmp), trim=False)  # pre-refactor signature
+            audio, meta = provider.download(url, Path(tmp))  # download() is now fetch-only / untrimmed
             ranges = silencedetect(audio)
             chosen = current_boundaries(ranges)
             print(f"\n=== {meta['title']} ===")

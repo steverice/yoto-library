@@ -10,18 +10,26 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from rich.console import Console
+
 from yoto_lib.tools.trim_tune.analyzer import CachingAnalyzer
 from yoto_lib.tools.trim_tune.corpus import load_corpus
-from yoto_lib.tools.trim_tune.labeler import upsert_label
+from yoto_lib.tools.trim_tune.labeler import audition, upsert_label
 from yoto_lib.tools.trim_tune.report import print_sweep
 from yoto_lib.tools.trim_tune.scorer import predict_all, score_all
 from yoto_lib.track_sources._trim import SilenceStrategy
+
+_console = Console()
 
 DEFAULT_TOLERANCES = [0.05, 0.10, 0.15, 0.20, 0.30]
 
 
 def _cmd_sweep(args: argparse.Namespace) -> None:
     fixtures = load_corpus(Path(args.corpus))
+    usable = [f for f in fixtures if f.audio_path is not None and f.hash_ok]
+    if not usable:
+        _console.print(f"No usable fixtures in {args.corpus} (audio absent or hash mismatch). Nothing to sweep.")
+        return
     strategy = SilenceStrategy()
     analyzer = CachingAnalyzer()
     predictions, params_by_key = predict_all(strategy, fixtures, analyzer)
@@ -40,6 +48,10 @@ def _cmd_label(args: argparse.Namespace) -> None:
         true_start_min=args.start_min,
         true_end_max=args.end_max,
     )
+
+
+def _cmd_audition(args: argparse.Namespace) -> None:
+    audition(Path(args.file), args.at, args.window)
 
 
 def _cmd_diagnose(args: argparse.Namespace) -> None:
@@ -72,6 +84,12 @@ def build_parser() -> argparse.ArgumentParser:
     diag = sub.add_parser("diagnose", help="Phase 0 diagnostic over URLs")
     diag.add_argument("urls", nargs="+")
     diag.set_defaults(func=_cmd_diagnose)
+
+    aud = sub.add_parser("audition", help="play a window around a boundary via ffplay")
+    aud.add_argument("--file", required=True)
+    aud.add_argument("--at", type=float, required=True)
+    aud.add_argument("--window", type=float, default=4.0)
+    aud.set_defaults(func=_cmd_audition)
     return parser
 
 
