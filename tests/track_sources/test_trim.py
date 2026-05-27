@@ -10,6 +10,7 @@ from yoto_lib.track_sources._trim import (
     PRODUCTION_PARAMS,
     DirectAnalyzer,
     SilenceStrategy,
+    _parse_silence_ranges,
     apply_cut,
     select_boundaries,
     trim_audio,
@@ -116,3 +117,31 @@ def test_silence_strategy_uses_analyzer(longer_wav):
     """SilenceStrategy.trim delegates to select_boundaries over analyzer output."""
     pred = SilenceStrategy().trim(longer_wav, PRODUCTION_PARAMS, DirectAnalyzer())
     assert pred is None or (isinstance(pred, tuple) and len(pred) == 2)
+
+
+def test_parse_silence_ranges_from_ffmpeg_output():
+    """_parse_silence_ranges extracts (start, end) pairs from ffmpeg stderr."""
+    stderr = (
+        "[silencedetect @ 0x1234] silence_start: 0\n"
+        "[silencedetect @ 0x1234] silence_end: 1.5 | silence_duration: 1.5\n"
+        "[silencedetect @ 0x1234] silence_start: 30.2\n"
+        "[silencedetect @ 0x1234] silence_end: 31.0 | silence_duration: 0.8\n"
+        "[silencedetect @ 0x1234] silence_start: 65.0\n"
+        "[silencedetect @ 0x1234] silence_end: 66.5 | silence_duration: 1.5\n"
+    )
+    assert _parse_silence_ranges(stderr) == [(0.0, 1.5), (30.2, 31.0), (65.0, 66.5)]
+
+
+def test_parse_silence_ranges_empty():
+    """_parse_silence_ranges returns empty list when no silence found."""
+    assert _parse_silence_ranges("some random output\n") == []
+
+
+def test_parse_silence_ranges_unterminated():
+    """A silence_start without a matching silence_end is ignored."""
+    stderr = (
+        "[silencedetect @ 0x1234] silence_start: 0\n"
+        "[silencedetect @ 0x1234] silence_end: 1.5 | silence_duration: 1.5\n"
+        "[silencedetect @ 0x1234] silence_start: 60.0\n"
+    )
+    assert _parse_silence_ranges(stderr) == [(0.0, 1.5)]
