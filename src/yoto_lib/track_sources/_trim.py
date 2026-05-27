@@ -8,6 +8,12 @@ from __future__ import annotations
 
 import logging
 import re
+import subprocess
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -73,3 +79,93 @@ def select_boundaries(
     if end <= start:
         return None
     return (start, end)
+
+
+class Analyzer(Protocol):
+    def silence_ranges(self, path: Path, *, noise_db: float, min_duration: float) -> list[tuple[float, float]]: ...
+    def duration(self, path: Path) -> float: ...
+
+
+class DirectAnalyzer:
+    """Runs ffmpeg/ffprobe directly. Stateless; safe to share across threads."""
+
+    def silence_ranges(self, path: Path, *, noise_db: float, min_duration: float) -> list[tuple[float, float]]:
+        result = subprocess.run(
+            ["ffmpeg", "-i", str(path), "-af", f"silencedetect=noise={noise_db}dB:d={min_duration}", "-f", "null", "-"],
+            capture_output=True,
+            text=True,
+        )
+        return _parse_silence_ranges(result.stderr)
+
+    def duration(self, path: Path) -> float:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return float(result.stdout.strip())
+
+
+class TrimStrategy(Protocol):
+    name: str
+
+    def param_grid(self) -> Iterable[dict]: ...
+    def trim(self, audio_path: Path, params: dict, analyze: Analyzer) -> tuple[float, float] | None: ...
+
+
+class SilenceStrategy:
+    name = "silence"
+
+    def param_grid(self) -> Iterable[dict]:  # implemented in a later task
+        raise NotImplementedError
+
+    def trim(self, audio_path: Path, params: dict, analyze: Analyzer) -> tuple[float, float] | None:
+        ranges = analyze.silence_ranges(audio_path, noise_db=params["noise_db"], min_duration=params["min_duration"])
+        return select_boundaries(ranges, analyze.duration(audio_path), params)
+
+
+def apply_cut(audio_path: Path, start: float, end: float) -> Path:
+    """Cut [start, end] with stream copy, replacing the file in place.
+
+    Returns the same path. On ffmpeg failure, returns the original unchanged.
+    """
+    trimmed = audio_path.with_stem(audio_path.stem + "_trimmed")
+    result = subprocess.run(
+        ["ffmpeg", "-y", "-i", str(audio_path), "-ss", str(start), "-to", str(end), "-c", "copy", str(trimmed)],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        logger.debug("apply_cut: ffmpeg failed (exit %d)", result.returncode)
+        trimmed.unlink(missing_ok=True)
+        return audio_path
+    audio_path.unlink()
+    trimmed.rename(audio_path)
+    return audio_path
+
+
+def trim_audio(
+    audio_path: Path,
+    *,
+    strategy: TrimStrategy | None = None,
+    params: dict | None = None,
+    analyzer: Analyzer | None = None,
+) -> Path:
+    """Production trim entry point: predict boundaries, then apply the cut."""
+    strategy = strategy or SilenceStrategy()
+    params = PRODUCTION_PARAMS if params is None else params
+    analyzer = analyzer or DirectAnalyzer()
+    boundaries = strategy.trim(audio_path, params, analyzer)
+    if boundaries is None:
+        return audio_path
+    return apply_cut(audio_path, *boundaries)

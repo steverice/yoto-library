@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
-from yoto_lib.track_sources._trim import PRODUCTION_PARAMS, select_boundaries
+from yoto_lib.track_sources._trim import (
+    PRODUCTION_PARAMS,
+    DirectAnalyzer,
+    SilenceStrategy,
+    apply_cut,
+    select_boundaries,
+    trim_audio,
+)
 
 
 def _legacy_boundaries(ranges):
@@ -49,3 +58,61 @@ def test_start_gap_second_from_front():
     ranges = [(0.0, 1.0), (3.0, 4.0), (190.0, 191.0)]
     params = {**PRODUCTION_PARAMS, "start_gap": 2}
     assert select_boundaries(ranges, 200.0, params) == (4.0, 190.0)
+
+
+def _probe_duration(path):
+    out = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return float(out.stdout.strip())
+
+
+def test_direct_analyzer_reports_duration(longer_wav):
+    """DirectAnalyzer.duration matches ffprobe within tolerance."""
+    assert abs(DirectAnalyzer().duration(longer_wav) - 1.0) < 0.05
+
+
+def test_apply_cut_trims_in_place_and_returns_same_path(longer_wav):
+    """apply_cut cuts [0.25, 0.75] and replaces the file in place."""
+    result = apply_cut(longer_wav, 0.25, 0.75)
+    assert result == longer_wav
+    assert result.exists()
+    assert abs(_probe_duration(result) - 0.5) < 0.1
+
+
+def test_apply_cut_returns_original_when_ffmpeg_fails(longer_wav, monkeypatch):
+    """Non-zero ffmpeg exit leaves the original untouched."""
+    original_bytes = longer_wav.read_bytes()
+
+    def fake_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, 1, "", "boom")
+
+    monkeypatch.setattr("yoto_lib.track_sources._trim.subprocess.run", fake_run)
+    result = apply_cut(longer_wav, 0.25, 0.75)
+    assert result == longer_wav
+    assert result.read_bytes() == original_bytes  # unchanged
+
+
+def test_trim_audio_no_trim_returns_unchanged(longer_wav):
+    """A tone with <2 silence gaps is returned unchanged (None prediction)."""
+    result = trim_audio(longer_wav)
+    assert result == longer_wav
+    assert abs(_probe_duration(result) - 1.0) < 0.1
+
+
+def test_silence_strategy_uses_analyzer(longer_wav):
+    """SilenceStrategy.trim delegates to select_boundaries over analyzer output."""
+    pred = SilenceStrategy().trim(longer_wav, PRODUCTION_PARAMS, DirectAnalyzer())
+    assert pred is None or (isinstance(pred, tuple) and len(pred) == 2)
