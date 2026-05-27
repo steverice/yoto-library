@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from yoto_lib.tools.trim_tune.corpus import Label
-from yoto_lib.tools.trim_tune.scorer import score_fixture
+from yoto_lib.tools.trim_tune.scorer import params_key, score_all, score_fixture
 
 
 def _label(**kw):
@@ -49,3 +49,13 @@ def test_none_prediction_maps_to_full_track_never_clips():
         predicted=None,
     )
     assert fs.clip == 0  # no trim cannot clip
+
+
+def test_score_all_builds_one_configscore_per_params():
+    labels = [_label(filename="a"), _label(filename="b")]
+    p1 = params_key({"noise_db": -30.0})
+    predictions = {p1: {"a": (7.0, 191.0), "b": (7.0, 191.0)}}
+    params_by_key = {p1: {"noise_db": -30.0}}
+    scores = score_all(predictions, params_by_key, labels)
+    assert len(scores) == 1
+    assert len(scores[0].fixtures) == 2

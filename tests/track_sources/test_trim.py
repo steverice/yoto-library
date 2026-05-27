@@ -145,3 +145,10 @@ def test_parse_silence_ranges_unterminated():
         "[silencedetect @ 0x1234] silence_start: 60.0\n"
     )
     assert _parse_silence_ranges(stderr) == [(0.0, 1.5)]
+
+
+def test_param_grid_dedups_and_includes_production_defaults():
+    grid = list(SilenceStrategy().param_grid())
+    assert PRODUCTION_PARAMS in grid
+    keys = {tuple(sorted(p.items(), key=lambda kv: (kv[0], kv[1] is None, kv[1]))) for p in grid}
+    assert len(grid) == len(keys)  # no duplicates

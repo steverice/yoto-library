@@ -126,8 +126,30 @@ class TrimStrategy(Protocol):
 class SilenceStrategy:
     name = "silence"
 
-    def param_grid(self) -> Iterable[dict]:  # implemented in a later task
-        raise NotImplementedError
+    def param_grid(self) -> Iterable[dict]:
+        import itertools
+
+        noise = [-24.0, -30.0, -36.0, -40.0]
+        durations = [0.3, 0.5, 0.8]
+        start_gaps = [1, 2]
+        end_gaps = [1, 2]
+        min_gaps = [None, 0.8, 1.5]
+        edges = [None, 3.0, 5.0]
+        seen: set[tuple] = set()
+        for nd, md, sg, eg, mg, ed in itertools.product(noise, durations, start_gaps, end_gaps, min_gaps, edges):
+            params = {
+                "noise_db": nd,
+                "min_duration": md,
+                "start_gap": sg,
+                "end_gap": eg,
+                "min_gap_size": mg,
+                "require_edge_gap": ed,
+            }
+            key = tuple(sorted(params.items(), key=lambda kv: (kv[0], kv[1] is None, kv[1])))
+            if key in seen:
+                continue
+            seen.add(key)
+            yield params
 
     def trim(self, audio_path: Path, params: dict, analyze: Analyzer) -> tuple[float, float] | None:
         ranges = analyze.silence_ranges(audio_path, noise_db=params["noise_db"], min_duration=params["min_duration"])

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from yoto_lib.tools.trim_tune.corpus import Label
+    from yoto_lib.tools.trim_tune.corpus import Fixture, Label
 
 
 @dataclass(frozen=True)
@@ -63,3 +63,30 @@ def rank_survivors(configs: list[ConfigScore], tolerance: float) -> list[ConfigS
     """Survivors (no clip beyond tolerance), ranked by worst-case then total leftover."""
     survivors = [c for c in configs if c.survives(tolerance)]
     return sorted(survivors, key=lambda c: (c.worst_leftover, c.total_leftover))
+
+
+def params_key(params: dict) -> tuple:
+    return tuple(sorted(params.items(), key=lambda kv: (kv[0], kv[1] is None, kv[1])))
+
+
+def predict_all(strategy: Any, fixtures: list[Fixture], analyzer: Any) -> tuple[dict, dict]:
+    """Run the strategy over every (params, fixture-with-usable-audio). Returns (predictions, params_by_key)."""
+    predictions: dict[tuple, dict[str, tuple[float, float] | None]] = {}
+    params_by_key: dict[tuple, dict] = {}
+    usable = [f for f in fixtures if f.audio_path is not None and f.hash_ok]
+    for params in strategy.param_grid():
+        key = params_key(params)
+        params_by_key[key] = params
+        predictions[key] = {f.label.filename: strategy.trim(f.audio_path, params, analyzer) for f in usable}
+    return predictions, params_by_key
+
+
+def score_all(predictions: dict, params_by_key: dict, labels: list[Label]) -> list[ConfigScore]:
+    by_name = {label.filename: label for label in labels}
+    scores: list[ConfigScore] = []
+    for key, per_fixture in predictions.items():
+        cs = ConfigScore(params=params_by_key[key])
+        for filename, pred in per_fixture.items():
+            cs.fixtures.append(score_fixture(by_name[filename], pred))
+        scores.append(cs)
+    return scores
