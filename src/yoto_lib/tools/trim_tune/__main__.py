@@ -83,20 +83,21 @@ def build_parser() -> argparse.ArgumentParser:
 
     diag = sub.add_parser("diagnose", help="Phase 0 diagnostic over URLs")
     diag.add_argument("urls", nargs="+")
-    diag.add_argument(
-        "--save-to",
-        nargs="?",
-        const="tests/fixtures/trim_corpus",
-        default=None,
-        metavar="DIR",
+    diag_save = diag.add_mutually_exclusive_group()
+    diag_save.add_argument(
+        "--save",
         dest="save_to",
-        help=(
-            "Save downloaded audio to DIR so it can be labeled later "
-            "(default when given without a value: tests/fixtures/trim_corpus). "
-            "Without this flag, files go to a temp dir and are deleted."
-        ),
+        action="store_const",
+        const="tests/fixtures/trim_corpus",
+        help="Save downloaded audio to tests/fixtures/trim_corpus (the conventional labeling corpus dir).",
     )
-    diag.set_defaults(func=_cmd_diagnose)
+    diag_save.add_argument(
+        "--save-to",
+        dest="save_to",
+        metavar="DIR",
+        help="Save downloaded audio to DIR (explicit path).",
+    )
+    diag.set_defaults(func=_cmd_diagnose, save_to=None)
 
     aud = sub.add_parser("audition", help="play a window around a boundary via ffplay")
     aud.add_argument("--file", required=True)

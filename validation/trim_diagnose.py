@@ -5,14 +5,15 @@ refactored home of gap logic). `download()` is now always untrimmed (fetch-only)
 no `trim=` kwarg is accepted.
 Usage:
     python validation/trim_diagnose.py <url> [<url> ...]
-    python validation/trim_diagnose.py --save-to tests/fixtures/trim_corpus <url> ...
+    python validation/trim_diagnose.py --save <url> [<url> ...]
+    python validation/trim_diagnose.py --save-to <dir> <url> [<url> ...]
 
 Downloads each URL (untrimmed), runs silencedetect, prints the boundaries the
 current algorithm WOULD choose, then prompts the human to record where the song
 actually starts/ends and categorize the failure: (a) threshold, (b) wrong-gap,
-(c) no-gap, or clean. With ``--save-to`` the downloaded audio is persisted so
-labeling can pick up where the diagnostic left off; without it, files land in a
-temp dir and are deleted.
+(c) no-gap, or clean. ``--save`` persists audio to the conventional labeling
+corpus dir; ``--save-to <dir>`` writes to a custom dir; without either, files
+land in a temp dir and are deleted.
 """
 
 from __future__ import annotations
@@ -88,19 +89,21 @@ def build_parser() -> argparse.ArgumentParser:
         allow_abbrev=False,
     )
     parser.add_argument("urls", nargs="+", help="YouTube URLs to diagnose")
-    parser.add_argument(
-        "--save-to",
-        nargs="?",
-        const=DEFAULT_CORPUS_DIR,
-        default=None,
-        metavar="DIR",
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--save",
         dest="save_to",
-        help=(
-            "Save downloaded audio to DIR so it can be labeled later "
-            f"(default when given without a value: {DEFAULT_CORPUS_DIR}). "
-            "Without this flag, files go to a temp dir and are deleted."
-        ),
+        action="store_const",
+        const=DEFAULT_CORPUS_DIR,
+        help=f"Save downloaded audio to {DEFAULT_CORPUS_DIR} (the conventional labeling corpus dir).",
     )
+    group.add_argument(
+        "--save-to",
+        dest="save_to",
+        metavar="DIR",
+        help="Save downloaded audio to DIR (explicit path).",
+    )
+    parser.set_defaults(save_to=None)
     return parser
 
 
