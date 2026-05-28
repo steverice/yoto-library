@@ -8,6 +8,7 @@ python -m yoto_lib.tools.trim_tune diagnose <url> ...   # thin wrapper over Phas
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from rich.console import Console
@@ -37,9 +38,41 @@ def _cmd_sweep(args: argparse.Namespace) -> None:
     print_sweep(configs, DEFAULT_TOLERANCES, top_n=args.top, label_noise=args.label_noise)
 
 
+def _resolve_url(audio_path: Path, explicit: str | None) -> str:
+    """Pick a source URL for a label, in priority order:
+
+    1. ``explicit`` (the ``--url`` flag), wins if given.
+    2. The existing ``labels.json`` entry for this file (so re-labeling reuses
+       the URL recorded on the first label).
+    3. A sidecar ``<audio>.url`` text file next to the audio (written by
+       ``trim_diagnose --save``).
+
+    Exits with a clear message if none of those produce a URL.
+    """
+    if explicit:
+        return explicit
+    corpus_dir, filename = audio_path.parent, audio_path.name
+    labels_path = corpus_dir / "labels.json"
+    if labels_path.exists():
+        try:
+            for entry in json.loads(labels_path.read_text()):
+                if entry.get("filename") == filename and entry.get("source_url"):
+                    return entry["source_url"]
+        except (json.JSONDecodeError, OSError):
+            pass
+    sidecar = audio_path.parent / (audio_path.name + ".url")
+    if sidecar.exists():
+        return sidecar.read_text().strip()
+    _console.print(
+        f"[red]No URL: provide --url, or run `trim_diagnose --save` to drop a `{audio_path.name}.url` sidecar.[/red]"
+    )
+    raise SystemExit(2)
+
+
 def _cmd_label(args: argparse.Namespace) -> None:
     audio_path = Path(args.file)
     corpus_dir, filename = audio_path.parent, audio_path.name
+    source_url = _resolve_url(audio_path, args.url)
     manual_fields = (args.category, args.start_max, args.end_min, args.start_min, args.end_max)
     if args.clean:
         if any(v is not None for v in manual_fields):
@@ -70,7 +103,7 @@ def _cmd_label(args: argparse.Namespace) -> None:
     upsert_label(
         corpus_dir,
         filename=filename,
-        source_url=args.url,
+        source_url=source_url,
         category=category,
         true_start_max=start_max,
         true_end_min=end_min,
@@ -107,7 +140,14 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="path to the audio file; its parent dir is treated as the corpus (holds labels.json)",
     )
-    label.add_argument("--url", required=True)
+    label.add_argument(
+        "--url",
+        default=None,
+        help=(
+            "source URL for provenance. Optional: re-labeling reuses the URL "
+            "already in labels.json, and trim_diagnose --save drops a `<file>.url` sidecar."
+        ),
+    )
     label.add_argument(
         "--clean",
         action="store_true",

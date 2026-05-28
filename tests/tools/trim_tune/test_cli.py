@@ -90,3 +90,41 @@ def test_sweep_empty_corpus_exits_cleanly(tmp_path):
     assert result.returncode == 0, result.stderr
     combined = (result.stdout + result.stderr).lower()
     assert "no usable fixtures" in combined
+
+
+def test_resolve_url_explicit_wins(tmp_path):
+    from yoto_lib.tools.trim_tune.__main__ import _resolve_url
+
+    assert _resolve_url(tmp_path / "song.opus", explicit="https://X") == "https://X"
+
+
+def test_resolve_url_reuses_existing_label_entry(tmp_path):
+    from yoto_lib.tools.trim_tune.__main__ import _resolve_url
+
+    (tmp_path / "labels.json").write_text(json.dumps([{"filename": "song.opus", "source_url": "https://saved"}]))
+    assert _resolve_url(tmp_path / "song.opus", explicit=None) == "https://saved"
+
+
+def test_resolve_url_reads_sidecar_when_no_label(tmp_path):
+    from yoto_lib.tools.trim_tune.__main__ import _resolve_url
+
+    (tmp_path / "song.opus.url").write_text("https://side\n")  # trailing newline must be stripped
+    assert _resolve_url(tmp_path / "song.opus", explicit=None) == "https://side"
+
+
+def test_resolve_url_explicit_beats_label_and_sidecar(tmp_path):
+    from yoto_lib.tools.trim_tune.__main__ import _resolve_url
+
+    (tmp_path / "labels.json").write_text(json.dumps([{"filename": "song.opus", "source_url": "https://saved"}]))
+    (tmp_path / "song.opus.url").write_text("https://side")
+    assert _resolve_url(tmp_path / "song.opus", explicit="https://X") == "https://X"
+
+
+def test_resolve_url_exits_when_nothing_available(tmp_path):
+    import pytest
+
+    from yoto_lib.tools.trim_tune.__main__ import _resolve_url
+
+    with pytest.raises(SystemExit) as exc:
+        _resolve_url(tmp_path / "song.opus", explicit=None)
+    assert exc.value.code == 2

@@ -66,6 +66,15 @@ def _output_dir(save_to: Path | None) -> Iterator[Path]:
             yield Path(tmp)
 
 
+def write_url_sidecar(audio_path: Path, url: str) -> Path:
+    """Write ``<audio_path>.url`` containing just the URL, so the labeler can
+    recover provenance without the user re-typing it. Returns the sidecar path.
+    """
+    sidecar = audio_path.parent / (audio_path.name + ".url")
+    sidecar.write_text(url + "\n")
+    return sidecar
+
+
 def main(urls: list[str], save_to: str | Path | None = None) -> None:
     provider = YouTubeProvider()
     save_dir = Path(save_to) if save_to else None
@@ -79,7 +88,8 @@ def main(urls: list[str], save_to: str | Path | None = None) -> None:
             print(f"  silence gaps ({len(ranges)}): {ranges}")
             print(f"  current algorithm would trim to: {chosen}")
             if save_dir is not None:
-                print(f"  saved to: {audio}")
+                sidecar = write_url_sidecar(audio, url)
+                print(f"  saved to: {audio}  (URL in {sidecar.name})")
             print("  -> Listen, find the TRUE song start/end, and bucket: a/b/c/clean")
 
 
