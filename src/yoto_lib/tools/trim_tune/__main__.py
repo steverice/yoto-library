@@ -17,7 +17,7 @@ from yoto_lib.tools.trim_tune.corpus import load_corpus
 from yoto_lib.tools.trim_tune.labeler import audition, upsert_label
 from yoto_lib.tools.trim_tune.report import print_sweep
 from yoto_lib.tools.trim_tune.scorer import predict_all, score_all
-from yoto_lib.track_sources._trim import SilenceStrategy
+from yoto_lib.track_sources._trim import DirectAnalyzer, SilenceStrategy
 
 _console = Console()
 
@@ -38,20 +38,50 @@ def _cmd_sweep(args: argparse.Namespace) -> None:
 
 
 def _cmd_label(args: argparse.Namespace) -> None:
+    corpus_dir = Path(args.corpus)
+    manual_fields = (args.category, args.start_max, args.end_min, args.start_min, args.end_max)
+    if args.clean:
+        if any(v is not None for v in manual_fields):
+            _console.print(
+                "[red]--clean conflicts with --category / --start-max / --end-min / --start-min / --end-max[/red]"
+            )
+            raise SystemExit(2)
+        duration = DirectAnalyzer().duration(corpus_dir / args.file)
+        category, start_max, end_min, start_min, end_max = "clean", 0.0, duration, 0.0, duration
+    else:
+        missing = [
+            name
+            for name, val in (
+                ("--category", args.category),
+                ("--start-max", args.start_max),
+                ("--end-min", args.end_min),
+            )
+            if val is None
+        ]
+        if missing:
+            _console.print(
+                f"[red]Missing required: {', '.join(missing)} "
+                "(or use --clean as a shortcut for full-track labels)[/red]"
+            )
+            raise SystemExit(2)
+        category, start_max, end_min = args.category, args.start_max, args.end_min
+        start_min, end_max = args.start_min, args.end_max
     upsert_label(
-        Path(args.corpus),
+        corpus_dir,
         filename=args.file,
         source_url=args.url,
-        category=args.category,
-        true_start_max=args.start_max,
-        true_end_min=args.end_min,
-        true_start_min=args.start_min,
-        true_end_max=args.end_max,
+        category=category,
+        true_start_max=start_max,
+        true_end_min=end_min,
+        true_start_min=start_min,
+        true_end_max=end_max,
     )
 
 
 def _cmd_audition(args: argparse.Namespace) -> None:
-    audition(Path(args.file), args.at, args.window)
+    file = Path(args.file)
+    at = max(0.0, DirectAnalyzer().duration(file) - args.at_end) if args.at_end is not None else args.at
+    audition(file, at, args.window)
 
 
 def _cmd_diagnose(args: argparse.Namespace) -> None:
@@ -74,9 +104,34 @@ def build_parser() -> argparse.ArgumentParser:
     label.add_argument("--corpus", required=True)
     label.add_argument("--file", required=True)
     label.add_argument("--url", required=True)
-    label.add_argument("--category", required=True, choices=["threshold", "wrong_gap", "no_gap", "clean"])
-    label.add_argument("--start-max", type=float, required=True, dest="start_max")
-    label.add_argument("--end-min", type=float, required=True, dest="end_min")
+    label.add_argument(
+        "--clean",
+        action="store_true",
+        help=(
+            "Shortcut: label as 'clean' (whole track should be kept; don't trim). "
+            "Auto-fills category, start-max, end-min from the file's duration."
+        ),
+    )
+    label.add_argument(
+        "--category",
+        choices=["threshold", "wrong_gap", "no_gap", "clean"],
+        default=None,
+        help="(required unless --clean)",
+    )
+    label.add_argument(
+        "--start-max",
+        type=float,
+        default=None,
+        dest="start_max",
+        help="(required unless --clean) latest acceptable trim-start, in seconds",
+    )
+    label.add_argument(
+        "--end-min",
+        type=float,
+        default=None,
+        dest="end_min",
+        help="(required unless --clean) earliest acceptable trim-end, in seconds",
+    )
     label.add_argument("--start-min", type=float, default=None, dest="start_min")
     label.add_argument("--end-max", type=float, default=None, dest="end_max")
     label.set_defaults(func=_cmd_label)
@@ -101,9 +156,22 @@ def build_parser() -> argparse.ArgumentParser:
 
     aud = sub.add_parser("audition", help="play a window around a boundary via ffplay")
     aud.add_argument("--file", required=True)
-    aud.add_argument("--at", type=float, required=True)
+    aud_at = aud.add_mutually_exclusive_group(required=True)
+    aud_at.add_argument(
+        "--at",
+        type=float,
+        help="start time in seconds from the beginning of the file",
+    )
+    aud_at.add_argument(
+        "--at-end",
+        type=float,
+        dest="at_end",
+        help=(
+            "start time in seconds before the END of the file (probes duration; useful when you don't know the length)"
+        ),
+    )
     aud.add_argument("--window", type=float, default=4.0)
-    aud.set_defaults(func=_cmd_audition)
+    aud.set_defaults(func=_cmd_audition, at=None, at_end=None)
     return parser
 
 
