@@ -1,7 +1,7 @@
 """Trim tuning harness CLI.
 
 python -m yoto_lib.tools.trim_tune sweep --corpus <dir> [--top N]
-python -m yoto_lib.tools.trim_tune label --corpus <dir> --file <name> ...
+python -m yoto_lib.tools.trim_tune label --file <path> ...
 python -m yoto_lib.tools.trim_tune diagnose <url> ...   # thin wrapper over Phase 0
 """
 
@@ -38,7 +38,8 @@ def _cmd_sweep(args: argparse.Namespace) -> None:
 
 
 def _cmd_label(args: argparse.Namespace) -> None:
-    corpus_dir = Path(args.corpus)
+    audio_path = Path(args.file)
+    corpus_dir, filename = audio_path.parent, audio_path.name
     manual_fields = (args.category, args.start_max, args.end_min, args.start_min, args.end_max)
     if args.clean:
         if any(v is not None for v in manual_fields):
@@ -46,7 +47,7 @@ def _cmd_label(args: argparse.Namespace) -> None:
                 "[red]--clean conflicts with --category / --start-max / --end-min / --start-min / --end-max[/red]"
             )
             raise SystemExit(2)
-        duration = DirectAnalyzer().duration(corpus_dir / args.file)
+        duration = DirectAnalyzer().duration(audio_path)
         category, start_max, end_min, start_min, end_max = "clean", 0.0, duration, 0.0, duration
     else:
         missing = [
@@ -68,7 +69,7 @@ def _cmd_label(args: argparse.Namespace) -> None:
         start_min, end_max = args.start_min, args.end_max
     upsert_label(
         corpus_dir,
-        filename=args.file,
+        filename=filename,
         source_url=args.url,
         category=category,
         true_start_max=start_max,
@@ -101,8 +102,11 @@ def build_parser() -> argparse.ArgumentParser:
     sweep.set_defaults(func=_cmd_sweep)
 
     label = sub.add_parser("label", help="add/replace a corpus label")
-    label.add_argument("--corpus", required=True)
-    label.add_argument("--file", required=True)
+    label.add_argument(
+        "--file",
+        required=True,
+        help="path to the audio file; its parent dir is treated as the corpus (holds labels.json)",
+    )
     label.add_argument("--url", required=True)
     label.add_argument(
         "--clean",
