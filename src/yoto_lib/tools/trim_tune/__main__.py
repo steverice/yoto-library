@@ -57,7 +57,7 @@ def _cmd_audition(args: argparse.Namespace) -> None:
 def _cmd_diagnose(args: argparse.Namespace) -> None:
     from validation.trim_diagnose import main as diagnose_main  # ty: ignore[unresolved-import]
 
-    diagnose_main(args.urls)
+    diagnose_main(args.urls, save_to=args.save_to)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -83,6 +83,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     diag = sub.add_parser("diagnose", help="Phase 0 diagnostic over URLs")
     diag.add_argument("urls", nargs="+")
+    diag.add_argument(
+        "--save-to",
+        nargs="?",
+        const="tests/fixtures/trim_corpus",
+        default=None,
+        metavar="DIR",
+        dest="save_to",
+        help=(
+            "Save downloaded audio to DIR so it can be labeled later "
+            "(default when given without a value: tests/fixtures/trim_corpus). "
+            "Without this flag, files go to a temp dir and are deleted."
+        ),
+    )
     diag.set_defaults(func=_cmd_diagnose)
 
     aud = sub.add_parser("audition", help="play a window around a boundary via ffplay")
