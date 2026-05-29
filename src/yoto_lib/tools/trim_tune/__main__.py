@@ -25,6 +25,33 @@ _console = Console()
 DEFAULT_TOLERANCES = [0.05, 0.10, 0.15, 0.20, 0.30]
 
 
+class _Formatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
+    """Shows argument defaults and preserves raw description/epilog formatting."""
+
+
+_LABEL_CATEGORIES_EPILOG = """\
+Category meanings (which failure mode — or non-failure — this fixture
+represents; sweep results are reported per-category):
+
+  threshold  A quiet musical moment INSIDE the song reads as silence and is
+             picked as a boundary. Tuned by `--noise-db` (lower = stricter).
+
+  wrong_gap  Multiple silence gaps exist and the algorithm picked the wrong
+             one (e.g. a within-song breath or beat drop instead of the
+             promo<->song boundary). Tuned by `min_gap_size`,
+             `require_edge_gap`, `start_gap`, `end_gap`.
+
+  no_gap     Promo runs straight into the song with no silence between them.
+             Silence-only strategies fundamentally cannot find this boundary;
+             if these dominate, the harness will recommend a non-silence
+             strategy.
+
+  clean      The song should not be trimmed at all (anti-failure fixture --
+             guards against the new knobs over-trimming a clean track). Use
+             `--clean` as a shortcut for these.
+"""
+
+
 def _cmd_sweep(args: argparse.Namespace) -> None:
     fixtures = load_corpus(Path(args.corpus))
     usable = [f for f in fixtures if f.audio_path is not None and f.hash_ok]
@@ -134,7 +161,12 @@ def build_parser() -> argparse.ArgumentParser:
     sweep.add_argument("--label-noise", type=float, default=0.05)
     sweep.set_defaults(func=_cmd_sweep)
 
-    label = sub.add_parser("label", help="add/replace a corpus label")
+    label = sub.add_parser(
+        "label",
+        help="add/replace a corpus label",
+        formatter_class=_Formatter,
+        epilog=_LABEL_CATEGORIES_EPILOG,
+    )
     label.add_argument(
         "--file",
         required=True,
