@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
+import argparse
 import io
 import logging
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    import argparse
 
 from yoto_lib.billing.costs import reset_tracker
 from yoto_lib.mka import get_attachment, remove_attachment, set_attachment
@@ -35,8 +32,10 @@ def add_select_icon_command(subparsers: argparse._SubParsersAction) -> None:
     sub.add_argument(
         "--strength",
         type=float,
-        default=None,
-        help="img2img strength 0-1; lower keeps the reference, higher favors the prompt (requires --reference)",
+        # SUPPRESS (not None) keeps the attribute absent when unset, so the handler can tell it
+        # apart from an explicit value, and the formatter shows the real 0.75 below instead of "None".
+        default=argparse.SUPPRESS,
+        help="img2img strength 0-1; lower keeps reference, higher favors prompt (requires --reference; default 0.75)",
     )
     sub.set_defaults(func=handle_select_icon)
 
