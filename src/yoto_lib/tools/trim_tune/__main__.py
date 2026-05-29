@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 
@@ -27,6 +28,14 @@ DEFAULT_TOLERANCES = [0.05, 0.10, 0.15, 0.20, 0.30]
 
 class _Formatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
     """Shows argument defaults and preserves raw description/epilog formatting."""
+
+
+class _SubParser(argparse.ArgumentParser):
+    """Subparser that defaults to ``_Formatter`` so each subcommand's --help shows defaults."""
+
+    def __init__(self, *args: Any, **kwargs: Any):
+        kwargs.setdefault("formatter_class", _Formatter)
+        super().__init__(*args, **kwargs)
 
 
 _LABEL_CATEGORIES_EPILOG = """\
@@ -153,7 +162,7 @@ def _cmd_diagnose(args: argparse.Namespace) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="trim_tune", allow_abbrev=False)
-    sub = parser.add_subparsers(dest="command", required=True)
+    sub = parser.add_subparsers(dest="command", required=True, parser_class=_SubParser)
 
     sweep = sub.add_parser("sweep", help="sweep configs over the corpus and report")
     sweep.add_argument("--corpus", required=True)
@@ -164,7 +173,6 @@ def build_parser() -> argparse.ArgumentParser:
     label = sub.add_parser(
         "label",
         help="add/replace a corpus label",
-        formatter_class=_Formatter,
         epilog=_LABEL_CATEGORIES_EPILOG,
     )
     label.add_argument(

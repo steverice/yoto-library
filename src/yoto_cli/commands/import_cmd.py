@@ -124,7 +124,9 @@ def add_import_command(subparsers: argparse._SubParsersAction) -> None:
 
     sub = subparsers.add_parser("import", help="bulk import: convert audio files into a playlist")
     sub.add_argument("source", type=Path, help="source folder of audio files").completer = _UnimportedDirCompleter()
-    sub.add_argument("--output", "-o", default=None, type=Path, help="output folder (defaults to source)")
+    sub.add_argument(
+        "--output", "-o", default=None, type=Path, help="output folder; when unset, uses the source folder"
+    )
     sub.set_defaults(func=handle_import)
 
 

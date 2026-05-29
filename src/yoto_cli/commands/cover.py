@@ -44,7 +44,7 @@ def add_cover_command(subparsers: argparse._SubParsersAction) -> None:
         type=str.lower,
         choices=["gemini", "openai"],
         default=None,
-        help="image model for the illustration (default: gemini with --reference, else openai)",
+        help="image model for the illustration; when unset, uses gemini with --reference, else openai",
     )
     sub.add_argument(
         "--reference",

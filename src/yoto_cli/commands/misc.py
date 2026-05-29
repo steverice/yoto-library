@@ -114,7 +114,9 @@ def handle_init(args: argparse.Namespace) -> None:
 def add_export_command(subparsers: argparse._SubParsersAction) -> None:
     sub = subparsers.add_parser("export", help="export MKA tracks back to their original audio format")
     sub.add_argument("playlist", type=Path, help="playlist folder")
-    sub.add_argument("--output", "-o", default=None, type=Path, help="output folder (defaults to <playlist>-exported/)")
+    sub.add_argument(
+        "--output", "-o", default=None, type=Path, help="output folder; when unset, uses <playlist>-exported/"
+    )
     sub.set_defaults(func=handle_export)
 
 

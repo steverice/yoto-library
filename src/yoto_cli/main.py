@@ -42,6 +42,18 @@ class Formatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionH
     pass
 
 
+class _SubParser(argparse.ArgumentParser):
+    """Subparser that shows argument defaults in its --help.
+
+    Subparsers don't inherit the parent parser's ``formatter_class``, so default
+    every one created via ``add_subparsers(parser_class=_SubParser)`` to ``Formatter``.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any):
+        kwargs.setdefault("formatter_class", Formatter)
+        super().__init__(*args, **kwargs)
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the top-level argument parser with all subcommands."""
     parser = argparse.ArgumentParser(
@@ -50,7 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
         allow_abbrev=False,
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose (DEBUG) console output")
-    subparsers = parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(dest="command", parser_class=_SubParser)
 
     from yoto_cli.commands.billing import add_providers_command
     from yoto_cli.commands.cover import add_cover_command, add_print_command
