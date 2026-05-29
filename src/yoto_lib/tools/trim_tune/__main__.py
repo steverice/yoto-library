@@ -166,8 +166,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     sweep = sub.add_parser("sweep", help="sweep configs over the corpus and report")
     sweep.add_argument("--corpus", required=True)
-    sweep.add_argument("--top", type=int, default=10)
-    sweep.add_argument("--label-noise", type=float, default=0.05)
+    sweep.add_argument("--top", type=int, default=10, help="how many top-scoring configs to show")
+    sweep.add_argument("--label-noise", type=float, default=0.05, help="assumed label-noise floor, in seconds")
     sweep.set_defaults(func=_cmd_sweep)
 
     label = sub.add_parser(
@@ -254,7 +254,7 @@ def build_parser() -> argparse.ArgumentParser:
             "start time in seconds before the END of the file (probes duration; useful when you don't know the length)"
         ),
     )
-    aud.add_argument("--window", type=float, default=4.0)
+    aud.add_argument("--window", type=float, default=4.0, help="seconds of audio to play around the boundary")
     aud.set_defaults(func=_cmd_audition, at=None, at_end=None)
     return parser
 
