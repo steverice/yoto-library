@@ -11,13 +11,12 @@ import pytest
 from yoto_lib.providers.base import ProviderStatus
 
 
-def _make_subprocess_result(returncode: int = 0, stdout: str = "", stderr: str = "") -> MagicMock:
-    """Build a fake CompletedProcess-like object."""
-    mock = MagicMock()
-    mock.returncode = returncode
-    mock.stdout = stdout
-    mock.stderr = stderr
-    return mock
+def _make_popen(returncode: int = 0, stdout: str = "", stderr: str = "") -> MagicMock:
+    """Build a fake Popen whose communicate() returns (stdout, stderr)."""
+    proc = MagicMock()
+    proc.returncode = returncode
+    proc.communicate.return_value = (stdout, stderr)
+    return proc
 
 
 def _wrap_result(text: str, is_error: bool = False) -> str:
@@ -48,9 +47,9 @@ class TestClaudeProviderCall:
         from yoto_lib.providers.claude_provider import ClaudeProvider
 
         payload = json.dumps({"animals": ["cat", "dog"]})
-        sp_result = _make_subprocess_result(stdout=_wrap_result(payload))
+        proc = _make_popen(stdout=_wrap_result(payload))
 
-        with patch("subprocess.run", return_value=sp_result):
+        with patch("subprocess.Popen", return_value=proc):
             result = ClaudeProvider().call("list some animals", extract_json=False)
 
         assert result == payload
@@ -58,19 +57,21 @@ class TestClaudeProviderCall:
     def test_timeout_returns_none(self):
         from yoto_lib.providers.claude_provider import ClaudeProvider
 
-        with patch(
-            "subprocess.run",
-            side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=120),
-        ):
+        proc = MagicMock()
+        # communicate() raises on the first (timed-out) call, then returns after kill().
+        proc.communicate.side_effect = [subprocess.TimeoutExpired(cmd="claude", timeout=120), ("", "")]
+
+        with patch("subprocess.Popen", return_value=proc):
             result = ClaudeProvider().call("anything")
 
         assert result is None
+        proc.kill.assert_called_once()
 
     def test_nonzero_exit_returns_none(self):
         from yoto_lib.providers.claude_provider import ClaudeProvider
 
-        sp_result = _make_subprocess_result(returncode=1, stdout="")
-        with patch("subprocess.run", return_value=sp_result):
+        proc = _make_popen(returncode=1, stdout="")
+        with patch("subprocess.Popen", return_value=proc):
             result = ClaudeProvider().call("anything")
 
         assert result is None
@@ -80,9 +81,9 @@ class TestClaudeProviderCall:
 
         inner = '{"key": "value"}'
         fenced = f"```json\n{inner}\n```"
-        sp_result = _make_subprocess_result(stdout=_wrap_result(fenced))
+        proc = _make_popen(stdout=_wrap_result(fenced))
 
-        with patch("subprocess.run", return_value=sp_result):
+        with patch("subprocess.Popen", return_value=proc):
             result = ClaudeProvider().call("give me json")
 
         assert result == inner
@@ -92,13 +93,46 @@ class TestClaudeProviderCall:
 
         inner = '{"key": "value"}'
         fenced = f"```json\n{inner}\n```"
-        sp_result = _make_subprocess_result(stdout=_wrap_result(fenced))
+        proc = _make_popen(stdout=_wrap_result(fenced))
 
-        with patch("subprocess.run", return_value=sp_result):
+        with patch("subprocess.Popen", return_value=proc):
             result = ClaudeProvider().call("give me json", extract_json=False)
 
         # When extract_json=False the fences should NOT be stripped
         assert result == fenced
+
+    def test_pre_cancelled_token_skips_subprocess(self):
+        from yoto_lib.cancel import CancelToken
+        from yoto_lib.providers.claude_provider import ClaudeProvider
+
+        token = CancelToken()
+        token.cancel()
+        with patch("subprocess.Popen") as mock_popen:
+            result = ClaudeProvider().call("anything", cancel_token=token)
+
+        assert result is None
+        mock_popen.assert_not_called()
+
+    def test_cancel_during_call_returns_none(self):
+        from yoto_lib.cancel import CancelToken
+        from yoto_lib.providers.claude_provider import ClaudeProvider
+
+        token = CancelToken()
+        proc = _make_popen(stdout=_wrap_result("ignored"))
+
+        # Simulate cancellation arriving while the subprocess is in flight: the
+        # token is cancelled by the time communicate() returns.
+        def _cancel_then_return(*_args, **_kwargs):
+            token.cancel()
+            return ("", "")
+
+        proc.communicate.side_effect = _cancel_then_return
+
+        with patch("subprocess.Popen", return_value=proc):
+            result = ClaudeProvider().call("anything", cancel_token=token)
+
+        assert result is None
+        proc.terminate.assert_called_once()  # the registered proc was terminated
 
 
 # ── ClaudeProvider.check_status ───────────────────────────────────────────────

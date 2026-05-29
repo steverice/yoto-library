@@ -55,12 +55,20 @@ class TestClaudeProviderCheckStatus:
         assert status.healthy is True
 
 
+def _make_popen(returncode: int = 0, stdout: str = "") -> MagicMock:
+    """Build a fake Popen whose communicate() returns (stdout, "")."""
+    proc = MagicMock()
+    proc.returncode = returncode
+    proc.communicate.return_value = (stdout, "")
+    return proc
+
+
 class TestClaudeProviderCall:
     def test_returns_none_on_cli_not_found(self):
         """Returns None when claude CLI is not installed."""
         provider = ClaudeProvider()
         with patch(
-            "yoto_lib.providers.claude_provider.subprocess.run",
+            "yoto_lib.providers.claude_provider.subprocess.Popen",
             side_effect=FileNotFoundError("claude"),
         ):
             result = provider.call("test prompt")
@@ -71,9 +79,11 @@ class TestClaudeProviderCall:
         import subprocess
 
         provider = ClaudeProvider()
+        proc = MagicMock()
+        proc.communicate.side_effect = [subprocess.TimeoutExpired("claude", 120), ("", "")]
         with patch(
-            "yoto_lib.providers.claude_provider.subprocess.run",
-            side_effect=subprocess.TimeoutExpired("claude", 120),
+            "yoto_lib.providers.claude_provider.subprocess.Popen",
+            return_value=proc,
         ):
             result = provider.call("test prompt")
         assert result is None
@@ -81,12 +91,9 @@ class TestClaudeProviderCall:
     def test_returns_none_on_nonzero_exit(self):
         """Returns None when CLI exits with non-zero status."""
         provider = ClaudeProvider()
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        mock_result.stdout = ""
         with patch(
-            "yoto_lib.providers.claude_provider.subprocess.run",
-            return_value=mock_result,
+            "yoto_lib.providers.claude_provider.subprocess.Popen",
+            return_value=_make_popen(returncode=1, stdout=""),
         ):
             result = provider.call("test prompt")
         assert result is None
@@ -94,12 +101,10 @@ class TestClaudeProviderCall:
     def test_returns_none_on_error_response(self):
         """Returns None when Claude's JSON response has is_error=True."""
         provider = ClaudeProvider()
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = json.dumps({"is_error": True, "result": "Error occurred"})
+        stdout = json.dumps({"is_error": True, "result": "Error occurred"})
         with patch(
-            "yoto_lib.providers.claude_provider.subprocess.run",
-            return_value=mock_result,
+            "yoto_lib.providers.claude_provider.subprocess.Popen",
+            return_value=_make_popen(returncode=0, stdout=stdout),
         ):
             result = provider.call("test prompt")
         assert result is None
@@ -107,13 +112,11 @@ class TestClaudeProviderCall:
     def test_successful_call_returns_text(self):
         """Returns extracted text on successful call."""
         provider = ClaudeProvider()
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = json.dumps({"result": '```json\n{"answer": 42}\n```'})
+        stdout = json.dumps({"result": '```json\n{"answer": 42}\n```'})
         with (
             patch(
-                "yoto_lib.providers.claude_provider.subprocess.run",
-                return_value=mock_result,
+                "yoto_lib.providers.claude_provider.subprocess.Popen",
+                return_value=_make_popen(returncode=0, stdout=stdout),
             ),
             patch("yoto_lib.billing.costs.get_tracker") as mock_tracker,
         ):
@@ -124,13 +127,11 @@ class TestClaudeProviderCall:
     def test_extract_json_disabled(self):
         """With extract_json=False, returns raw text without stripping fences."""
         provider = ClaudeProvider()
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = json.dumps({"result": "  plain text  "})
+        stdout = json.dumps({"result": "  plain text  "})
         with (
             patch(
-                "yoto_lib.providers.claude_provider.subprocess.run",
-                return_value=mock_result,
+                "yoto_lib.providers.claude_provider.subprocess.Popen",
+                return_value=_make_popen(returncode=0, stdout=stdout),
             ),
             patch("yoto_lib.billing.costs.get_tracker") as mock_tracker,
         ):

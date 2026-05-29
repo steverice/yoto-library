@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from yoto_lib.cancel import CancelToken
     from yoto_lib.yoto.api import YotoAPI
 
 
@@ -252,14 +253,18 @@ def _start_eval(
     round_result: IconSelectionRound,
     title: str,
     album_desc: str | None,
-) -> Future[tuple[int, list[float]]]:
-    """Run compare_icons_llm in a background thread and return its Future.
+) -> tuple[Future[tuple[int, list[float]]], CancelToken]:
+    """Run compare_icons_llm in a background thread.
 
-    The caller should not block on this future inside the UI loop; instead poll
-    it with Future.done() so the terminal stays responsive.
+    Returns the Future plus a CancelToken. The caller should not block on the
+    future inside the UI loop; instead poll it with Future.done() so the terminal
+    stays responsive, and call token.cancel() once the user's choice is final to
+    halt the still-running scoring subprocess.
     """
+    from yoto_lib.cancel import CancelToken
     from yoto_lib.icons.icon_llm import compare_icons_llm
 
+    token = CancelToken()
     executor = ThreadPoolExecutor(max_workers=1)
     raw_bytes_list = [rb for rb, _ in round_result.batch]
     yoto_bytes = round_result.yoto_bytes
@@ -272,11 +277,12 @@ def _start_eval(
             yoto_icon=yoto_bytes,
             descriptions=descriptions,
             album_description=album_desc,
+            cancel_token=token,
         )
 
     future: Future = executor.submit(_run)
     executor.shutdown(wait=False)
-    return future
+    return future, token
 
 
 def _apply_chosen_icon(
@@ -406,7 +412,7 @@ def select_icons_for_tracks(
             continue
 
         # Start AI evaluation in background — UI is shown immediately
-        eval_future: Future = _start_eval(round_result, title, album_desc)
+        eval_future, eval_token = _start_eval(round_result, title, album_desc)
 
         if on_round_ready:
             on_round_ready()
@@ -417,7 +423,8 @@ def select_icons_for_tracks(
             raw = _choose(round_result, eval_future)
 
             if raw == "r":
-                # Abandon in-flight eval (it finishes harmlessly) and regenerate
+                # Halt the abandoned eval before starting a fresh round
+                eval_token.cancel()
                 round_result = _generate_round(
                     title=title,
                     album_desc=album_desc,
@@ -436,7 +443,7 @@ def select_icons_for_tracks(
                     _error_fn(f"Icon generation failed for {track_path.name}")
                     skipped = True
                     break
-                eval_future = _start_eval(round_result, title, album_desc)
+                eval_future, eval_token = _start_eval(round_result, title, album_desc)
                 continue
 
             try:
@@ -451,6 +458,8 @@ def select_icons_for_tracks(
             chosen_candidate = round_result.candidates[choice - 1]
 
             if chosen_candidate.is_existing:
+                # User kept the current icon — stop the still-running scoring
+                eval_token.cancel()
                 skipped = True
                 break
 
@@ -462,6 +471,9 @@ def select_icons_for_tracks(
 
                 with contextlib.suppress(Exception):
                     llm_winner, llm_scores = eval_future.result()
+
+            # Selection is final — halt any in-flight scoring before applying
+            eval_token.cancel()
 
             # Log feedback for tuning
             log_icon_feedback(

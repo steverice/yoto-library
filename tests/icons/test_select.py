@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import threading
 from unittest.mock import MagicMock, patch
 
 from PIL import Image
@@ -56,3 +57,60 @@ class TestReferenceThreading:
 
         assert mock_round.call_args.kwargs["reference_image"] == b"ref-bytes"
         assert mock_round.call_args.kwargs["strength"] == 0.6
+
+
+class TestScoringCancellation:
+    def test_selecting_icon_cancels_in_flight_scoring(self, tmp_path):
+        """Choosing an icon while scoring is still running cancels its token."""
+        from yoto_lib.icons.select import IconCandidate, IconSelectionRound, select_icons_for_tracks
+
+        track = tmp_path / "song.mka"
+        track.write_bytes(b"x")
+
+        captured: dict[str, object] = {}
+        started = threading.Event()
+
+        def fake_compare(
+            title,
+            candidates,
+            *,
+            yoto_icon=None,
+            descriptions=None,
+            album_description=None,
+            cancel_token=None,
+        ):
+            captured["token"] = cancel_token
+            started.set()
+            # Simulate long-running scoring that respects cancellation, with a
+            # ceiling so a regression can never hang the test forever.
+            cancel_token._event.wait(timeout=5)
+            return 1, []
+
+        round_obj = IconSelectionRound(
+            candidates=[IconCandidate(image=Image.new("RGB", (16, 16), "black"), label="ai")],
+            winner=0,
+            scores=[],
+            descriptions=["ai"],
+            batch=[(_png_16(), Image.new("RGB", (16, 16), "black"))],
+            yoto_bytes=None,
+        )
+
+        def fake_choose(_round, _future):
+            started.wait(2)  # let scoring get in flight before we choose
+            return "1"
+
+        with (
+            patch("yoto_lib.icons.icon_catalog.get_catalog", return_value=[]),
+            patch("yoto_lib.icons.select._read_album_description", return_value=None),
+            patch("yoto_lib.icons.select._ensure_lyrics_summary", return_value=None),
+            patch("yoto_lib.icons.select._get_existing_icon", return_value=None),
+            patch("yoto_lib.icons.select._generate_round", return_value=round_obj),
+            patch("yoto_lib.icons.icon_llm.compare_icons_llm", side_effect=fake_compare),
+            patch("yoto_lib.icons.select._apply_chosen_icon"),
+            patch("yoto_lib.icons.icon_llm.log_icon_feedback"),
+        ):
+            select_icons_for_tracks([track], MagicMock(), choose_icon=fake_choose)
+
+        token = captured["token"]
+        assert token is not None
+        assert token.cancelled() is True

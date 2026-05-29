@@ -6,9 +6,13 @@ import json
 import logging
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from yoto_lib.providers.base import check_status_on_error
 from yoto_lib.providers.claude_provider import ClaudeProvider
+
+if TYPE_CHECKING:
+    from yoto_lib.cancel import CancelToken
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +153,7 @@ def compare_icons_llm(
     yoto_icon: bytes | None = None,
     descriptions: list[str] | None = None,
     album_description: str | None = None,
+    cancel_token: CancelToken | None = None,
 ) -> tuple[int, list[float]]:
     """Compare candidate icon images using Claude Sonnet with vision.
 
@@ -160,6 +165,8 @@ def compare_icons_llm(
         yoto_icon: Optional PNG bytes for the Yoto catalog icon (appended last).
         descriptions: Visual descriptions used to generate each candidate.
         album_description: Album/show description for context.
+        cancel_token: Optional token that aborts the underlying Claude call (e.g.
+            when the user has already chosen an icon).
 
     Returns:
         (winner, scores) where winner is 1-indexed. On failure, returns (1, []).
@@ -208,7 +215,7 @@ def compare_icons_llm(
         )
 
         try:
-            text = _claude.call(prompt, allowed_tools="Read", timeout=120, model="sonnet")
+            text = _claude.call(prompt, allowed_tools="Read", timeout=120, model="sonnet", cancel_token=cancel_token)
             if text is None:
                 return 1, []
             data = json.loads(text)

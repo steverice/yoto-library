@@ -8,8 +8,12 @@ import os
 import re
 import shutil
 import subprocess
+from typing import TYPE_CHECKING
 
 from yoto_lib.providers.base import Provider, ProviderStatus, StatusPageMixin
+
+if TYPE_CHECKING:
+    from yoto_lib.cancel import CancelToken
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +63,7 @@ class ClaudeProvider(StatusPageMixin, Provider):
         timeout: int = 120,
         model: str = "haiku",
         extract_json: bool = True,
+        cancel_token: CancelToken | None = None,
     ) -> str | None:
         """Call Claude and return the response text, or None on failure.
 
@@ -68,11 +73,22 @@ class ClaudeProvider(StatusPageMixin, Provider):
             timeout: Timeout in seconds.
             model: Claude model shortname (haiku, sonnet).
             extract_json: If True, strip markdown code fences from the response.
+            cancel_token: Optional token that aborts the call. On the CLI path the
+                subprocess is terminated when the token is cancelled; on the SDK
+                path an in-flight request cannot be force-cancelled, so the token
+                is only honored before the request starts.
         """
         if os.environ.get("ANTHROPIC_API_KEY"):
-            return self._call_sdk(prompt, model=model, timeout=timeout, extract_json=extract_json)
+            return self._call_sdk(
+                prompt, model=model, timeout=timeout, extract_json=extract_json, cancel_token=cancel_token
+            )
         return self._call_cli(
-            prompt, model=model, timeout=timeout, extract_json=extract_json, allowed_tools=allowed_tools
+            prompt,
+            model=model,
+            timeout=timeout,
+            extract_json=extract_json,
+            allowed_tools=allowed_tools,
+            cancel_token=cancel_token,
         )
 
     def _call_sdk(
@@ -82,13 +98,28 @@ class ClaudeProvider(StatusPageMixin, Provider):
         model: str,
         timeout: int,
         extract_json: bool,
+        cancel_token: CancelToken | None = None,
     ) -> str | None:
-        """Call Claude via the Anthropic SDK."""
+        """Call Claude via the Anthropic SDK.
+
+        A blocking SDK request cannot be interrupted from another thread, so
+        ``cancel_token`` is only checked before the request is issued.
+        """
+        if cancel_token is not None and cancel_token.cancelled():
+            return None
+
         try:
             import anthropic
         except ImportError:
             logger.warning("anthropic package not installed, falling back to CLI")
-            return self._call_cli(prompt, model=model, timeout=timeout, extract_json=extract_json, allowed_tools="")
+            return self._call_cli(
+                prompt,
+                model=model,
+                timeout=timeout,
+                extract_json=extract_json,
+                allowed_tools="",
+                cancel_token=cancel_token,
+            )
 
         model_id = _MODEL_MAP.get(model, model)
 
@@ -124,8 +155,14 @@ class ClaudeProvider(StatusPageMixin, Provider):
         timeout: int,
         extract_json: bool,
         allowed_tools: str,
+        cancel_token: CancelToken | None = None,
     ) -> str | None:
-        """Call Claude via the CLI subprocess."""
+        """Call Claude via the CLI subprocess.
+
+        Runs the CLI under a ``Popen`` registered with ``cancel_token`` so a
+        cancellation from another thread terminates it instead of letting the
+        call run to completion.
+        """
         cmd = [
             "claude",
             "-p",
@@ -140,18 +177,33 @@ class ClaudeProvider(StatusPageMixin, Provider):
         else:
             cmd += ["--tools", ""]
 
+        if cancel_token is not None and cancel_token.cancelled():
+            return None
+
         try:
             logger.debug("claude_provider.call_cli: model=%s prompt_length=%d", model, len(prompt))
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-            logger.debug(
-                "claude_provider.call_cli: exit_code=%d response_length=%d", result.returncode, len(result.stdout)
-            )
-            if result.returncode != 0:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if cancel_token is not None:
+                cancel_token.register(proc)
+            try:
+                stdout, _stderr = proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate()
                 return None
-            wrapper = json.loads(result.stdout)
+            finally:
+                if cancel_token is not None:
+                    cancel_token.unregister(proc)
+
+            if cancel_token is not None and cancel_token.cancelled():
+                return None
+            logger.debug("claude_provider.call_cli: exit_code=%d response_length=%d", proc.returncode, len(stdout))
+            if proc.returncode != 0:
+                return None
+            wrapper = json.loads(stdout)
             if wrapper.get("is_error"):
                 return None
-            text = wrapper.get("result", result.stdout).strip()
+            text = wrapper.get("result", stdout).strip()
             if extract_json:
                 text = _extract_json(text)
             logger.debug("claude_provider.call_cli response: %s", text[:500])
@@ -159,6 +211,6 @@ class ClaudeProvider(StatusPageMixin, Provider):
 
             get_tracker().record(f"claude_{model}", subscription=self.is_subscription)
             return text
-        except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+        except (FileNotFoundError, json.JSONDecodeError) as exc:
             logger.debug("claude_provider.call_cli: failed with %s", type(exc).__name__)
             return None

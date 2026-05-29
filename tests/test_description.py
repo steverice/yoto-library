@@ -130,16 +130,19 @@ class TestGenerateDescriptionIntegration:
 
         with (
             patch("yoto_lib.description.mka.read_tags") as mock_tags,
-            patch("yoto_lib.description.subprocess.run") as mock_run,
+            patch("yoto_lib.description.subprocess.Popen") as mock_popen,
         ):
             mock_tags.side_effect = [
                 {"title": "Beautiful Day", "artist": "Daniel Tiger"},
                 {"title": "Use Your Words", "artist": "Daniel Tiger"},
             ]
-            mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout='{"result": "A friendly tiger explores feelings and friendship in his neighborhood."}',
+            proc = MagicMock()
+            proc.returncode = 0
+            proc.communicate.return_value = (
+                '{"result": "A friendly tiger explores feelings and friendship in his neighborhood."}',
+                "",
             )
+            mock_popen.return_value = proc
 
             log_messages = []
             generate_description(playlist, log=log_messages.append)
@@ -160,10 +163,10 @@ class TestGenerateDescriptionIntegration:
 
         with (
             patch("yoto_lib.description.mka.read_tags") as mock_tags,
-            patch("yoto_lib.description.subprocess.run") as mock_run,
+            patch("yoto_lib.description.subprocess.Popen") as mock_popen,
         ):
             mock_tags.return_value = {"title": "Song"}
-            mock_run.side_effect = FileNotFoundError("claude not found")
+            mock_popen.side_effect = FileNotFoundError("claude not found")
 
             log_messages = []
             generate_description(playlist, log=log_messages.append)
