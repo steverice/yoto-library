@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import os
@@ -9,12 +10,9 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import httpx
 
-if TYPE_CHECKING:
-    import argparse
 from yoto_lib.config import WORKERS
 from yoto_lib.playlist import write_jsonl
 from yoto_lib.yoto.api import YotoAPI
@@ -115,7 +113,11 @@ def add_export_command(subparsers: argparse._SubParsersAction) -> None:
     sub = subparsers.add_parser("export", help="export MKA tracks back to their original audio format")
     sub.add_argument("playlist", type=Path, help="playlist folder")
     sub.add_argument(
-        "--output", "-o", default=None, type=Path, help="output folder; when unset, uses <playlist>-exported/"
+        "--output",
+        "-o",
+        default=argparse.SUPPRESS,
+        type=Path,
+        help="output folder; when unset, uses <playlist>-exported/",
     )
     sub.set_defaults(func=handle_export)
 
@@ -125,10 +127,11 @@ def handle_export(args: argparse.Namespace) -> None:
     from yoto_cli.main import require_path
     from yoto_lib.mka import apply_source_patch, extract_audio
 
-    logger.debug("command: export playlist=%s output=%s", args.playlist, args.output)
+    output = getattr(args, "output", None)
+    logger.debug("command: export playlist=%s output=%s", args.playlist, output)
     require_path(args.playlist)
     playlist_path: Path = args.playlist
-    output_path = args.output if args.output else playlist_path.parent / f"{playlist_path.name}-exported"
+    output_path = output if output else playlist_path.parent / f"{playlist_path.name}-exported"
     output_path.mkdir(parents=True, exist_ok=True)
 
     from yoto_cli.progress import _console

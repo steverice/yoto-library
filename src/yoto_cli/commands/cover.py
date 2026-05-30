@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import os
@@ -10,8 +11,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import argparse
-
     from rich.progress import TaskID
 
 from yoto_cli.main import _print_cost_summary
@@ -43,7 +42,7 @@ def add_cover_command(subparsers: argparse._SubParsersAction) -> None:
         "--model",
         type=str.lower,
         choices=["gemini", "openai"],
-        default=None,
+        default=argparse.SUPPRESS,
         help="image model for the illustration; when unset, uses gemini with --reference, else openai",
     )
     sub.add_argument(

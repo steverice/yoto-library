@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import logging
 import re
 import subprocess
@@ -12,8 +13,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import argparse
-
     from rich.progress import TaskID
 
 from yoto_cli.main import _print_cost_summary
@@ -125,7 +124,11 @@ def add_import_command(subparsers: argparse._SubParsersAction) -> None:
     sub = subparsers.add_parser("import", help="bulk import: convert audio files into a playlist")
     sub.add_argument("source", type=Path, help="source folder of audio files").completer = _UnimportedDirCompleter()
     sub.add_argument(
-        "--output", "-o", default=None, type=Path, help="output folder; when unset, uses the source folder"
+        "--output",
+        "-o",
+        default=argparse.SUPPRESS,
+        type=Path,
+        help="output folder; when unset, uses the source folder",
     )
     sub.set_defaults(func=handle_import)
 
@@ -136,9 +139,10 @@ def handle_import(args: argparse.Namespace) -> None:
 
     require_path(args.source)
 
-    logger.debug("command: import source=%s output=%s", args.source, args.output)
+    output = getattr(args, "output", None)
+    logger.debug("command: import source=%s output=%s", args.source, output)
     source_path: Path = args.source
-    output_path: Path = args.output if args.output else source_path
+    output_path: Path = output if output else source_path
 
     output_path.mkdir(parents=True, exist_ok=True)
     reset_tracker()
