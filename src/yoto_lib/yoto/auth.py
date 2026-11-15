@@ -1,22 +1,40 @@
-"""OAuth 2.0 Device Code flow for Yoto API, with Keychain token storage."""
+"""OAuth 2.0 PKCE browser login for the Yoto API, with Keychain token storage."""
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import logging
+import os
+import secrets
 import time
+import webbrowser
 from dataclasses import dataclass
-from typing import Any
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import TYPE_CHECKING, Any
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 import keyring
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
 AUTH_BASE = "https://login.yotoplay.com"
 API_AUDIENCE = "https://api.yotoplay.com"
-CLIENT_ID = "kT1e1feuj42SxERTSWearGDWWmNeQ15x"
-SCOPES = "profile offline_access openid"
+CLIENT_ID_ENV = "YOTO_CLIENT_ID"
+DEVELOPER_DASHBOARD_URL = "https://dashboard.yoto.dev"
+# `user:content:manage` covers MYO content and (via `user:icons:manage`) custom icons. Yoto's scope docs
+# do not name a scope for audio or cover-image uploads; those are assumed to fall under it.
+SCOPES = "user:content:manage offline_access"
+REDIRECT_HOST = "127.0.0.1"
+REDIRECT_PORT = 8787
+REDIRECT_PATH = "/callback"
+REDIRECT_URI = f"http://{REDIRECT_HOST}:{REDIRECT_PORT}{REDIRECT_PATH}"
+CALLBACK_TIMEOUT_SECONDS = 300.0
 KEYCHAIN_SERVICE = "yoto-library"
 KEYCHAIN_ACCOUNT = "tokens"
 REFRESH_MARGIN_SECONDS = 30
@@ -79,47 +97,132 @@ class AuthError(Exception):
     pass
 
 
-def request_device_code() -> dict[str, Any]:
-    logger.debug("requesting device code")
+def get_client_id() -> str:
+    client_id = os.environ.get(CLIENT_ID_ENV, "").strip()
+    if not client_id:
+        raise AuthError(
+            f"{CLIENT_ID_ENV} is not set. Register an app at {DEVELOPER_DASHBOARD_URL} "
+            f"with redirect URI {REDIRECT_URI}, then set {CLIENT_ID_ENV} to its client ID (e.g. in .env)."
+        )
+    return client_id
+
+
+def generate_pkce_pair() -> tuple[str, str]:
+    """Return a `(code_verifier, code_challenge)` pair using the S256 method."""
+    verifier = secrets.token_urlsafe(64)
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    return verifier, challenge
+
+
+def build_authorize_url(client_id: str, code_challenge: str, state: str) -> str:
+    params = {
+        "audience": API_AUDIENCE,
+        "scope": SCOPES,
+        "response_type": "code",
+        "client_id": client_id,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
+        "redirect_uri": REDIRECT_URI,
+        "state": state,
+    }
+    return f"{AUTH_BASE}/authorize?{urlencode(params)}"
+
+
+class _CallbackHandler(BaseHTTPRequestHandler):
+    server: _CallbackServer
+
+    def do_GET(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path != REDIRECT_PATH:
+            self.send_response(404)
+            self.end_headers()
+            return
+        self.server.params = {k: v[0] for k, v in parse_qs(parsed.query).items()}
+        ok = "code" in self.server.params
+        body = "Signed in to Yoto. You can close this tab." if ok else "Yoto sign-in failed. Check the terminal."
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(body.encode("utf-8"))
+
+    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 - signature set by BaseHTTPRequestHandler
+        logger.debug("callback server: " + format, *args)
+
+
+class _CallbackServer(HTTPServer):
+    params: dict[str, str] | None = None
+
+
+def _start_callback_server() -> _CallbackServer:
+    try:
+        server = _CallbackServer((REDIRECT_HOST, REDIRECT_PORT), _CallbackHandler)
+    except OSError as exc:
+        raise AuthError(f"Could not listen on {REDIRECT_HOST}:{REDIRECT_PORT} for the sign-in callback: {exc}") from exc
+    server.timeout = 1.0
+    return server
+
+
+def wait_for_callback(server: _CallbackServer, state: str, timeout: float = CALLBACK_TIMEOUT_SECONDS) -> str:
+    """Serve requests until the redirect arrives; return the authorization code."""
+    deadline = time.monotonic() + timeout
+    while server.params is None:
+        if time.monotonic() >= deadline:
+            raise AuthError("Timed out waiting for Yoto sign-in.")
+        server.handle_request()
+
+    params = server.params
+    if "error" in params:
+        detail = params.get("error_description") or params["error"]
+        raise AuthError(f"Yoto sign-in failed: {detail}")
+    if params.get("state") != state:
+        raise AuthError("Sign-in callback had a mismatched state parameter; refusing it.")
+    if "code" not in params:
+        raise AuthError("Sign-in callback did not include an authorization code.")
+    return params["code"]
+
+
+def exchange_code(client_id: str, code: str, code_verifier: str) -> TokenSet:
+    logger.debug("exchanging authorization code for tokens")
     response = httpx.post(
-        f"{AUTH_BASE}/oauth/device/code",
-        json={
-            "client_id": CLIENT_ID,
-            "scope": SCOPES,
-            "audience": API_AUDIENCE,
+        f"{AUTH_BASE}/oauth/token",
+        data={
+            "grant_type": "authorization_code",
+            "client_id": client_id,
+            "code_verifier": code_verifier,
+            "code": code,
+            "redirect_uri": REDIRECT_URI,
         },
     )
-    response.raise_for_status()
-    return response.json()
+    if response.status_code != 200:
+        raise AuthError(f"Token exchange failed ({response.status_code}): {response.text}")
+    return TokenSet.from_auth_response(response.json())
 
 
-def poll_for_token(device_code: str, interval: int = 5, max_attempts: int = 60) -> TokenSet:
-    logger.debug("polling for device code authorization")
-    for attempt in range(max_attempts):
-        response = httpx.post(
-            f"{AUTH_BASE}/oauth/token",
-            json={
-                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-                "device_code": device_code,
-                "client_id": CLIENT_ID,
-            },
-        )
-        if response.status_code == 200:
-            logger.debug("device code authorized (attempt %d)", attempt + 1)
-            return TokenSet.from_auth_response(response.json())
+def run_browser_login(on_url: Callable[[str], None] | None = None) -> TokenSet:
+    """Sign in through the browser with OAuth PKCE and a loopback redirect, then store the tokens.
 
-        error = response.json().get("error")
-        if error == "authorization_pending":
-            time.sleep(interval)
-        elif error == "slow_down":
-            interval += 5
-            time.sleep(interval)
-        elif error == "expired_token":
-            raise AuthError("Device code expired. Please restart authentication.")
-        else:
-            raise AuthError(f"Unexpected auth error: {error}")
+    `on_url` receives the authorization URL so the caller can show it in case the
+    browser does not open on its own.
+    """
+    logger.debug("starting PKCE browser login")
+    client_id = get_client_id()
+    verifier, challenge = generate_pkce_pair()
+    state = secrets.token_urlsafe(16)
+    url = build_authorize_url(client_id, challenge, state)
 
-    raise AuthError("Polling timed out waiting for authorization.")
+    server = _start_callback_server()
+    try:
+        if on_url is not None:
+            on_url(url)
+        webbrowser.open(url)
+        code = wait_for_callback(server, state)
+    finally:
+        server.server_close()
+
+    tokens = exchange_code(client_id, code, verifier)
+    save_tokens(tokens)
+    return tokens
 
 
 def refresh_tokens(tokens: TokenSet) -> TokenSet:
@@ -128,7 +231,7 @@ def refresh_tokens(tokens: TokenSet) -> TokenSet:
         f"{AUTH_BASE}/oauth/token",
         json={
             "grant_type": "refresh_token",
-            "client_id": CLIENT_ID,
+            "client_id": get_client_id(),
             "refresh_token": tokens.refresh_token,
         },
     )
@@ -159,21 +262,4 @@ def get_valid_token(interactive: bool = True) -> TokenSet:
     if not interactive:
         raise AuthError("Not authenticated. Run 'yoto auth' to log in.")
 
-    return run_device_code_flow()
-
-
-def run_device_code_flow() -> TokenSet:
-    logger.debug("starting device code flow")
-    device = request_device_code()
-    print(f"\nOpen this URL in your browser: {device['verification_uri']}")  # noqa: T201 - user-facing auth flow
-    print(f"Enter code: {device['user_code']}\n")  # noqa: T201 - user-facing auth flow
-    print(f"Or open directly: {device['verification_uri_complete']}\n")  # noqa: T201 - user-facing auth flow
-    print("Waiting for authorization...")  # noqa: T201 - user-facing auth flow
-
-    tokens = poll_for_token(
-        device["device_code"],
-        interval=device.get("interval", 5),
-    )
-    save_tokens(tokens)
-    print("Authenticated successfully!")  # noqa: T201 - user-facing auth flow
-    return tokens
+    return run_browser_login(on_url=lambda url: logger.warning("Sign in to Yoto in your browser: %s", url))

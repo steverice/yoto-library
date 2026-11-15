@@ -59,13 +59,26 @@ uv sync
 
 ## Quick start
 
+**Register a Yoto app (one time):**
+
+The CLI signs in with your own Yoto developer app, so you need a client ID:
+
+1. Sign in to the [Yoto developer dashboard](https://dashboard.yoto.dev) and create a public client app.
+2. Add `http://127.0.0.1:8787/callback` as an allowed callback (redirect) URL.
+3. Allow the `user:content:manage` and `offline_access` scopes.
+4. Put the app's client ID in `.env`:
+
+```
+YOTO_CLIENT_ID=your-client-id
+```
+
 **Authenticate:**
 
 ```
 yoto auth
 ```
 
-Opens a device code flow — visit the URL shown, enter the code, and your token is saved to macOS Keychain.
+Opens your browser to sign in to Yoto. After you approve, the browser returns to a temporary local server on port 8787 and your tokens are saved to macOS Keychain.
 
 **Pull an existing playlist:**
 
@@ -126,7 +139,7 @@ Bedtime Songs/
 
 ### `yoto auth`
 
-Authenticate with Yoto via OAuth device code flow. Tokens are stored in macOS Keychain.
+Sign in to Yoto in the browser (OAuth PKCE with a loopback redirect to `http://127.0.0.1:8787/callback`). Requires `YOTO_CLIENT_ID` — see [Quick start](#quick-start). Tokens are stored in macOS Keychain.
 
 ### `yoto sync [path]`
 
@@ -289,7 +302,7 @@ Print the shell completion setup command for zsh, bash, or fish. Auto-detects yo
 
 ## Configuration
 
-Authentication is handled via macOS Keychain — no config file needed. Run `yoto auth` to log in.
+Authentication tokens are stored in macOS Keychain — no config file needed. Set `YOTO_CLIENT_ID` to your Yoto developer app's client ID, then run `yoto auth` to log in.
 
 AI services require API keys set as environment variables (e.g., in `.env` at the project root):
 

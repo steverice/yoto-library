@@ -41,7 +41,7 @@ class TestAuthCommand:
         assert hasattr(args, "func")
 
     def test_auth_command_runs(self):
-        with patch("yoto_cli.commands.misc.run_device_code_flow") as mock_flow:
+        with patch("yoto_cli.commands.misc.run_browser_login") as mock_flow:
             from yoto_cli.commands.misc import handle_auth
 
             handle_auth(argparse.Namespace())
@@ -51,7 +51,7 @@ class TestAuthCommand:
         from yoto_cli.commands.misc import handle_auth
 
         with (
-            patch("yoto_cli.commands.misc.run_device_code_flow", side_effect=AuthError("Device code expired")),
+            patch("yoto_cli.commands.misc.run_browser_login", side_effect=AuthError("YOTO_CLIENT_ID is not set")),
             pytest.raises(SystemExit),
         ):
             handle_auth(argparse.Namespace())
