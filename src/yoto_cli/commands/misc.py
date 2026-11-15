@@ -16,25 +16,31 @@ import httpx
 from yoto_lib.config import WORKERS
 from yoto_lib.playlist import write_jsonl
 from yoto_lib.yoto.api import YotoAPI
-from yoto_lib.yoto.auth import AuthError, run_device_code_flow
+from yoto_lib.yoto.auth import AuthError, run_browser_login
 
 logger = logging.getLogger(__name__)
 
 
 def add_auth_command(subparsers: argparse._SubParsersAction) -> None:
-    sub = subparsers.add_parser("auth", help="authenticate with Yoto (OAuth device code flow)")
+    sub = subparsers.add_parser("auth", help="sign in to Yoto in the browser (needs YOTO_CLIENT_ID)")
     sub.set_defaults(func=handle_auth)
 
 
 def handle_auth(args: argparse.Namespace) -> None:
     logger.debug("command: auth")
-    try:
-        run_device_code_flow()
-    except AuthError as exc:
-        from yoto_cli.progress import error
+    from yoto_cli.progress import _console, error, success
 
+    def show_url(url: str) -> None:
+        _console.print("Opening your browser to sign in to Yoto. If it does not open, visit:")
+        _console.print(url, soft_wrap=True, markup=False, highlight=False)
+        _console.print("Waiting for sign-in…")
+
+    try:
+        run_browser_login(on_url=show_url)
+    except AuthError as exc:
         error(str(exc))
         raise SystemExit(1) from exc
+    success("Signed in to Yoto.")
 
 
 def add_reorder_command(subparsers: argparse._SubParsersAction) -> None:
