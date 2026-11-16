@@ -27,9 +27,10 @@ AUTH_BASE = "https://login.yotoplay.com"
 API_AUDIENCE = "https://api.yotoplay.com"
 CLIENT_ID_ENV = "YOTO_CLIENT_ID"
 DEVELOPER_DASHBOARD_URL = "https://dashboard.yoto.dev"
-# `user:content:manage` covers MYO content and (via `user:icons:manage`) custom icons. Yoto's scope docs
-# do not name a scope for audio or cover-image uploads; those are assumed to fall under it.
-SCOPES = "user:content:manage offline_access"
+# Yoto's docs say `user:content:manage` includes `user:content:view` and `user:icons:manage`, but issued
+# tokens carry only the scopes requested by name, and `GET /content/{id}` returns 403 without
+# `user:content:view`. So every scope is requested explicitly.
+SCOPES = "user:content:view user:content:manage user:icons:manage offline_access"
 REDIRECT_HOST = "127.0.0.1"
 REDIRECT_PORT = 8787
 REDIRECT_PATH = "/callback"
