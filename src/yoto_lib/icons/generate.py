@@ -109,7 +109,8 @@ def generate_raw_grid(track_title: str) -> bytes | None:
 
     try:
         image_bytes = provider.generate(prompt, CANVAS_SIZE, CANVAS_SIZE)
-    except (OSError, httpx.HTTPError):
+    except (OSError, httpx.HTTPError) as exc:
+        logger.warning("Icon grid generation failed for '%s': %s", track_title, exc)
         return None
 
     try:
@@ -148,7 +149,8 @@ def generate_retrodiffusion_icon(track_title: str) -> tuple[bytes | None, bytes 
 
         try:
             image_bytes = provider.generate(prompt, ICON_SIZE, ICON_SIZE)
-        except (OSError, httpx.HTTPError):
+        except (OSError, httpx.HTTPError) as exc:
+            logger.warning("Icon generation failed for '%s': %s", track_title, exc)
             return None, None
 
         with contextlib.suppress(OSError):
@@ -207,7 +209,8 @@ def generate_retrodiffusion_icons(
             raw_bytes = provider.generate_batch(
                 prompt, ICON_SIZE, ICON_SIZE, input_image=prepared_ref, strength=strength
             )[0]
-        except (OSError, httpx.HTTPError):
+        except (OSError, httpx.HTTPError) as exc:
+            logger.warning("Icon generation failed for '%s': %s", desc, exc)
             if on_icon_done:
                 on_icon_done(idx)
             return (idx, None)

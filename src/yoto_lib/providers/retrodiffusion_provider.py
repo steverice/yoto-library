@@ -62,7 +62,13 @@ class RetroDiffusionProvider(ImageProvider):
             json=payload,
             timeout=60,
         )
-        response.raise_for_status()
+        if response.is_error:
+            # `raise_for_status()` drops the body, which carries the useful part (e.g. insufficient credit).
+            raise httpx.HTTPStatusError(
+                f"RetroDiffusion returned {response.status_code}: {response.text[:300]}",
+                request=response.request,
+                response=response,
+            )
         data = response.json()
         images = [base64.b64decode(b64) for b64 in data["base64_images"]]
         logger.debug("retrodiffusion: generated %d images", len(images))

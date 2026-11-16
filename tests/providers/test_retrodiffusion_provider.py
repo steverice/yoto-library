@@ -20,7 +20,7 @@ def _fake_response(num_images: int):
 
     mock = MagicMock()
     mock.json.return_value = {"base64_images": images}
-    mock.raise_for_status = MagicMock()
+    mock.is_error = False
     return mock
 
 
@@ -96,3 +96,23 @@ class TestImg2Img:
         payload = mock_post.call_args.kwargs["json"]
         assert "input_image" not in payload
         assert "strength" not in payload
+
+
+class TestErrors:
+    def test_http_error_includes_response_body(self):
+        """An error response raises with the API's own message, e.g. an insufficient-credit notice."""
+        import httpx
+        import pytest
+
+        from yoto_lib.providers.retrodiffusion_provider import RetroDiffusionProvider
+
+        request = httpx.Request("POST", "https://api.retrodiffusion.ai/v1/inferences")
+        response = httpx.Response(402, json={"detail": "Insufficient balance"}, request=request)
+
+        with patch.dict("os.environ", {"RETRODIFFUSION_API_KEY": "test-key"}):
+            provider = RetroDiffusionProvider()
+        with (
+            patch("httpx.post", return_value=response),
+            pytest.raises(httpx.HTTPStatusError, match=r"402.*Insufficient balance"),
+        ):
+            provider.generate_batch("prompt", 16, 16)

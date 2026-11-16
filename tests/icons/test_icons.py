@@ -203,6 +203,23 @@ class TestGenerateRetrodiffusionIcons:
             assert isinstance(raw_bytes, bytes)
             assert processed_img.size == (16, 16)
 
+    def test_logs_generation_failure(self, caplog):
+        """A failed generation is logged as a warning with the provider's error, not dropped silently."""
+        import httpx
+
+        mock_provider = MagicMock()
+        mock_provider.generate_batch.side_effect = httpx.HTTPError("RetroDiffusion returned 402: Insufficient balance")
+
+        with (
+            patch("yoto_lib.icons.generate.RetroDiffusionProvider", return_value=mock_provider),
+            caplog.at_level("WARNING", logger="yoto_lib.icons.generate"),
+        ):
+            results = generate_retrodiffusion_icons(["fork and carrot"])
+
+        assert results == []
+        assert "fork and carrot" in caplog.text
+        assert "Insufficient balance" in caplog.text
+
     def test_returns_empty_on_provider_init_failure(self):
         """Returns empty list when provider init fails."""
         with patch(
