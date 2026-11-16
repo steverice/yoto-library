@@ -17,7 +17,7 @@ class TestTokenSet:
             "refresh_token": "rt_abc123",
             "token_type": "Bearer",
             "expires_in": 86400,
-            "scope": "user:content:view user:content:manage user:icons:manage offline_access",
+            "scope": "user:content:view user:content:manage user:icons:manage family:library:view offline_access",
         }
         tokens = TokenSet.from_auth_response(response)
         assert tokens.access_token == response["access_token"]
@@ -171,7 +171,7 @@ class TestPkce:
         assert f"{parsed.scheme}://{parsed.netloc}{parsed.path}" == "https://login.yotoplay.com/authorize"
         assert params == {
             "audience": "https://api.yotoplay.com",
-            "scope": "user:content:view user:content:manage user:icons:manage offline_access",
+            "scope": "user:content:view user:content:manage user:icons:manage family:library:view offline_access",
             "response_type": "code",
             "client_id": "cid",
             "code_challenge": "chal",

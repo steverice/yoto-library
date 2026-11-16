@@ -27,10 +27,10 @@ AUTH_BASE = "https://login.yotoplay.com"
 API_AUDIENCE = "https://api.yotoplay.com"
 CLIENT_ID_ENV = "YOTO_CLIENT_ID"
 DEVELOPER_DASHBOARD_URL = "https://dashboard.yoto.dev"
-# Yoto's docs say `user:content:manage` includes `user:content:view` and `user:icons:manage`, but issued
-# tokens carry only the scopes requested by name, and `GET /content/{id}` returns 403 without
-# `user:content:view`. So every scope is requested explicitly.
-SCOPES = "user:content:view user:content:manage user:icons:manage offline_access"
+# Every scope is requested by name: a token for `user:content:manage` alone carried only that scope
+# (not the ones the dashboard marks "included automatically"), and `GET /content/{id}` returned 403
+# naming `user:content:view` and `family:library:view` as required.
+SCOPES = "user:content:view user:content:manage user:icons:manage family:library:view offline_access"
 REDIRECT_HOST = "127.0.0.1"
 REDIRECT_PORT = 8787
 REDIRECT_PATH = "/callback"
