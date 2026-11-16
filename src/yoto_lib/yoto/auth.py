@@ -48,10 +48,12 @@ class TokenSet:
     expires_at: float
 
     @classmethod
-    def from_auth_response(cls, response: dict) -> TokenSet:
+    def from_auth_response(cls, response: dict[str, Any], previous_refresh_token: str | None = None) -> TokenSet:
+        """Build from a token response. Without refresh-token rotation, a refresh response
+        omits `refresh_token`, so the previous one is carried over."""
         return cls(
             access_token=response["access_token"],
-            refresh_token=response["refresh_token"],
+            refresh_token=response.get("refresh_token") or previous_refresh_token or "",
             token_type=response["token_type"],
             expires_at=time.time() + response["expires_in"],
         )
@@ -236,7 +238,7 @@ def refresh_tokens(tokens: TokenSet) -> TokenSet:
         },
     )
     response.raise_for_status()
-    new_tokens = TokenSet.from_auth_response(response.json())
+    new_tokens = TokenSet.from_auth_response(response.json(), previous_refresh_token=tokens.refresh_token)
     logger.debug("token refresh successful")
     return new_tokens
 
