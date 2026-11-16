@@ -320,6 +320,19 @@ class TestTokenRefresh:
         assert new_tokens.access_token == "at_new"
         assert new_tokens.refresh_token == "rt_new"
 
+    def test_refresh_keeps_old_refresh_token_when_not_rotated(self, mocker, client_id):
+        from yoto_lib.yoto.auth import refresh_tokens
+
+        mock_response = mocker.Mock()
+        mock_response.json.return_value = {"access_token": "at_new", "token_type": "Bearer", "expires_in": 86400}
+        mocker.patch("httpx.post", return_value=mock_response)
+
+        old = TokenSet(access_token="at_old", refresh_token="rt_old", token_type="Bearer", expires_at=0.0)
+        new_tokens = refresh_tokens(old)
+
+        assert new_tokens.access_token == "at_new"
+        assert new_tokens.refresh_token == "rt_old"
+
 
 class TestGetValidToken:
     def test_returns_valid_token_from_keychain(self, mocker):
