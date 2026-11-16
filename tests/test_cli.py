@@ -684,9 +684,7 @@ class TestCoverCommand:
 
     def test_cover_parses_model_and_reference(self, tmp_path):
         parser = build_parser()
-        args = parser.parse_args(
-            ["cover", str(tmp_path), "--model", "gemini", "--reference", str(tmp_path / "r.png")]
-        )
+        args = parser.parse_args(["cover", str(tmp_path), "--model", "gemini", "--reference", str(tmp_path / "r.png")])
         assert args.model == "gemini"
         assert args.reference == tmp_path / "r.png"
 
@@ -718,8 +716,13 @@ class TestCoverCommand:
         ):
             handle_cover(
                 argparse.Namespace(
-                    path=folder, force=False, backup=False, ignore_album_art=True, style=None,
-                    model="openai", reference=ref,
+                    path=folder,
+                    force=False,
+                    backup=False,
+                    ignore_album_art=True,
+                    style=None,
+                    model="openai",
+                    reference=ref,
                 )
             )
 
@@ -745,8 +748,13 @@ class TestCoverCommand:
         ):
             handle_cover(
                 argparse.Namespace(
-                    path=folder, force=False, backup=False, ignore_album_art=True, style=None,
-                    model=None, reference=ref,
+                    path=folder,
+                    force=False,
+                    backup=False,
+                    ignore_album_art=True,
+                    style=None,
+                    model=None,
+                    reference=ref,
                 )
             )
 
