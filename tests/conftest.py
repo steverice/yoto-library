@@ -4,7 +4,68 @@ import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import httpx
 import pytest
+
+# Variables a developer's `.env` may set. `yoto_cli.main` calls `load_dotenv()` at import, which
+# searches upward from the working directory, so tests could otherwise pick up real keys (e.g.
+# `ANTHROPIC_API_KEY` flips `ClaudeProvider` from the mocked CLI path to the live SDK path).
+_DOTENV_VARS = (
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "OPENAI_API_KEY",
+    "RETRODIFFUSION_API_KEY",
+    "TOGETHER_API_KEY",
+    "TOGETHER_ORG_ID",
+    "YOTO_CLIENT_ID",
+    "YOTO_ICC_PROFILE",
+)
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+@pytest.fixture(autouse=True)
+def _isolate_env(monkeypatch):
+    for name in _DOTENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_keychain(monkeypatch):
+    """Keep tests out of the real macOS Keychain (e.g. stored Yoto tokens)."""
+    store: dict[tuple[str, str], str] = {}
+
+    def delete(service, account):
+        store.pop((service, account), None)
+
+    monkeypatch.setattr("keyring.get_password", lambda service, account: store.get((service, account)))
+    monkeypatch.setattr(
+        "keyring.set_password", lambda service, account, value: store.update({(service, account): value})
+    )
+    monkeypatch.setattr("keyring.delete_password", delete)
+
+
+@pytest.fixture(autouse=True)
+def _block_network(request, monkeypatch):
+    """Fail any real httpx request to a non-loopback host unless the test is marked `integration`."""
+    if request.node.get_closest_marker("integration"):
+        return
+    real_sync = httpx.HTTPTransport.handle_request
+    real_async = httpx.AsyncHTTPTransport.handle_async_request
+
+    def check(req):
+        if req.url.host not in _LOOPBACK_HOSTS:
+            raise httpx.ConnectError(f"network access blocked in unit tests: {req.url}", request=req)
+
+    def handle_request(self, req):
+        check(req)
+        return real_sync(self, req)
+
+    async def handle_async_request(self, req):
+        check(req)
+        return await real_async(self, req)
+
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", handle_request)
+    monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", handle_async_request)
 
 
 @pytest.fixture

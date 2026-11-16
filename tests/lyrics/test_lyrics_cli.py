@@ -158,6 +158,7 @@ class TestSelectIconLyricsSummary:
             ) as mock_summarize,
             patch("yoto_lib.icons.icon_llm.match_icon_llm", return_value=(None, 0.0)),
             patch("yoto_lib.icons.generate_retrodiffusion_icons", return_value=None),
+            patch("yoto_cli.commands.icons.YotoAPI"),
         ):
             handle_select_icon(argparse.Namespace(tracks=[mka]))
 
@@ -194,6 +195,7 @@ class TestSelectIconLyricsSummary:
             patch("yoto_lib.icons.icon_llm.summarize_lyrics_for_icon") as mock_summarize,
             patch("yoto_lib.icons.icon_llm.match_icon_llm", return_value=(None, 0.0)),
             patch("yoto_lib.icons.generate_retrodiffusion_icons", return_value=None),
+            patch("yoto_cli.commands.icons.YotoAPI"),
         ):
             handle_select_icon(argparse.Namespace(tracks=[mka]))
 

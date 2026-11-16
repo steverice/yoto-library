@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import io
-import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -598,13 +597,7 @@ class TestTrySharedAlbumArtReframe:
 # ── TestReframeE2E ────────────────────────────────────────────────────────────
 
 
-needs_network = pytest.mark.skipif(
-    os.environ.get("SKIP_NETWORK_TESTS", "0") == "1",
-    reason="Network tests disabled",
-)
-
-
-@needs_network
+@pytest.mark.integration
 class TestReframeE2E:
     def test_reframe_with_real_recomposition(self, tmp_path):
         """Integration test: pad + recompose + compare with real providers."""
