@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "yoto-library"
-version = "0.3.1"
+version = "0.4.0"
 description = "Manage Yoto CYO playlists as folders on disk"
 readme = "README.md"
 license = "MIT"

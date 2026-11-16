@@ -1,3 +1,82 @@
+## v0.4.0 (2026-11-16)
+
+### ✨ Features
+
+- sign in with PKCE and a user-supplied `YOTO_CLIENT_ID`
+- show argument defaults in every subcommand's `--help`
+- stop requiring `label --url` on every call
+- add `--at-end` to audition and `--clean` shortcut to label
+- add `--save-to` flag to Phase 0 `trim_diagnose` for persistent corpus downloads
+- add `trim_tune` CLI (`sweep`/`label`/`diagnose`)
+- add ffplay-based corpus labeler
+- add `trim_tune` Rich report (survivor table, zero-survivor diagnostics)
+- add shipped-bytes verifier for the winning trim config
+- add `SilenceStrategy.param_grid` and sweep orchestration helpers
+- add `CachingAnalyzer` keyed on signature and ffmpeg version
+- add `trim_tune` scorer (clip constraint + leftover tiebreak)
+- add `trim_tune` corpus loader and label schema
+- add `DirectAnalyzer`, `apply_cut`, `SilenceStrategy`, `trim_audio`
+- add select_boundaries trim logic with legacy-equivalence invariant
+- select cover illustration model, with Gemini reference support
+- add `copy-icon` to copy an icon between MKA tracks
+- support an img2img reference image in `select-icon`
+- show icon picker immediately; run AI evaluation in background
+
+### 🐛🚑️ Fixes
+
+- say "No icon attached" when `select-icon` leaves an icon-less track alone
+- report why RetroDiffusion icon generation failed
+- request `family:library:view` so `GET /content/{id}` succeeds
+- request `user:content:view` and `user:icons:manage` explicitly
+- keep the existing refresh token when a refresh response omits it
+- suppress misleading `(default: None)` on derived-default flags
+- stop `select-icon --strength` help from claiming a `None` default
+- halt background icon scoring when the user selects an icon
+- replace ambiguous `--save-to [DIR]` with mutex `--save` / `--save-to DIR`
+- repair Phase 0 diagnostic for refactored trim API; guard empty-corpus sweep; expose audition subcommand
+- use ffmpeg's `-version` flag (not `--version`) in `detect_ffmpeg_version`
+- ignore non-MKA files in `select-icon` and `reset-icon`
+- correct `sync` progress bar denominator
+
+### ♻️ Refactorings
+
+- collapse `label --corpus DIR --file NAME` into a single `--file PATH`
+- extract trim from `download()` into shared `trim_audio` step
+
+### BREAKING CHANGE
+
+- `yoto auth` requires `YOTO_CLIENT_ID`; existing Keychain tokens from the old client stop refreshing, so run `yoto auth` again.
+
+### ✅🤡🧪 Tests
+
+- give the test run its own `HOME` and a stub `claude` CLI
+- isolate unit tests from `.env`, the Keychain and the network
+- skip the trim tests that need ffmpeg when it isn't installed
+- re-home silence-parser tests into test_trim
+
+### 🎨🏗️ Style & Architecture
+
+- apply `ruff format` to `tests/test_cli.py`
+
+### 💚👷 CI & Build
+
+- pin `astral-sh/setup-uv` to `v8.0.0` (no `v8` alias tag exists yet)
+- upgrade `astral-sh/setup-uv` from v6 to v8 for Node.js 24 compatibility
+
+### 📝💡 Documentation
+
+- describe the PKCE login and `YOTO_CLIENT_ID` in `AGENTS.md`
+- `offline_access` is a scope checkbox in the Yoto dashboard
+- match the Yoto app setup steps to the developer dashboard's labels
+- add `help=` to `trim_tune` flags so their defaults render
+- explain `--category` choices in `label --help`
+- document `select-icon` `--reference` and `--strength` flags
+
+### 🧹 chore
+
+- set Commitizen's `major_version_zero` so breaking changes bump the minor version while on 0.x
+- add Phase 0 trim diagnostic script
+
 ## v0.3.1 (2026-04-15)
 
 ### ♻️ Refactorings
