@@ -25,7 +25,7 @@ validation/            # standalone validation scripts
 
 **playlist.jsonl** — bare JSON strings, one per line. Forward-compatible with objects (a future version may mix strings and objects for per-track overrides). Do not change this format.
 
-**Authentication** — macOS Keychain via the `keyring` package. No config files for auth. Token refresh is automatic.
+**Authentication** — OAuth PKCE browser login with a loopback redirect to `http://127.0.0.1:8787/callback` (`auth.py`). Each user registers their own Yoto developer app and sets `YOTO_CLIENT_ID`; never hardcode a client ID, and do not reintroduce the device code flow (Yoto deprecated it). Request every scope by name — Yoto's tokens do not expand scopes that the docs say "include" others. Tokens live in the macOS Keychain via the `keyring` package. No config files for auth. Token refresh is automatic.
 
 **CLI framework** — argparse + argcomplete. Parser is built in `src/yoto_cli/main.py`, commands live in `src/yoto_cli/commands/`.
 
