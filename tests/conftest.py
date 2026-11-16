@@ -1,11 +1,35 @@
 import base64
+import os
+import shutil
 import struct
 import subprocess
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import httpx
 import pytest
+
+# Point HOME at a throwaway directory before any test module imports `yoto_lib`. Several modules
+# compute paths like `~/.cache/yoto/icons`, `~/.yoto/billing.json` and `~/.yoto/yoto.log` at import
+# time, so tests would otherwise write test data into the developer's real caches (an empty
+# `catalog.json` there hid every Yoto icon from the CLI for 24 hours).
+REAL_HOME = Path.home()
+TEST_HOME = Path(tempfile.mkdtemp(prefix="yoto-test-home-"))
+os.environ["HOME"] = str(TEST_HOME)
+
+# Shadow the real `claude` CLI with one that always fails, so a test that forgets to mock
+# `ClaudeProvider` cannot start real Claude sessions (the `sync` tests used to, via descriptions).
+_STUB_BIN = TEST_HOME / "bin"
+_STUB_BIN.mkdir()
+(_STUB_BIN / "claude").write_text("#!/bin/sh\necho 'claude CLI is stubbed out in unit tests' >&2\nexit 1\n")
+(_STUB_BIN / "claude").chmod(0o755)
+os.environ["PATH"] = f"{_STUB_BIN}{os.pathsep}{os.environ.get('PATH', '')}"
+
+
+def pytest_sessionfinish(session, exitstatus):
+    shutil.rmtree(TEST_HOME, ignore_errors=True)
+
 
 # Variables a developer's `.env` may set. `yoto_cli.main` calls `load_dotenv()` at import, which
 # searches upward from the working directory, so tests could otherwise pick up real keys (e.g.
