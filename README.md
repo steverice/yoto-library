@@ -63,10 +63,11 @@ uv sync
 
 The CLI signs in with your own Yoto developer app, so you need a client ID:
 
-1. Sign in to the [Yoto developer dashboard](https://dashboard.yoto.dev) and create a public client app.
-2. Add `http://127.0.0.1:8787/callback` as an allowed callback (redirect) URL.
-3. Allow the `user:content:view`, `user:content:manage`, `user:icons:manage` and `offline_access` scopes. Yoto's tokens carry only the scopes requested by name, so enable each one even though the docs say `user:content:manage` includes the others.
-4. Put the app's client ID in `.env`:
+1. Sign in to the [Yoto developer dashboard](https://dashboard.yoto.dev) and click **Create New Application**.
+2. Give it any **Name**, and set **Application Type** to **Public Client**.
+3. Under **Allowed Callback URLs**, enter `http://127.0.0.1:8787/callback` exactly (`127.0.0.1`, not `localhost`; plain `http` is fine for a loopback address despite the form's advice to use `https`).
+4. Under **Scopes**, check `user:content:view`, `user:content:manage` and `user:icons:manage`. Check all three even though `user:content:manage` claims to include the others — Yoto's tokens carry only the scopes requested by name. (`offline_access`, which lets the CLI refresh its token, isn't listed and is granted without a checkbox.)
+5. Accept the terms and create the app. Copy the **Client ID** from **My Applications** into `.env`:
 
 ```
 YOTO_CLIENT_ID=your-client-id
