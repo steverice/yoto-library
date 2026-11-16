@@ -1,4 +1,3 @@
-import os
 import struct
 import subprocess
 from pathlib import Path
@@ -423,13 +422,7 @@ class TestImportIntegration:
         assert lyrics_calls[0][0][1]["lyrics"] == "La la la"
 
 
-needs_network = pytest.mark.skipif(
-    os.environ.get("SKIP_NETWORK_TESTS", "0") == "1",
-    reason="Network tests disabled",
-)
-
-
-@needs_network
+@pytest.mark.integration
 class TestItunesE2E:
     def test_search_and_match_daniel_tiger(self):
         """Hit the real iTunes API and verify we can match a known album."""
