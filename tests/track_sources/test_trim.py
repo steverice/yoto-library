@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 
 import pytest
@@ -14,6 +15,10 @@ from yoto_lib.track_sources._trim import (
     apply_cut,
     select_boundaries,
     trim_audio,
+)
+
+needs_ffmpeg = pytest.mark.skipif(
+    shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None, reason="ffmpeg not installed"
 )
 
 
@@ -80,11 +85,13 @@ def _probe_duration(path):
     return float(out.stdout.strip())
 
 
+@needs_ffmpeg
 def test_direct_analyzer_reports_duration(longer_wav):
     """DirectAnalyzer.duration matches ffprobe within tolerance."""
     assert abs(DirectAnalyzer().duration(longer_wav) - 1.0) < 0.05
 
 
+@needs_ffmpeg
 def test_apply_cut_trims_in_place_and_returns_same_path(longer_wav):
     """apply_cut cuts [0.25, 0.75] and replaces the file in place."""
     result = apply_cut(longer_wav, 0.25, 0.75)
@@ -106,6 +113,7 @@ def test_apply_cut_returns_original_when_ffmpeg_fails(longer_wav, monkeypatch):
     assert result.read_bytes() == original_bytes  # unchanged
 
 
+@needs_ffmpeg
 def test_trim_audio_no_trim_returns_unchanged(longer_wav):
     """A tone with <2 silence gaps is returned unchanged (None prediction)."""
     result = trim_audio(longer_wav)
@@ -113,6 +121,7 @@ def test_trim_audio_no_trim_returns_unchanged(longer_wav):
     assert abs(_probe_duration(result) - 1.0) < 0.1
 
 
+@needs_ffmpeg
 def test_silence_strategy_uses_analyzer(longer_wav):
     """SilenceStrategy.trim delegates to select_boundaries over analyzer output."""
     pred = SilenceStrategy().trim(longer_wav, PRODUCTION_PARAMS, DirectAnalyzer())
