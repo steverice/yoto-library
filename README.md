@@ -66,7 +66,7 @@ The CLI signs in with your own Yoto developer app, so you need a client ID:
 1. Sign in to the [Yoto developer dashboard](https://dashboard.yoto.dev) and click **Create New Application**.
 2. Give it any **Name**, and set **Application Type** to **Public Client**.
 3. Under **Allowed Callback URLs**, enter `http://127.0.0.1:8787/callback` exactly (`127.0.0.1`, not `localhost`; plain `http` is fine for a loopback address despite the form's advice to use `https`).
-4. Under **Scopes** (the list scrolls), check `user:content:view`, `user:content:manage`, `user:icons:manage` and `offline_access`. Check the first three even though `user:content:manage` claims to include the others — Yoto's tokens carry only the scopes requested by name. `offline_access` lets the CLI refresh its token without signing in again.
+4. Under **Scopes** (the list scrolls), check `family:library:view`, `user:content:manage` and `offline_access`. The dashboard then marks `user:content:view` and `user:icons:manage` as included automatically; the CLI still requests them by name, because Yoto's tokens carry only the scopes requested.
 5. Accept the terms and create the app. Copy the **Client ID** from **My Applications** into `.env`:
 
 ```
