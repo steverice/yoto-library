@@ -5,9 +5,16 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
+
+needs_ffmpeg = pytest.mark.skipif(
+    shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None, reason="ffmpeg not installed"
+)
 
 
 def _tone_corpus(corpus_dir: Path):
@@ -40,6 +47,7 @@ def _tone_corpus(corpus_dir: Path):
     )
 
 
+@needs_ffmpeg
 def test_sweep_runs_and_reports(tmp_path):
     _tone_corpus(tmp_path / "corpus")
     repo_root = Path(__file__).resolve().parents[3]  # tests/tools/trim_tune/ -> repo root

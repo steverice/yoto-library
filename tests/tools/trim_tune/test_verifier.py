@@ -4,9 +4,16 @@ from __future__ import annotations
 
 import shutil
 
+import pytest
+
 from yoto_lib.tools.trim_tune.verifier import measure_cut
 
+needs_ffmpeg = pytest.mark.skipif(
+    shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None, reason="ffmpeg not installed"
+)
 
+
+@needs_ffmpeg
 def test_measure_cut_reports_actual_shipped_duration(longer_wav, tmp_path):
     """measure_cut runs apply_cut on a COPY and reports the real resulting duration."""
     work = tmp_path / "copy.wav"
