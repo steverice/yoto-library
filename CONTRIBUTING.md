@@ -69,7 +69,7 @@ To publish a release:
 
 1. Run the Release workflow: **Actions > Release > Run workflow** (or `gh workflow run publish.yml`)
 2. The workflow bumps the version, updates `CHANGELOG.md`, builds, pushes the tag, and creates a GitHub release
-3. Publish to PyPI: `gh workflow run pypi.yml --ref v<version>` (using the tag just created)
+3. Publish to PyPI: `gh workflow run pypi.yml --ref v<version> --field tag=v<version>` (using the tag just created; the workflow requires the `tag` input and fails without it)
 
 The version bump is determined automatically from commit history since the last tag:
 - `feat:` commits → minor bump
