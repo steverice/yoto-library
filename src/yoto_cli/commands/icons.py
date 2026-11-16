@@ -175,7 +175,10 @@ def handle_select_icon(args: argparse.Namespace) -> None:
 
     def _on_skipped(track_path: Path) -> None:
         _close_progress()
-        _console.print(f"[dim]Keeping current icon for {track_path.name}[/dim]")
+        if get_attachment(track_path, "icon") is None:
+            _console.print(f"[dim]No icon attached to {track_path.name}[/dim]")
+        else:
+            _console.print(f"[dim]Keeping current icon for {track_path.name}[/dim]")
 
     def _on_error(msg: str) -> None:
         p = progress_ref[0]

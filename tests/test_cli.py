@@ -850,6 +850,31 @@ class TestSelectIconCommand:
         passed_tracks = mock_select.call_args.args[0]
         assert passed_tracks == [mka]
 
+    @pytest.mark.parametrize(
+        ("existing_icon", "expected"),
+        [(None, "No icon attached to track.mka"), (b"png", "Keeping current icon for track.mka")],
+    )
+    def test_select_icon_skip_message_reflects_existing_icon(self, tmp_path, existing_icon, expected):
+        """When no new icon is applied, the message says whether the track has an icon at all."""
+        from yoto_cli.commands.icons import handle_select_icon
+        from yoto_cli.progress import _console
+
+        mka = tmp_path / "track.mka"
+        mka.write_bytes(b"fake")
+
+        def skip(tracks, *_args, **kwargs):
+            kwargs["on_skipped"](tracks[0])
+
+        with (
+            patch("yoto_cli.commands.icons.YotoAPI"),
+            patch("yoto_cli.commands.icons.get_attachment", return_value=existing_icon),
+            patch("yoto_lib.icons.select.select_icons_for_tracks", side_effect=skip),
+            _console.capture() as captured,
+        ):
+            handle_select_icon(argparse.Namespace(tracks=[mka], reference=None, strength=None))
+
+        assert expected in captured.get()
+
     def test_select_icon_skips_work_when_no_mka_files(self, tmp_path):
         """select-icon does nothing (no API call) when no .mka files are given."""
         txt = tmp_path / "description.txt"
